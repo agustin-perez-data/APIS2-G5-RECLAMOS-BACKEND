@@ -1,53 +1,52 @@
 ---
-description: Genera y revisa una migración de Alembic
-argument-hint: <descripcion corta del cambio de esquema>
+description: Generates and reviews an Alembic migration
+argument-hint: <short description of the schema change>
 allowed-tools: Bash, Read, Edit, Write, Glob, Grep
 ---
 
-Generá la migración para el cambio de esquema pedido.
+Generate the migration for the requested schema change.
 
-**Cambio:** $ARGUMENTS
+**Change:** $ARGUMENTS
 
-## Pasos
+## Steps
 
-1. Modificá primero el modelo ORM en `app/db/models/`.
-2. Generá la revisión:
+1. Change the ORM model in `app/db/models/` first.
+2. Generate the revision:
    ```
    alembic revision --autogenerate -m "descripcion corta"
    ```
-   Si no hay base disponible, escribí el archivo a mano en
-   `alembic/versions/` siguiendo el estilo de `0001_esquema_inicial.py`.
-3. **Leé el archivo generado entero antes de darlo por bueno.** El autogenerate
-   se equivoca seguido: inventa drops de índices que no cambiaron, no detecta
-   renames (los ve como drop + add, que pierde datos) y a veces se olvida los
-   `server_default`.
-4. Verificá que el `downgrade()` esté completo y sea el inverso exacto. Es lo
-   que corre el CI.
-5. Aplicá y revertí contra Postgres local:
+   If no database is reachable, hand-write the file in `alembic/versions/`
+   following the style of `0001_esquema_inicial.py`.
+3. **Read the generated file end to end before trusting it.** Autogenerate gets
+   things wrong often: it invents drops of indexes that did not change, it does
+   not detect renames (it sees drop + add, which loses data), and it sometimes
+   misses `server_default`.
+4. Check that `downgrade()` is complete and the exact inverse. That is what CI
+   runs.
+5. Apply and revert against local Postgres:
    ```
    docker compose up -d postgres
    alembic upgrade head
    alembic downgrade -1
    alembic upgrade head
    ```
-   Si Docker no está corriendo, al menos validá el SQL con
+   If Docker is not running, at least validate the SQL with
    `alembic upgrade head --sql`.
-6. Corré `pytest`: los tests crean el esquema desde los modelos, así que si la
-   migración y los modelos divergen no lo vas a detectar ahí — por eso el paso 5
-   no es opcional.
+6. Run `pytest`: the tests build the schema from the models, so a drift between
+   migration and models will **not** show up there — which is why step 5 is not
+   optional.
 
-## Convenciones del repo
+## Repo conventions
 
-- **Una migración por PR** como máximo.
-- Los enums del dominio se guardan como `VARCHAR(32)`, no como tipo nativo de
-  Postgres: agregar una categoría **no requiere migración**. Si estás por crear
-  un `sa.Enum` nativo, parate y releé `app/db/types.py`.
-- Nada de tipos específicos de un motor: los tests corren en SQLite.
-- Contra Supabase, migrá con el **session pooler (puerto 5432)**, no con el
+- **One migration per PR** at most.
+- Domain enums are stored as `VARCHAR(32)`, not as a native Postgres type:
+  adding a category **needs no migration**. If you are about to create a native
+  `sa.Enum`, stop and re-read `app/db/types.py`.
+- No engine-specific types: the tests run on SQLite.
+- Against Supabase, migrate through the **session pooler (port 5432)**, not the
   transaction pooler.
-- Si la columna nueva es `NOT NULL` sobre una tabla con datos, la migración
-  necesita tres pasos: agregar nullable → backfill → alterar a not null.
-  Decímelo si es el caso.
+- A new `NOT NULL` column on a table with data needs three steps: add nullable →
+  backfill → alter to not null. Tell me if that is the case.
 
-Al terminar, mostrame el `upgrade()` y el `downgrade()` y confirmá que probaste
-el ciclo completo.
+When done, show me `upgrade()` and `downgrade()` and confirm you ran the full
+cycle.

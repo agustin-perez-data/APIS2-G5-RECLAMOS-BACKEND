@@ -1,48 +1,47 @@
 ---
-description: Agrega un endpoint REST siguiendo las capas y convenciones del repo
-argument-hint: <descripcion del endpoint>
+description: Adds a REST endpoint following the repo's layering and conventions
+argument-hint: <what the endpoint should do>
 allowed-tools: Bash, Read, Edit, Write, Glob, Grep
 ---
 
-Agregá el endpoint pedido respetando las reglas de capas de `CLAUDE.md`.
+Add the requested endpoint, respecting the layering rules in `CLAUDE.md`.
 
-**Endpoint a implementar:** $ARGUMENTS
+**Endpoint to implement:** $ARGUMENTS
 
-## Orden obligatorio
+## Mandatory order
 
-1. **Schemas** (`app/schemas/reclamo.py`): DTO de entrada y de salida con
-   validación Pydantic (longitudes, rangos, enums del dominio). Los
-   `description` de los campos van en español: salen en el OpenAPI que leen los
-   otros grupos.
+1. **Schemas** (`app/schemas/reclamo.py`): input and output DTOs with Pydantic
+   validation (lengths, ranges, domain enums). Field `description` values stay in
+   **Spanish**: they end up in the OpenAPI page the other teams read.
 
-2. **Caso de uso** (`app/services/reclamo_service.py`): toda la regla de negocio
-   va acá. El servicio **no importa FastAPI**. Si necesita datos nuevos, agregá
-   el método al repositorio primero.
+2. **Use case** (`app/services/reclamo_service.py`): all business logic goes
+   here. The service **must not import FastAPI**. If it needs new data, add the
+   repository method first.
 
-3. **Repositorio** (`app/repositories/reclamo_repository.py`) si hace falta:
-   solo queries. Hace `flush()`, **nunca `commit()`**.
+3. **Repository** (`app/repositories/reclamo_repository.py`) when needed: queries
+   only. It calls `flush()`, **never `commit()`**.
 
-4. **Router** (`app/api/v1/reclamos.py`): thin. Traduce DTO ↔ servicio y nada
-   más. Con `summary` y `description` en español.
+4. **Router** (`app/api/v1/reclamos.py`): thin. It translates DTO ↔ service and
+   nothing else. `summary` and `description` in **Spanish**.
 
-5. **Test de integración** (`tests/integration/test_reclamos_api.py`) y, si la
-   regla de negocio es no trivial, también en
-   `tests/integration/test_reclamo_service.py`.
+5. **Integration test** (`tests/integration/test_reclamos_api.py`) and, when the
+   business rule is non-trivial, one in
+   `tests/integration/test_reclamo_service.py` too.
 
-## Reglas que no se negocian
+## Non-negotiable rules
 
-- **Identidad**: `UsuarioDep` (cualquier autenticado) o `StaffDep`
-  (operador/admin). Ningún endpoint nuevo sin una de las dos.
-- **Errores**: lanzá excepciones de dominio de `app/core/exceptions.py`, nunca
-  `HTTPException` desde el servicio. Si el error no existe, creá la subclase de
-  `DomainError` con `status_code`, `title` (español) y `code`.
-- **Rutas fijas antes que las paramétricas**: `/reclamos/estadisticas` tiene que
-  declararse antes que `/reclamos/{reclamo_id}` o la captura el path param.
-- **Comentarios en inglés**, identificadores del dominio en español.
-- Si el endpoint cambia el estado de un reclamo, tiene que **publicar el evento
-  correspondiente** y dejar registro en el historial.
+- **Identity**: `UsuarioDep` (any authenticated user) or `StaffDep`
+  (operator/admin). No new endpoint without one of the two.
+- **Errors**: raise domain exceptions from `app/core/exceptions.py`, never
+  `HTTPException` from the service. If the error does not exist yet, create the
+  `DomainError` subclass with `status_code`, `title` (Spanish) and `code`.
+- **Fixed routes before parameterised ones**: `/reclamos/estadisticas` must be
+  declared before `/reclamos/{reclamo_id}` or the path param swallows it.
+- **Comments in English**, domain identifiers in Spanish.
+- If the endpoint changes a claim's state, it must **publish the matching event**
+  and leave a history entry.
 
-## Al terminar
+## When done
 
-Corré `ruff check . --fix`, `ruff format .` y `pytest`. Mostrame el diff de la
-firma del endpoint nuevo y qué tests agregaste.
+Run `ruff check . --fix`, `ruff format .` and `pytest`. Show me the new
+endpoint's signature and which tests you added.

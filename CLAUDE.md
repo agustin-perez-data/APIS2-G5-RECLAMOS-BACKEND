@@ -29,6 +29,7 @@ Esta es la regla que más se olvida, así que va primero:
 | Qué | Idioma |
 | --- | --- |
 | Comentarios y docstrings | **Inglés** |
+| Slash commands de `.claude/commands/` | **Inglés** |
 | Identificadores del dominio (`reclamo`, `adherir`, `EstadoReclamo`) | **Español** |
 | Texto que ve el usuario: `summary`/`description` de OpenAPI, `title` de los errores | **Español** |
 | Documentación del repo (README, ADRs, este archivo) | **Español** |

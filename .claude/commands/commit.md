@@ -1,50 +1,52 @@
 ---
-description: Arma los commits del trabajo pendiente con el formato G5D-<nro>
-argument-hint: <nro de tarjeta> [contexto opcional]
+description: Builds the commits for pending work using the G5D-<nro> format
+argument-hint: <board card number> [optional context]
 allowed-tools: Bash, Read, Glob, Grep
 ---
 
-Armá los commits del trabajo que está sin commitear.
+Build the commits for whatever is currently uncommitted.
 
-**Tarjeta / contexto:** $ARGUMENTS
+**Card / context:** $ARGUMENTS
 
-## Pasos
+## Steps
 
-1. Mirá `git status --short` y `git diff` (staged y unstaged) para entender qué
-   cambió de verdad. No adivines a partir de los nombres de archivo.
-2. Agrupá los cambios en commits **coherentes**: un commit = un cambio con
-   sentido propio. Si el trabajo toca varias áreas (dominio, API, eventos,
-   tests, docs), separalos.
-3. Verificá que el árbol esté limpio antes: corré `ruff check .` y `pytest`. No
-   commitees con el gate en rojo salvo que te lo pida explícitamente.
+1. Look at `git status --short` and `git diff` (staged and unstaged) to
+   understand what actually changed. Do not guess from file names.
+2. Group the changes into **coherent** commits: one commit = one change that
+   stands on its own. If the work spans several areas (domain, API, events,
+   tests, docs), split them.
+3. Check the tree is clean first: run `ruff check .` and `pytest`. Do not commit
+   with the gate red unless explicitly told to.
 
-## Formato del mensaje
+## Message format
+
+The commit message itself is written in **Spanish** — it has to match the
+existing history:
 
 ```
-G5D-<nro>: <que hace, en imperativo, minuscula, en español>
+G5D-<nro>: <what it does, imperative, lowercase, in Spanish>
 
-Por que se hizo y que decisión hay detrás. Dos o tres párrafos cortos como
-máximo. Sin bullets salvo que enumeres cosas de verdad.
+Why it was done and the decision behind it. Two or three short paragraphs at
+most. No bullets unless you are genuinely enumerating things.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 ```
 
-- El prefijo `G5D-<nro>` es **obligatorio en todos los commits** (número de
-  tarjeta del board). Si no me lo pasaste, preguntámelo antes de commitear.
-- El cuerpo explica el **por qué**, no repite el diff. Quien lea el log en tres
-  meses quiere saber la decisión, no la lista de archivos.
-- Sin tildes ni `ñ` en el mensaje (evita problemas de encoding entre Windows y
-  Linux en la consola).
-- Nada de `wip`, `fix`, `varios cambios`.
+- The `G5D-<nro>` prefix is **mandatory on every commit** (board card number). If
+  it was not provided, ask for it before committing.
+- The body explains the **why**, it does not restate the diff. Whoever reads the
+  log in three months wants the decision, not the file list.
+- No accents or `ñ` in the message (avoids encoding trouble between Windows and
+  Linux terminals).
+- Never `wip`, `fix`, or `varios cambios`.
 
-## Nunca commitear
+## Never commit
 
 `.env` · `.venv/` · `coverage.xml` · `__pycache__/` · `*.db`
 
-Están en `.gitignore`, pero verificá igual con `git status` antes de hacer
-`git add`. Preferí `git add <rutas explícitas>` sobre `git add -A`.
+They are in `.gitignore`, but verify with `git status` before `git add` anyway.
+Prefer `git add <explicit paths>` over `git add -A`.
 
-## Al terminar
+## When done
 
-Mostrame `git log --oneline` con los commits nuevos. **No hagas push** salvo que
-te lo pida.
+Show me `git log --oneline` with the new commits. **Do not push** unless asked.

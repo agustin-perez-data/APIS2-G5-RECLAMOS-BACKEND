@@ -1,54 +1,54 @@
 ---
-description: Agrega un evento publicado o consumido, con contrato, test y doc
-argument-hint: publicar|consumir <nombre.del.topic>
+description: Adds a published or consumed event, with contract, test and docs
+argument-hint: publicar|consumir <topic.name>
 allowed-tools: Bash, Read, Edit, Write, Glob, Grep
 ---
 
-Agregá el evento pedido al bus, con su contrato y su documentación.
+Add the requested event to the bus, together with its contract and docs.
 
-**Evento:** $ARGUMENTS
+**Event:** $ARGUMENTS
 
-Primero decidí si es **publicado** (lo emitimos nosotros) o **consumido** (viene
-de otro grupo), porque las reglas son distintas.
+First decide whether it is **published** (we emit it) or **consumed** (it comes
+from another team), because the rules differ.
 
-## Si lo publicamos
+## If we publish it
 
-1. Constante del topic en `app/events/topics.py` y sumala a `PUBLICADOS`.
-   Naming: `<modulo>.<agregado>.<hecho>`, minúsculas, hecho en pasado.
-2. Payload Pydantic en `app/events/contracts.py`. Campos explícitos y tipados;
-   usá los enums de `app/domain/enums.py`, no strings sueltos.
-3. Publicación desde `app/services/reclamo_service.py`, **después del commit**
-   (ver ADR 0004) y con `key=str(reclamo.id)` — sin esa key se pierde el orden
-   por agregado.
-4. Propagá `correlation_id=reclamo.correlation_id`.
-5. Test en `tests/integration/test_reclamo_service.py` afirmando con
-   `publisher.eventos_de(topics.X)` que el caso de uso lo emitió con los datos
-   correctos.
+1. Topic constant in `app/events/topics.py`, added to `PUBLICADOS`. Naming:
+   `<module>.<aggregate>.<fact>`, lowercase, fact in past tense.
+2. Pydantic payload in `app/events/contracts.py`. Explicit, typed fields; use the
+   enums from `app/domain/enums.py`, never loose strings.
+3. Publish from `app/services/reclamo_service.py`, **after the commit** (see ADR
+   0004) and with `key=str(reclamo.id)` — without that key, ordering per
+   aggregate is lost.
+4. Propagate `correlation_id=reclamo.correlation_id`.
+5. Test in `tests/integration/test_reclamo_service.py` asserting with
+   `publisher.eventos_de(topics.X)` that the use case emitted it with the right
+   data.
 
-## Si lo consumimos
+## If we consume it
 
-1. Constante del topic y sumala a `CONSUMIDOS`.
-2. Payload en `app/events/contracts.py` con **`extra="allow"`** y `AliasChoices`
-   para las variantes de nombre (`contenedorId`, `id`, `lat`, `lng`…). Declará
-   **solo** los campos de los que dependemos: que el otro equipo agregue campos
-   nunca puede tirar abajo nuestro worker.
-3. Handler en `app/events/handlers.py` y registralo en `HANDLERS`.
-4. **El handler no toca la base**: pasa por `ReclamoService`. Así un reclamo
-   nacido de un evento respeta las mismas invariantes que uno creado desde la
-   app.
-5. **Idempotencia**: si el handler crea algo, usá
+1. Topic constant, added to `CONSUMIDOS`.
+2. Payload in `app/events/contracts.py` with **`extra="allow"`** and
+   `AliasChoices` covering the name variants (`contenedorId`, `id`, `lat`,
+   `lng`…). Declare **only** the fields we depend on: another team adding fields
+   must never be able to take our worker down.
+3. Handler in `app/events/handlers.py`, registered in `HANDLERS`.
+4. **The handler never touches the database**: it goes through `ReclamoService`.
+   That way a claim born from an event respects the same invariants as one filed
+   from the app.
+5. **Idempotency**: if the handler creates something, use
    `service.crear_desde_evento(..., evento_id=str(evento.event_id))`. Kafka
-   reentrega mensajes; sin esto duplicás reclamos.
-6. Tests en `tests/integration/test_event_handlers.py`: el caso feliz, el caso
-   **del mismo evento procesado dos veces**, y el del payload al que le falta un
-   campo obligatorio.
+   redelivers messages; without this you duplicate claims.
+6. Tests in `tests/integration/test_event_handlers.py`: the happy path, the
+   **same event processed twice**, and a payload missing a required field.
 
-## Siempre
+## Always
 
-- Documentalo en `docs/eventos.md` con un ejemplo de JSON completo. Ese archivo
-  es el contrato público hacia los otros grupos: si no está ahí, no existe.
-- Si el topic es nuevo, agregalo al `redpanda-init` de `docker-compose.yml`.
-- Versionado: agregar un campo opcional mantiene `event_version`; quitar o
-  renombrar obliga a subir la versión mayor y publicar en paralelo.
+- Document it in `docs/eventos.md` with a full JSON example, in **Spanish**. That
+  file is the public contract towards the other teams: if it is not there, it
+  does not exist.
+- If the topic is new, add it to `redpanda-init` in `docker-compose.yml`.
+- Versioning: adding an optional field keeps `event_version`; removing or
+  renaming one forces a major bump and dual publishing.
 
-Al terminar corré `pytest` y mostrame el JSON de ejemplo que documentaste.
+When done, run `pytest` and show me the example JSON you documented.

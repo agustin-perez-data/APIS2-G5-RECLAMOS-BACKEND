@@ -1,56 +1,56 @@
 ---
-description: Audita el repo contra la rúbrica de la cátedra y lista los gaps
-argument-hint: [dimension a auditar, o vacío para todas]
+description: Audits the repo against the course rubric and lists the gaps
+argument-hint: [dimension to audit, or empty for all]
 allowed-tools: Bash, Read, Glob, Grep
 ---
 
-Auditá el estado real del repo contra la rúbrica del TP integrador y decime qué
-falta.
+Audit the repo's real state against the course rubric and tell me what is
+missing.
 
-**Alcance:** $ARGUMENTS (si está vacío, auditá las 10 dimensiones)
+**Scope:** $ARGUMENTS (if empty, audit all ten dimensions)
 
-## Rúbrica (100 pts, 10 por dimensión)
+## Rubric (100 pts, 10 per dimension)
 
-| # | Dimensión | Qué se evalúa |
+| # | Dimension | What is graded |
 | --- | --- | --- |
-| 1 | Diseño de arquitectura | Modularidad interna, separación de responsabilidades, patrones |
-| 2 | Modelado y diagramas | 4+1 / C4 / cloud, con coherencia técnica |
-| 3 | Seguridad e identidad | JWT, roles, login federado (LDAP), endpoints protegidos |
-| 4 | Integración y APIs | REST, GraphQL, middlewares, manejo de errores |
-| 5 | Event Driven Architecture | Tópicos, contratos de eventos, pub/sub |
-| 6 | Testing | 60% de cobertura (unitarios e integrales), automatizados |
-| 7 | DevOps & Cloud | CI/CD, infraestructura como código, despliegue cloud |
-| 8 | IA / ML / I+D | Modelos bien aplicados e integrados funcionalmente |
-| 9 | UX/UI del módulo | Prototipo funcional (si aplica al backend, evaluá el OpenAPI) |
-| 10 | Trabajo en equipo y SCRUM | Git, board, roles, retrospectivas, entregas por sprint |
+| 1 | Diseño de arquitectura | Internal modularity, separation of concerns, patterns |
+| 2 | Modelado y diagramas | 4+1 / C4 / cloud, technically coherent |
+| 3 | Seguridad e identidad | JWT, roles, federated login (LDAP), protected endpoints |
+| 4 | Integración y APIs | REST, GraphQL, middlewares, error handling |
+| 5 | Event Driven Architecture | Topics, event contracts, pub/sub |
+| 6 | Testing | 60% coverage (unit and integration), automated |
+| 7 | DevOps & Cloud | CI/CD, infrastructure as code, cloud deployment |
+| 8 | IA / ML / I+D | Models properly applied and functionally integrated |
+| 9 | UX/UI del módulo | Working prototype (for a backend, grade the OpenAPI page) |
+| 10 | Trabajo en equipo y SCRUM | Git, board, roles, retrospectives, sprint deliveries |
 
-Requisito transversal: **toda decisión de arquitectura documentada en un ADR**
-con las opciones consideradas.
+Cross-cutting requirement: **every architecture decision documented in an ADR**
+with the options that were considered.
 
-## Cómo auditar
+## How to audit
 
-Andá al código, no a la documentación. Para cada dimensión:
+Go to the code, not to the documentation. For each dimension:
 
-1. Buscá la **evidencia concreta** (archivo y línea) de que está cubierta.
-2. Verificá que funcione: corré `pytest`, mirá la cobertura real, revisá que el
-   workflow de CI tenga los jobs que dice tener.
-3. Marcá el estado: **cubierto** / **parcial** / **faltante**.
+1. Find the **concrete evidence** that it is covered (file and line).
+2. Verify it actually works: run `pytest`, look at real coverage, check that the
+   CI workflow has the jobs it claims to have.
+3. Mark the status: **cubierto** / **parcial** / **faltante**.
 
-Sé escéptico con el propio repo. Un README que promete algo no es evidencia; el
-código que lo hace, sí. Ejemplos de gaps que hay que detectar y no maquillar:
+Be sceptical of this repo. A README that promises something is not evidence; the
+code that does it is. Gaps worth catching instead of glossing over:
 
-- Cobertura que pasa el gate pero deja sin testear el camino que importa.
-- Endpoints "protegidos" que en realidad no exigen rol.
-- Eventos documentados en `docs/eventos.md` que nadie publica.
-- Un job de CI que existe pero nunca corrió en verde.
-- Despliegue cloud declarado pero sin infraestructura como código real.
+- Coverage that clears the gate while leaving the path that matters untested.
+- "Protected" endpoints that do not actually require a role.
+- Events documented in `docs/eventos.md` that nobody publishes.
+- A CI job that exists but has never gone green.
+- Cloud deployment claimed with no real infrastructure as code.
 
-## Salida
+## Output
 
-Una tabla con dimensión → estado → evidencia (archivo:línea) → qué falta, y
-después una lista **priorizada** de acciones concretas: qué hacer primero para
-ganar más puntos con menos trabajo. Nada de "mejorar el testing": decime qué
-test escribir y sobre qué archivo.
+Write the report in **Spanish**. A table of dimension → status → evidence
+(`file:line`) → what is missing, followed by a **prioritised** list of concrete
+actions: what to do first to gain the most points for the least work. No
+"improve testing": name the test to write and the file it covers.
 
-Si una dimensión no aplica al backend (la 9, por ejemplo), decilo en vez de
-inventar trabajo.
+If a dimension does not apply to the backend (number 9, for instance), say so
+instead of inventing work.

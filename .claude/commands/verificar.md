@@ -1,35 +1,35 @@
 ---
-description: Corre lint, formato y tests, y arregla lo que falle
+description: Runs lint, format and tests, and fixes whatever breaks
 allowed-tools: Bash, Read, Edit, Write, Glob, Grep
 ---
 
-Ejecutá el gate de calidad completo del repo y dejá todo en verde.
+Run the repo's full quality gate and leave everything green.
 
-## Pasos
+## Steps
 
-1. **Lint**: `ruff check .` — si hay errores, corré `ruff check . --fix` y revisá
-   que los autofixes tengan sentido. Ojo con `SIM905`: si toca la lista de
-   stopwords de `app/ml/text.py`, respetá el bloque `# fmt: off` que la mantiene
-   legible.
-2. **Formato**: `ruff format .` y después `ruff format --check .`.
-3. **Tests**: `pytest`. El gate de cobertura es 60% (rúbrica) y está en
+1. **Lint**: `ruff check .` — on errors, run `ruff check . --fix` and review that
+   the autofixes make sense. Watch out for `SIM905`: if it touches the stopword
+   list in `app/ml/text.py`, keep the `# fmt: off` block that keeps it readable.
+2. **Format**: `ruff format .`, then `ruff format --check .`.
+3. **Tests**: `pytest`. The coverage gate is 60% (course rubric) and lives in
    `pyproject.toml`.
 
-En Windows el intérprete del venv es `.venv\Scripts\python.exe`; en Linux/Mac es
-`.venv/bin/python`. Usalo como `<python> -m ruff` / `<python> -m pytest` si los
-binarios no están en el PATH.
+On Windows the venv interpreter is `.venv\Scripts\python.exe`; on Linux/Mac it is
+`.venv/bin/python`. Use it as `<python> -m ruff` / `<python> -m pytest` when the
+binaries are not on the PATH.
 
-## Al terminar
+## When done
 
-Reportá en este orden:
+Report, in this order:
 
-- Qué falló y qué arreglaste (con el archivo y la línea).
-- El número de tests y la cobertura final.
-- Si la cobertura bajó respecto de lo que dice `CLAUDE.md` (~90%), decilo
-  explícitamente y señalá qué módulo perdió cobertura.
+- What failed and what you fixed, with file and line.
+- Final test count and coverage.
+- If coverage dropped below what `CLAUDE.md` states (~90%), say so explicitly and
+  point at which module lost coverage.
 
-Si algo no se puede arreglar sin una decisión de diseño, **no lo parchees**:
-explicá el problema y las opciones. Nunca bajes el umbral de cobertura ni
-agregues `# noqa` para hacer callar al linter sin justificarlo en un comentario.
+If something cannot be fixed without a design decision, **do not patch over it**:
+explain the problem and the options. Never lower the coverage threshold, and
+never add a `# noqa` just to silence the linter without justifying it in a
+comment.
 
 $ARGUMENTS
