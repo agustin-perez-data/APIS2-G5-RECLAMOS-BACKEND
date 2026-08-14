@@ -210,6 +210,23 @@ python scripts/dev_token.py --sub vecino-1 --roles ciudadano
 python scripts/dev_token.py --sub operador-1 --roles operador
 ```
 
+### Slash commands de Claude Code
+
+En `.claude/commands/` hay comandos propios del repo que encapsulan estas mismas
+convenciones. Se invocan con `/nombre` en la sesión:
+
+| Comando | Para qué |
+| --- | --- |
+| `/verificar` | Lint + formato + tests, y arregla lo que falle |
+| `/nuevo-endpoint` | Endpoint nuevo respetando el orden de capas |
+| `/nuevo-evento` | Evento con contrato, idempotencia, test y doc |
+| `/migracion` | Migración de Alembic con el ciclo up/down probado |
+| `/commit` | Commits con formato `G5D-<nro>` |
+| `/adr` | ADR nuevo con opciones consideradas |
+| `/rubrica` | Auditoría del repo contra la rúbrica de la cátedra |
+
+Detalle y cómo agregar uno: [`.claude/commands/README.md`](.claude/commands/README.md).
+
 ---
 
 ## 8. Decisiones ya tomadas — no re-litigar sin ADR
