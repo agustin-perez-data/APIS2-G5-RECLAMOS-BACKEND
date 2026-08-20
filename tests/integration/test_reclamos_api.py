@@ -67,6 +67,30 @@ async def test_un_ciudadano_no_puede_cambiar_estados(
     assert respuesta.status_code == 403
 
 
+# --- Error contract ----------------------------------------------------------
+async def test_el_problem_detail_trae_un_code_estable(
+    client: AsyncClient, auth, token_ciudadano
+) -> None:
+    respuesta = await client.get(f"/api/v1/reclamos/{uuid.uuid4()}", headers=auth(token_ciudadano))
+
+    cuerpo = respuesta.json()
+    # The client discriminates on `code`; `type` is just a documentation URL and
+    # parsing its last segment to get the code is a trap we do not set.
+    assert cuerpo["code"] == "reclamo_no_encontrado"
+    assert cuerpo["type"].endswith(f"/{cuerpo['code']}")
+
+
+async def test_los_errores_de_validacion_tambien_traen_code(
+    client: AsyncClient, auth, token_ciudadano
+) -> None:
+    respuesta = await client.post(
+        "/api/v1/reclamos",
+        json={"titulo": "corto", "descripcion": "breve"},
+        headers=auth(token_ciudadano),
+    )
+    assert respuesta.json()["code"] == "validacion"
+
+
 # --- Creation ----------------------------------------------------------------
 async def test_crear_reclamo(
     client: AsyncClient, auth, token_ciudadano, publisher: InMemoryEventPublisher

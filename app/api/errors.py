@@ -32,6 +32,7 @@ def _problema(
 ) -> JSONResponse:
     cuerpo = ProblemDetail(
         type=f"{BASE_TIPO_ERROR}/{code}",
+        code=code,
         title=title,
         status=status_code,
         detail=detail,
