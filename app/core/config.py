@@ -54,7 +54,11 @@ class Settings(BaseSettings):
     jwt_roles_claim: str = "roles"
 
     # --- HTTP ---------------------------------------------------------------
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    # Defaults cover the two dev servers the front end uses: CRA-style (3000)
+    # and Vite (5173). Production origins come from CORS_ORIGINS in the env.
+    cors_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:3000", "http://localhost:5173"]
+    )
 
     # --- Business rules -----------------------------------------------------
     # Number of neighbour endorsements that automatically bumps a claim's
