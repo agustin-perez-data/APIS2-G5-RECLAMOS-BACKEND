@@ -1,0 +1,115 @@
+name: citypass-reclamos
+
+services:
+  # --- Event bus (Kafka-compatible API) ---------------------------------------
+  redpanda:
+    image: redpandadata/redpanda:v24.2.11
+    container_name: citypass-redpanda
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --overprovisioned
+      - --kafka-addr=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092
+      - --advertise-kafka-addr=INTERNAL://redpanda:9092,EXTERNAL://localhost:19092
+    ports:
+      - "19092:19092"   # bootstrap server for processes outside docker
+      - "9644:9644"     # admin api
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Creates the domain topics and exits. Idempotent.
+  redpanda-init:
+    image: redpandadata/redpanda:v24.2.11
+    container_name: citypass-redpanda-init
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        for t in reclamos.reclamo.creado \
+                 reclamos.reclamo.clasificado \
+                 reclamos.reclamo.estado-cambiado \
+                 reclamos.reclamo.resuelto \
+                 reclamos.reclamo.adherido \
+                 residuos.contenedor.desbordado \
+                 emergencias.incidente.creado \
+                 espacios.reserva.creada; do
+          rpk topic create "$$t" --brokers redpanda:9092 --partitions 3 --replicas 1 || true
+        done
+        rpk topic list --brokers redpanda:9092
+
+  # Web console for the bus: http://localhost:8080
+  redpanda-console:
+    image: redpandadata/console:v2.7.2
+    container_name: citypass-redpanda-console
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+
+  # --- Local Postgres (alternative to Supabase for offline development) -------
+  postgres:
+    image: postgres:16-alpine
+    container_name: citypass-postgres
+    environment:
+      POSTGRES_USER: citypass
+      POSTGRES_PASSWORD: citypass
+      POSTGRES_DB: reclamos
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U citypass -d reclamos"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # --- Claims service ---------------------------------------------------------
+  api:
+    build: .
+    container_name: citypass-reclamos-api
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://citypass:citypass@postgres:5432/reclamos
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  # Consumer of other modules' events (separate process from the API)
+  worker:
+    build: .
+    container_name: citypass-reclamos-worker
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://citypass:citypass@postgres:5432/reclamos
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+    command: ["python", "-m", "app.worker"]
+
+volumes:
+  postgres-data:
