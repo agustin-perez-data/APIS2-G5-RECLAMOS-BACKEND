@@ -91,6 +91,18 @@ async def test_los_errores_de_validacion_tambien_traen_code(
     assert respuesta.json()["code"] == "validacion"
 
 
+# --- CORS --------------------------------------------------------------------
+async def test_cors_habilita_el_dev_server_del_front(client: AsyncClient) -> None:
+    # Vite serves the front end on 5173. Without it in the defaults every browser
+    # call fails the preflight and never reaches the endpoint.
+    respuesta = await client.options(
+        "/api/v1/reclamos",
+        headers={"Origin": "http://localhost:5173", "Access-Control-Request-Method": "GET"},
+    )
+    assert respuesta.status_code == 200
+    assert respuesta.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
 # --- Creation ----------------------------------------------------------------
 async def test_crear_reclamo(
     client: AsyncClient, auth, token_ciudadano, publisher: InMemoryEventPublisher
