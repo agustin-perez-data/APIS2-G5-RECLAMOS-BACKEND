@@ -30,6 +30,9 @@ class ProblemDetail(BaseModel):
     """Error body as defined by RFC 7807 (application/problem+json)."""
 
     type: str = Field(default="about:blank", description="Identificador del tipo de error")
+    # Same value as the last segment of `type`, but on its own field: the client
+    # compares it directly instead of parsing a URL.
+    code: str = Field(description="Codigo estable del error, para discriminar en el cliente")
     title: str
     status: int
     detail: str | None = None
@@ -42,6 +45,7 @@ class ProblemDetail(BaseModel):
         "json_schema_extra": {
             "example": {
                 "type": "https://citypass.local/errors/transicion_invalida",
+                "code": "transicion_invalida",
                 "title": "Transicion de estado invalida",
                 "status": 409,
                 "detail": "No se puede pasar de RESUELTO a ASIGNADO",
