@@ -114,9 +114,30 @@ emisor. Todos los endpoints excepto `/health*` exigen `Authorization: Bearer`.
 | --- | --- |
 | `ciudadano` | Crear reclamos, comentar, adherir, consultar |
 | `operador` | Todo lo anterior + cambiar estados y asignar |
-| `admin` | Igual que operador |
+| `admin` | Todo lo anterior + ver las métricas agregadas |
 
-Mientras el servicio de identidad no esté disponible:
+Las métricas son información de gestión: un operador trabaja la bandeja pero
+**no** accede a `/reclamos/estadisticas`.
+
+### Login de desarrollo (Entrega 1)
+
+Mientras el servicio de identidad no esté disponible, con
+`AUTH_DEV_LOGIN_ENABLED=true` se monta un login con usuarios fijos que devuelve
+un JWT del mismo formato que va a emitir el Grupo 2:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/dev/login   -H "Content-Type: application/json"   -d '{"usuario":"vecino1","password":"vecino1"}'
+```
+
+| Usuario | Contraseña | Roles |
+| --- | --- | --- |
+| `vecino1` | `vecino1` | `ciudadano` |
+| `operador1` | `operador1` | `operador` |
+| `admin1` | `admin1` | `operador`, `admin` |
+
+Es andamiaje temporal y no puede encenderse fuera de un entorno de desarrollo:
+detalle y criterio de eliminación en [`CLAUDE.md`](CLAUDE.md#9-integración-con-los-otros-grupos).
+Para scripts y pruebas manuales sigue estando el generador de tokens:
 
 ```bash
 python scripts/dev_token.py --sub vecino-1 --roles ciudadano
@@ -140,7 +161,9 @@ Prefijo `/api/v1`.
 | `GET` | `/reclamos/{id}/historial` | autenticado | Trazabilidad de estados. |
 | `POST` | `/reclamos/{id}/adhesiones` | ciudadano | "A mí también me pasa". |
 | `POST` | `/reclamos/clasificacion` | autenticado | Sugerencia del modelo sin persistir. |
-| `GET` | `/reclamos/estadisticas` | autenticado | Métricas agregadas (para el Grupo 8). |
+| `GET` | `/reclamos/estadisticas` | **admin** | Métricas agregadas (para el Grupo 8). |
+| `POST` | `/auth/dev/login` | público | Login de desarrollo. Solo con `AUTH_DEV_LOGIN_ENABLED=true`. |
+| `GET` | `/auth/dev/usuarios` | público | Usuarios de prueba disponibles, sin contraseñas. |
 | `GET` | `/health`, `/health/ready` | público | Liveness y readiness. |
 
 Los errores siguen **RFC 7807**:

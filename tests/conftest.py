@@ -18,6 +18,7 @@ os.environ.update(
         "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
         "KAFKA_ENABLED": "false",
         "AUTH_ENABLED": "true",
+        "AUTH_DEV_LOGIN_ENABLED": "true",
         "JWT_ALGORITHM": "HS256",
         "JWT_SECRET": "secreto-de-test",
         "JWT_ISSUER": "citypass-auth",
@@ -53,6 +54,7 @@ from app.services.reclamo_service import ReclamoService  # noqa: E402
 CIUDADANO_ID = "ciudadano-001"
 OTRO_CIUDADANO_ID = "ciudadano-002"
 OPERADOR_ID = "operador-001"
+ADMIN_ID = "admin-001"
 
 
 def crear_token(sub: str, roles: list[str], *, expira_en: timedelta = timedelta(hours=1)) -> str:
@@ -86,6 +88,11 @@ def token_otro_ciudadano() -> str:
 @pytest.fixture
 def token_operador() -> str:
     return crear_token(OPERADOR_ID, [Roles.OPERADOR])
+
+
+@pytest.fixture
+def token_admin() -> str:
+    return crear_token(ADMIN_ID, [Roles.OPERADOR, Roles.ADMIN])
 
 
 @pytest.fixture

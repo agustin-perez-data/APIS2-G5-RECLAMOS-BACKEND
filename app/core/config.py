@@ -8,7 +8,7 @@ from __future__ import annotations
 from functools import lru_cache
 from urllib.parse import urlsplit
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     jwt_jwks_url: str | None = None
     jwt_roles_claim: str = "roles"
 
+    # --- Development login (scaffolding for Entrega 1) ----------------------
+    # Stand-in for Group 2's Federated Login while that service is not up: it
+    # mints tokens for a fixed set of users so the module can be demoed on its
+    # own. Off by default, and the validator below makes it impossible to turn
+    # on outside a development environment. Removal criteria live in
+    # `app/api/v1/auth_dev.py`.
+    auth_dev_login_enabled: bool = False
+    auth_dev_token_horas: int = 8
+
     # --- HTTP ---------------------------------------------------------------
     # Defaults cover the two dev servers the front end uses: CRA-style (3000)
     # and Vite (5173). Production origins come from CORS_ORIGINS in the env.
@@ -76,6 +85,21 @@ class Settings(BaseSettings):
         if value.startswith("postgres://"):
             return value.replace("postgres://", "postgresql+asyncpg://", 1)
         return value
+
+    @model_validator(mode="after")
+    def _dev_login_fuera_de_produccion(self) -> Settings:
+        """Refuse to boot with the development login on outside development.
+
+        Hardcoded credentials that stay enabled by accident are exactly the kind
+        of thing nobody notices until an audit, so this fails loudly at startup
+        instead of trusting the deploy checklist.
+        """
+        if self.auth_dev_login_enabled and not self.is_local:
+            raise ValueError(
+                "AUTH_DEV_LOGIN_ENABLED=true no esta permitido con ENVIRONMENT="
+                f"'{self.environment}': el login de desarrollo usa usuarios hardcodeados"
+            )
+        return self
 
     @property
     def is_local(self) -> bool:

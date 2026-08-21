@@ -169,12 +169,27 @@ async def test_listado_pagina_y_filtra(client: AsyncClient, auth, token_ciudadan
     assert cuerpo["items"][0]["categoria"] == CategoriaReclamo.BACHES.value
 
 
-async def test_estadisticas(client: AsyncClient, auth, token_ciudadano) -> None:
+async def test_estadisticas(client: AsyncClient, auth, token_ciudadano, token_admin) -> None:
     await crear_reclamo(client, auth(token_ciudadano))
 
-    respuesta = await client.get("/api/v1/reclamos/estadisticas", headers=auth(token_ciudadano))
+    respuesta = await client.get("/api/v1/reclamos/estadisticas", headers=auth(token_admin))
     assert respuesta.status_code == 200
     assert respuesta.json()["total"] == 1
+
+
+async def test_un_operador_no_ve_las_estadisticas(
+    client: AsyncClient, auth, token_operador
+) -> None:
+    # Metrics are management information: the operator works the inbox only.
+    respuesta = await client.get("/api/v1/reclamos/estadisticas", headers=auth(token_operador))
+    assert respuesta.status_code == 403
+
+
+async def test_un_ciudadano_no_ve_las_estadisticas(
+    client: AsyncClient, auth, token_ciudadano
+) -> None:
+    respuesta = await client.get("/api/v1/reclamos/estadisticas", headers=auth(token_ciudadano))
+    assert respuesta.status_code == 403
 
 
 async def test_sugerencia_de_clasificacion_no_persiste(
