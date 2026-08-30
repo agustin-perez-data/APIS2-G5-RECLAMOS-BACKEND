@@ -101,6 +101,17 @@ class ReclamoRepository:
         )
         return list(resultado.scalars().all())
 
+    async def resueltos_antes_de(self, corte: datetime) -> list[Reclamo]:
+        """Claims sitting in RESUELTO since before `corte` (US-17 auto-close)."""
+        resultado = await self.session.execute(
+            select(Reclamo).where(
+                Reclamo.estado == EstadoReclamo.RESUELTO,
+                Reclamo.resuelto_at.is_not(None),
+                Reclamo.resuelto_at <= corte,
+            )
+        )
+        return list(resultado.scalars().all())
+
     def _aplicar_filtros(self, stmt: Select, filtro: FiltroReclamos) -> Select:
         if filtro.estado is not None:
             stmt = stmt.where(Reclamo.estado == filtro.estado)
