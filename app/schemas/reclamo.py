@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.enums import (
     CanalOrigen,
@@ -60,6 +60,19 @@ class ComentarioCrear(BaseModel):
 class ClasificacionPedido(BaseModel):
     titulo: str = Field(min_length=1, max_length=150)
     descripcion: str = Field(min_length=1, max_length=5000)
+
+
+class ReclasificacionPedido(BaseModel):
+    """What the operator corrects when the model got it wrong."""
+
+    categoria: CategoriaReclamo | None = None
+    prioridad: PrioridadReclamo | None = None
+
+    @model_validator(mode="after")
+    def _al_menos_un_campo(self) -> ReclasificacionPedido:
+        if self.categoria is None and self.prioridad is None:
+            raise ValueError("Debe enviar categoria y/o prioridad")
+        return self
 
 
 # --- Output ------------------------------------------------------------------

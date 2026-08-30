@@ -29,6 +29,7 @@ from app.schemas.reclamo import (
     ReclamoDetalle,
     ReclamoOut,
     ReclamoResumen,
+    ReclasificacionPedido,
     SugerenciaClasificacion,
 )
 from app.services.clasificador import get_clasificador
@@ -146,6 +147,22 @@ async def cambiar_estado(
     reclamo_id: uuid.UUID, cambio: CambioEstado, actor: StaffDep, service: ServiceDep
 ) -> ReclamoOut:
     reclamo = await service.cambiar_estado(reclamo_id, cambio, actor)
+    return ReclamoOut.model_validate(reclamo)
+
+
+@router.patch(
+    "/{reclamo_id}/clasificacion",
+    response_model=ReclamoOut,
+    summary="Corregir categoria y/o prioridad de un reclamo (operador/admin)",
+    description=(
+        "Para cuando el modelo o el ciudadano clasificaron mal. No cambia el "
+        "estado del reclamo; publica `reclamos.reclamo.clasificado` de nuevo."
+    ),
+)
+async def reclasificar(
+    reclamo_id: uuid.UUID, cambio: ReclasificacionPedido, actor: StaffDep, service: ServiceDep
+) -> ReclamoOut:
+    reclamo = await service.reclasificar(reclamo_id, cambio, actor)
     return ReclamoOut.model_validate(reclamo)
 
 

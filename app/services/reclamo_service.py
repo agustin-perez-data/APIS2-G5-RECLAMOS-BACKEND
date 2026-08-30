@@ -49,7 +49,7 @@ from app.events.contracts import (
 )
 from app.events.producer import EventPublisher
 from app.repositories.reclamo_repository import FiltroReclamos, ReclamoRepository
-from app.schemas.reclamo import CambioEstado, ReclamoCrear
+from app.schemas.reclamo import CambioEstado, ReclamoCrear, ReclasificacionPedido
 from app.services.clasificador import Clasificador, get_clasificador
 
 log = get_logger(__name__)
@@ -266,6 +266,54 @@ class ReclamoService:
             reclamo_id=str(reclamo.id),
             de=anterior.value,
             a=reclamo.estado.value,
+            actor=actor.id,
+        )
+        return reclamo
+
+    async def reclasificar(
+        self, reclamo_id: uuid.UUID, cambio: ReclasificacionPedido, actor: CurrentUser
+    ) -> Reclamo:
+        """Let an operator correct the model's category/priority suggestion.
+
+        Does not touch the state machine (see ADR-0005): classification already
+        happens automatically on intake, this only fixes it when the model or
+        the citizen got it wrong.
+        """
+        reclamo = await self.obtener(reclamo_id)
+        if reclamo.estado in ESTADOS_FINALES:
+            raise ReclamoCerrado(
+                f"El reclamo esta en estado {reclamo.estado.value} y no admite reclasificacion"
+            )
+
+        if cambio.categoria is not None:
+            reclamo.categoria = cambio.categoria
+        if cambio.prioridad is not None:
+            reclamo.prioridad = cambio.prioridad
+        reclamo.origen_clasificacion = OrigenClasificacion.OPERADOR
+        reclamo.confianza_clasificacion = None
+
+        await self.session.commit()
+        await self.session.refresh(reclamo)
+
+        await self.publisher.publish(
+            topics.RECLAMO_CLASIFICADO,
+            ReclamoClasificado(
+                reclamo_id=reclamo.id,
+                categoria=reclamo.categoria,
+                prioridad=reclamo.prioridad,
+                confianza=1.0,
+                modelo="operador",
+                evidencia=[],
+            ),
+            key=str(reclamo.id),
+            correlation_id=reclamo.correlation_id,
+        )
+
+        log.info(
+            "reclamo.reclasificado",
+            reclamo_id=str(reclamo.id),
+            categoria=reclamo.categoria.value,
+            prioridad=reclamo.prioridad.value,
             actor=actor.id,
         )
         return reclamo
