@@ -107,9 +107,10 @@ está en el ADR 0004.
 1. Schema de entrada y salida en `app/schemas/`.
 2. Caso de uso en `app/services/`.
 3. Router en `app/api/v1/`, con `summary` y `description` en español.
-4. Dependencia de identidad: `UsuarioDep` (cualquier usuario autenticado) o
-   `StaffDep` (operador/admin). **Ningún endpoint sin una de las dos**, salvo
-   `/health`.
+4. Dependencia de identidad: `UsuarioDep` (cualquier usuario autenticado),
+   `StaffDep` (operador/admin) o `AdminDep` (solo admin, para métricas de
+   gestión). **Ningún endpoint sin una de las tres**, salvo `/health` y el
+   login de desarrollo.
 5. Test de integración en `tests/integration/test_reclamos_api.py`.
 
 ### Eventos nuevos
@@ -250,9 +251,33 @@ supere al anterior:
 | Grupo | Qué nos da / qué le damos |
 | --- | --- |
 | 1 — EDA | Define el bus y la convención de topics. Nos alineamos a su contrato. |
-| 2 — Login Federado | Emite los JWT. Nosotros solo validamos; nunca emitimos tokens. |
+| 2 — Login Federado | Emite los JWT. Nosotros solo validamos; nunca emitimos tokens (excepción temporal abajo). |
 | 4 — Residuos | Consumimos `residuos.contenedor.desbordado` → alta automática. |
 | 6 — Emergencias | Consumimos `emergencias.incidente.creado` → re-priorización por zona. |
 | 8 — Analítica | Consume nuestros eventos y `GET /api/v1/reclamos/estadisticas`. |
 
 Contratos completos con ejemplos: `docs/eventos.md`.
+
+### Login de desarrollo — andamiaje temporal (Entrega 1)
+
+Mientras el servicio del Grupo 2 no esté disponible, `app/api/v1/auth_dev.py`
+expone `POST /api/v1/auth/dev/login` con **usuarios hardcodeados** y firma
+tokens HS256 con el mismo formato que va a emitir el Grupo 2.
+
+Es una excepción explícita y acotada a la regla "nunca emitimos tokens":
+
+- Solo se monta con `AUTH_DEV_LOGIN_ENABLED=true`. Con cualquier `ENVIRONMENT`
+  que no sea de desarrollo, `Settings` **no arranca**.
+- Ningún otro archivo del servicio lo conoce: los endpoints siguen validando
+  JWT igual, sin importar quién los firmó.
+- **Criterio de eliminación:** cuando el Grupo 2 exponga su emisor, se borra el
+  archivo, se saca el `include` de `router.py` y se apunta `JWT_JWKS_URL` a
+  ellos. No hay refactor asociado.
+
+Usuarios de prueba (uno por rol, nunca uno con todos): `vecino1` (ciudadano),
+`operador1` (operador), `admin1` (operador + admin). La contraseña es igual al
+nombre de usuario.
+
+Preferir esto antes que `AUTH_ENABLED=false`: ese flag saltea la validación
+entera y da un único usuario con los tres roles, con lo cual no se puede
+demostrar ni el 401 ni la separación de permisos.

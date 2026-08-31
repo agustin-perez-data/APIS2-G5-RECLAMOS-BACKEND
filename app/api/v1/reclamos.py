@@ -12,7 +12,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, status
 
-from app.api.deps import ServiceDep, StaffDep, UsuarioDep
+from app.api.deps import AdminDep, ServiceDep, StaffDep, UsuarioDep
 from app.domain.enums import CategoriaReclamo, EstadoReclamo, PrioridadReclamo
 from app.repositories.reclamo_repository import ORDENES_PERMITIDOS, FiltroReclamos
 from app.schemas.common import Page
@@ -25,10 +25,12 @@ from app.schemas.reclamo import (
     ConteoPorClave,
     Estadisticas,
     HistorialOut,
+    ReclamoBandeja,
     ReclamoCrear,
     ReclamoDetalle,
     ReclamoOut,
     ReclamoResumen,
+    ReclasificacionPedido,
     SugerenciaClasificacion,
 )
 from app.services.clasificador import get_clasificador
@@ -97,9 +99,13 @@ async def listar_reclamos(
     "/estadisticas",
     response_model=Estadisticas,
     summary="Metricas agregadas del modulo",
-    description="Alimenta el dashboard propio y el modulo de Analitica Urbana (Grupo 8).",
+    description=(
+        "Alimenta el dashboard propio y el modulo de Analitica Urbana (Grupo 8). "
+        "Requiere rol `admin`: un operador gestiona la bandeja pero no accede a "
+        "las metricas de gestion."
+    ),
 )
-async def estadisticas(_usuario: UsuarioDep, service: ServiceDep) -> Estadisticas:
+async def estadisticas(_usuario: AdminDep, service: ServiceDep) -> Estadisticas:
     datos = await service.estadisticas()
     return Estadisticas(
         total=datos["total"],
@@ -125,6 +131,31 @@ async def sugerir_clasificacion(
     return get_clasificador().clasificar(pedido.titulo, pedido.descripcion)
 
 
+@router.get(
+    "/bandeja",
+    response_model=Page[ReclamoBandeja],
+    summary="Bandeja de reclamos entrantes",
+    description="bandeja de reclamos que ve el gestor municipal",
+)
+async def bandeja_reclamos(
+    _gestor: StaffDep,
+    service: ServiceDep,
+    page: Annotated[int, Query(ge=1)] = 1,
+    size: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> Page[ReclamoBandeja]:
+    filtro = FiltroReclamos(
+        estados=[EstadoReclamo.RECIBIDO, EstadoReclamo.EN_REVISION],
+        orden="recientes",
+    )
+    items, total = await service.listar(filtro, page=page, size=size)
+    return Page[ReclamoBandeja](
+        items=[ReclamoBandeja.model_validate(i) for i in items],
+        total=total,
+        page=page,
+        size=size,
+    )
+
+
 @router.get("/{reclamo_id}", response_model=ReclamoDetalle, summary="Detalle de un reclamo")
 async def obtener_reclamo(
     reclamo_id: uuid.UUID, _usuario: UsuarioDep, service: ServiceDep
@@ -146,6 +177,22 @@ async def cambiar_estado(
     reclamo_id: uuid.UUID, cambio: CambioEstado, actor: StaffDep, service: ServiceDep
 ) -> ReclamoOut:
     reclamo = await service.cambiar_estado(reclamo_id, cambio, actor)
+    return ReclamoOut.model_validate(reclamo)
+
+
+@router.patch(
+    "/{reclamo_id}/clasificacion",
+    response_model=ReclamoOut,
+    summary="Corregir categoria y/o prioridad de un reclamo (operador/admin)",
+    description=(
+        "Para cuando el modelo o el ciudadano clasificaron mal. No cambia el "
+        "estado del reclamo; publica `reclamos.reclamo.clasificado` de nuevo."
+    ),
+)
+async def reclasificar(
+    reclamo_id: uuid.UUID, cambio: ReclasificacionPedido, actor: StaffDep, service: ServiceDep
+) -> ReclamoOut:
+    reclamo = await service.reclasificar(reclamo_id, cambio, actor)
     return ReclamoOut.model_validate(reclamo)
 
 

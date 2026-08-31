@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.enums import (
     CanalOrigen,
@@ -60,6 +60,19 @@ class ComentarioCrear(BaseModel):
 class ClasificacionPedido(BaseModel):
     titulo: str = Field(min_length=1, max_length=150)
     descripcion: str = Field(min_length=1, max_length=5000)
+
+
+class ReclasificacionPedido(BaseModel):
+    """What the operator corrects when the model got it wrong."""
+
+    categoria: CategoriaReclamo | None = None
+    prioridad: PrioridadReclamo | None = None
+
+    @model_validator(mode="after")
+    def _al_menos_un_campo(self) -> ReclasificacionPedido:
+        if self.categoria is None and self.prioridad is None:
+            raise ValueError("Debe enviar categoria y/o prioridad")
+        return self
 
 
 # --- Output ------------------------------------------------------------------
@@ -135,6 +148,19 @@ class ReclamoOut(BaseModel):
 class ReclamoDetalle(ReclamoOut):
     historial: list[HistorialOut] = Field(default_factory=list)
     comentarios: list[ComentarioOut] = Field(default_factory=list)
+
+
+class ReclamoBandeja(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    titulo: str
+    categoria: CategoriaReclamo
+    origen_clasificacion: OrigenClasificacion
+    prioridad: PrioridadReclamo
+    estado: EstadoReclamo
+    adhesiones_count: int
+    created_at: datetime
 
 
 class AdhesionOut(BaseModel):

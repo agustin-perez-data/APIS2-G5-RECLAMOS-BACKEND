@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -24,7 +25,7 @@ from app.domain.enums import (
 from app.events import topics
 from app.events.producer import InMemoryEventPublisher
 from app.repositories.reclamo_repository import FiltroReclamos
-from app.schemas.reclamo import CambioEstado, ReclamoCrear
+from app.schemas.reclamo import CambioEstado, ReclamoCrear, ReclasificacionPedido
 from app.services.reclamo_service import ReclamoService
 from tests.conftest import CIUDADANO_ID, OTRO_CIUDADANO_ID
 
@@ -140,6 +141,82 @@ async def test_el_evento_de_estado_lleva_la_key_del_agregado(
     # Ordering per claim depends on every event sharing the same partition key.
     keys = {key for _, key, _ in publisher.publicados}
     assert keys == {str(reclamo.id)}
+
+
+# --- Classification ------------------------------------------------------------
+async def test_reclasificar_actualiza_datos_y_publica_evento(
+    service: ReclamoService, publisher: InMemoryEventPublisher, usuario_operador
+) -> None:
+    reclamo = await service.crear(datos_reclamo(), CIUDADANO_ID)
+
+    actualizado = await service.reclasificar(
+        reclamo.id,
+        ReclasificacionPedido(categoria=CategoriaReclamo.BACHES, prioridad=PrioridadReclamo.ALTA),
+        usuario_operador,
+    )
+
+    assert actualizado.categoria is CategoriaReclamo.BACHES
+    assert actualizado.prioridad is PrioridadReclamo.ALTA
+    assert actualizado.origen_clasificacion is OrigenClasificacion.OPERADOR
+
+    clasificados = publisher.eventos_de(topics.RECLAMO_CLASIFICADO)
+    assert len(clasificados) == 2  # one from `crear`, one from the reclassification
+    assert clasificados[-1].data.categoria is CategoriaReclamo.BACHES
+
+
+async def test_reclasificar_un_reclamo_cerrado_es_rechazada(
+    service: ReclamoService, usuario_operador
+) -> None:
+    reclamo = await service.crear(datos_reclamo(), CIUDADANO_ID)
+    await service.cambiar_estado(
+        reclamo.id,
+        CambioEstado(estado=EstadoReclamo.RECHAZADO, motivo="duplicado"),
+        usuario_operador,
+    )
+
+    with pytest.raises(ReclamoCerrado):
+        await service.reclasificar(
+            reclamo.id, ReclasificacionPedido(prioridad=PrioridadReclamo.BAJA), usuario_operador
+        )
+
+
+# --- Auto-close (US-17) ---------------------------------------------------------
+async def test_cierra_reclamos_resueltos_hace_mas_de_7_dias(
+    service: ReclamoService, publisher: InMemoryEventPublisher, usuario_operador
+) -> None:
+    reclamo = await service.crear(datos_reclamo(), CIUDADANO_ID)
+    for estado in (EstadoReclamo.ASIGNADO, EstadoReclamo.EN_PROCESO, EstadoReclamo.RESUELTO):
+        await service.cambiar_estado(reclamo.id, CambioEstado(estado=estado), usuario_operador)
+
+    # Backdate the resolution past the auto-close window.
+    vencido = await service.obtener(reclamo.id)
+    vencido.resuelto_at = datetime.now(UTC) - timedelta(days=8)
+    await service.session.commit()
+
+    cerrados = await service.cerrar_resueltos_vencidos()
+
+    assert [r.id for r in cerrados] == [reclamo.id]
+    actualizado = await service.obtener(reclamo.id)
+    assert actualizado.estado is EstadoReclamo.CERRADO
+    assert actualizado.cerrado_at is not None
+
+    cambios = publisher.eventos_de(topics.RECLAMO_ESTADO_CAMBIADO)
+    assert cambios[-1].data.estado_anterior is EstadoReclamo.RESUELTO
+    assert cambios[-1].data.estado_nuevo is EstadoReclamo.CERRADO
+
+
+async def test_no_cierra_reclamos_resueltos_recientemente(
+    service: ReclamoService, usuario_operador
+) -> None:
+    reclamo = await service.crear(datos_reclamo(), CIUDADANO_ID)
+    for estado in (EstadoReclamo.ASIGNADO, EstadoReclamo.EN_PROCESO, EstadoReclamo.RESUELTO):
+        await service.cambiar_estado(reclamo.id, CambioEstado(estado=estado), usuario_operador)
+
+    cerrados = await service.cerrar_resueltos_vencidos()
+
+    assert cerrados == []
+    actualizado = await service.obtener(reclamo.id)
+    assert actualizado.estado is EstadoReclamo.RESUELTO
 
 
 # --- Comments ----------------------------------------------------------------
