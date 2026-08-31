@@ -1,0 +1,23 @@
+name: CD Backend
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Build & deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image (chequeo rápido de que el Dockerfile compila)
+        run: docker build -t citypass-reclamos:${{ github.sha }} .
+
+      - name: Instalar Railway CLI
+        run: bash <(curl -fsSL cli.new)
+
+      - name: Deploy en Railway
+        run: railway up --service apis2-g5-reclamos-backend --ci
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
