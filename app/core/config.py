@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     adhesiones_para_escalar: int = 10
     # Minimum classifier confidence to accept a suggestion without human triage.
     confianza_minima_clasificador: float = 0.35
+    # Days a claim can sit in RESUELTO before the worker closes it on its own
+    # (US-17: no response from the citizen).
+    dias_cierre_automatico: int = 7
+    # How often the worker checks for claims to auto-close.
+    intervalo_cierre_automatico_segundos: int = 3600
 
     @field_validator("database_url")
     @classmethod

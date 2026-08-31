@@ -15,7 +15,7 @@ building one is not justified yet.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -449,3 +449,55 @@ class ReclamoService:
             await self.session.commit()
             log.info("reclamos.escalados_por_incidente", barrio=barrio, cantidad=len(afectados))
         return afectados
+
+    async def cerrar_resueltos_vencidos(self) -> list[Reclamo]:
+        """Auto-close claims sitting in RESUELTO past the response window (US-17).
+
+        Runs periodically from the worker (see `app/worker.py`); a citizen who
+        never responds is not expected to keep a claim open forever.
+        """
+        limite = datetime.now(UTC) - timedelta(days=self.cfg.dias_cierre_automatico)
+        candidatos = await self.repo.resueltos_antes_de(limite)
+
+        cerrados: list[Reclamo] = []
+        for reclamo in candidatos:
+            reclamo.estado = EstadoReclamo.CERRADO
+            reclamo.cerrado_at = datetime.now(UTC)
+            await self.repo.agregar_historial(
+                HistorialEstado(
+                    reclamo_id=reclamo.id,
+                    estado_anterior=EstadoReclamo.RESUELTO,
+                    estado_nuevo=EstadoReclamo.CERRADO,
+                    motivo=(
+                        f"Cierre automatico: sin respuesta a los "
+                        f"{self.cfg.dias_cierre_automatico} dias de resuelto"
+                    ),
+                    usuario_id=USUARIO_SISTEMA,
+                )
+            )
+            cerrados.append(reclamo)
+
+        if not cerrados:
+            return []
+
+        await self.session.commit()
+        for reclamo in cerrados:
+            await self.session.refresh(reclamo)
+            await self.publisher.publish(
+                topics.RECLAMO_ESTADO_CAMBIADO,
+                ReclamoEstadoCambiado(
+                    reclamo_id=reclamo.id,
+                    ciudadano_id=reclamo.ciudadano_id,
+                    estado_anterior=EstadoReclamo.RESUELTO,
+                    estado_nuevo=EstadoReclamo.CERRADO,
+                    motivo="Cierre automatico por falta de respuesta",
+                    asignado_a=reclamo.asignado_a,
+                    cambiado_por=USUARIO_SISTEMA,
+                    cambiado_at=reclamo.cerrado_at,
+                ),
+                key=str(reclamo.id),
+                correlation_id=reclamo.correlation_id,
+            )
+
+        log.info("reclamos.cierre_automatico", cantidad=len(cerrados))
+        return cerrados

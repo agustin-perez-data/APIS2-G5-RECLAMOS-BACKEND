@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -177,6 +178,45 @@ async def test_reclasificar_un_reclamo_cerrado_es_rechazada(
         await service.reclasificar(
             reclamo.id, ReclasificacionPedido(prioridad=PrioridadReclamo.BAJA), usuario_operador
         )
+
+
+# --- Auto-close (US-17) ---------------------------------------------------------
+async def test_cierra_reclamos_resueltos_hace_mas_de_7_dias(
+    service: ReclamoService, publisher: InMemoryEventPublisher, usuario_operador
+) -> None:
+    reclamo = await service.crear(datos_reclamo(), CIUDADANO_ID)
+    for estado in (EstadoReclamo.ASIGNADO, EstadoReclamo.EN_PROCESO, EstadoReclamo.RESUELTO):
+        await service.cambiar_estado(reclamo.id, CambioEstado(estado=estado), usuario_operador)
+
+    # Backdate the resolution past the auto-close window.
+    vencido = await service.obtener(reclamo.id)
+    vencido.resuelto_at = datetime.now(UTC) - timedelta(days=8)
+    await service.session.commit()
+
+    cerrados = await service.cerrar_resueltos_vencidos()
+
+    assert [r.id for r in cerrados] == [reclamo.id]
+    actualizado = await service.obtener(reclamo.id)
+    assert actualizado.estado is EstadoReclamo.CERRADO
+    assert actualizado.cerrado_at is not None
+
+    cambios = publisher.eventos_de(topics.RECLAMO_ESTADO_CAMBIADO)
+    assert cambios[-1].data.estado_anterior is EstadoReclamo.RESUELTO
+    assert cambios[-1].data.estado_nuevo is EstadoReclamo.CERRADO
+
+
+async def test_no_cierra_reclamos_resueltos_recientemente(
+    service: ReclamoService, usuario_operador
+) -> None:
+    reclamo = await service.crear(datos_reclamo(), CIUDADANO_ID)
+    for estado in (EstadoReclamo.ASIGNADO, EstadoReclamo.EN_PROCESO, EstadoReclamo.RESUELTO):
+        await service.cambiar_estado(reclamo.id, CambioEstado(estado=estado), usuario_operador)
+
+    cerrados = await service.cerrar_resueltos_vencidos()
+
+    assert cerrados == []
+    actualizado = await service.obtener(reclamo.id)
+    assert actualizado.estado is EstadoReclamo.RESUELTO
 
 
 # --- Comments ----------------------------------------------------------------
