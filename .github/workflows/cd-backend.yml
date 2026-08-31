@@ -15,7 +15,7 @@ jobs:
         run: docker build -t citypass-reclamos:${{ github.sha }} .
 
       - name: Instalar Railway CLI
-        run: bash <(curl -fsSL cli.new)
+        run: npm install -g @railway/cli
 
       - name: Deploy en Railway
         run: railway up --service apis2-g5-reclamos-backend --ci
