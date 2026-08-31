@@ -12,7 +12,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, status
 
-from app.api.deps import ServiceDep, StaffDep, UsuarioDep
+from app.api.deps import AdminDep, ServiceDep, StaffDep, UsuarioDep
 from app.domain.enums import CategoriaReclamo, EstadoReclamo, PrioridadReclamo
 from app.repositories.reclamo_repository import ORDENES_PERMITIDOS, FiltroReclamos
 from app.schemas.common import Page
@@ -99,9 +99,13 @@ async def listar_reclamos(
     "/estadisticas",
     response_model=Estadisticas,
     summary="Metricas agregadas del modulo",
-    description="Alimenta el dashboard propio y el modulo de Analitica Urbana (Grupo 8).",
+    description=(
+        "Alimenta el dashboard propio y el modulo de Analitica Urbana (Grupo 8). "
+        "Requiere rol `admin`: un operador gestiona la bandeja pero no accede a "
+        "las metricas de gestion."
+    ),
 )
-async def estadisticas(_usuario: UsuarioDep, service: ServiceDep) -> Estadisticas:
+async def estadisticas(_usuario: AdminDep, service: ServiceDep) -> Estadisticas:
     datos = await service.estadisticas()
     return Estadisticas(
         total=datos["total"],

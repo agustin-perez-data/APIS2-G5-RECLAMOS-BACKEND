@@ -88,3 +88,6 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 ServiceDep = Annotated[ReclamoService, Depends(get_reclamo_service)]
 UsuarioDep = Annotated[CurrentUser, Depends(get_current_user)]
 StaffDep = Annotated[CurrentUser, Depends(require_roles(Roles.OPERADOR, Roles.ADMIN))]
+# Metrics are management information: an operator works the inbox but does not
+# get to see the module's aggregate numbers.
+AdminDep = Annotated[CurrentUser, Depends(require_roles(Roles.ADMIN))]
