@@ -18,6 +18,6 @@ jobs:
         run: npm install -g @railway/cli
 
       - name: Deploy en Railway
-        run: railway up --service apis2-g5-reclamos-backend --ci
+                run: railway up --service 43e5f259-63e6-4d96-a863-35f7542d6425 --ci
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
