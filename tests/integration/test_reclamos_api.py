@@ -245,6 +245,77 @@ async def test_historial_registra_los_cambios(
     ]
 
 
+# --- Classification -----------------------------------------------------------
+async def test_operador_reclasifica_un_reclamo(
+    client: AsyncClient,
+    auth,
+    token_ciudadano,
+    token_operador,
+    publisher: InMemoryEventPublisher,
+) -> None:
+    reclamo = await crear_reclamo(client, auth(token_ciudadano))
+
+    respuesta = await client.patch(
+        f"/api/v1/reclamos/{reclamo['id']}/clasificacion",
+        json={
+            "categoria": CategoriaReclamo.BACHES.value,
+            "prioridad": PrioridadReclamo.ALTA.value,
+        },
+        headers=auth(token_operador),
+    )
+    assert respuesta.status_code == 200
+    cuerpo = respuesta.json()
+    assert cuerpo["categoria"] == CategoriaReclamo.BACHES.value
+    assert cuerpo["prioridad"] == PrioridadReclamo.ALTA.value
+    assert cuerpo["origen_clasificacion"] == "OPERADOR"
+    assert topics.RECLAMO_CLASIFICADO in publisher.topics
+
+
+async def test_un_ciudadano_no_puede_reclasificar(
+    client: AsyncClient, auth, token_ciudadano
+) -> None:
+    reclamo = await crear_reclamo(client, auth(token_ciudadano))
+
+    respuesta = await client.patch(
+        f"/api/v1/reclamos/{reclamo['id']}/clasificacion",
+        json={"categoria": CategoriaReclamo.BACHES.value},
+        headers=auth(token_ciudadano),
+    )
+    assert respuesta.status_code == 403
+
+
+async def test_reclasificar_reclamo_rechazado_devuelve_409(
+    client: AsyncClient, auth, token_ciudadano, token_operador
+) -> None:
+    reclamo = await crear_reclamo(client, auth(token_ciudadano))
+    await client.patch(
+        f"/api/v1/reclamos/{reclamo['id']}/estado",
+        json={"estado": EstadoReclamo.RECHAZADO.value},
+        headers=auth(token_operador),
+    )
+
+    respuesta = await client.patch(
+        f"/api/v1/reclamos/{reclamo['id']}/clasificacion",
+        json={"prioridad": PrioridadReclamo.BAJA.value},
+        headers=auth(token_operador),
+    )
+    assert respuesta.status_code == 409
+    assert respuesta.json()["type"].endswith("reclamo_cerrado")
+
+
+async def test_reclasificar_sin_campos_devuelve_422(
+    client: AsyncClient, auth, token_ciudadano, token_operador
+) -> None:
+    reclamo = await crear_reclamo(client, auth(token_ciudadano))
+
+    respuesta = await client.patch(
+        f"/api/v1/reclamos/{reclamo['id']}/clasificacion",
+        json={},
+        headers=auth(token_operador),
+    )
+    assert respuesta.status_code == 422
+
+
 # --- Participation -----------------------------------------------------------
 async def test_comentar_y_listar_comentarios(
     client: AsyncClient, auth, token_ciudadano, token_operador
