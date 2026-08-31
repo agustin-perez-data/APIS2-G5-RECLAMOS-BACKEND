@@ -137,6 +137,19 @@ class ReclamoDetalle(ReclamoOut):
     comentarios: list[ComentarioOut] = Field(default_factory=list)
 
 
+class ReclamoBandeja(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    titulo: str
+    categoria: CategoriaReclamo
+    origen_clasificacion: OrigenClasificacion
+    prioridad: PrioridadReclamo
+    estado: EstadoReclamo
+    adhesiones_count: int
+    created_at: datetime
+
+
 class AdhesionOut(BaseModel):
     reclamo_id: uuid.UUID
     adhesiones_count: int

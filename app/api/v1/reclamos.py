@@ -25,6 +25,7 @@ from app.schemas.reclamo import (
     ConteoPorClave,
     Estadisticas,
     HistorialOut,
+    ReclamoBandeja,
     ReclamoCrear,
     ReclamoDetalle,
     ReclamoOut,
@@ -123,6 +124,31 @@ async def sugerir_clasificacion(
     pedido: ClasificacionPedido, _usuario: UsuarioDep
 ) -> SugerenciaClasificacion:
     return get_clasificador().clasificar(pedido.titulo, pedido.descripcion)
+
+
+@router.get(
+    "/bandeja",
+    response_model=Page[ReclamoBandeja],
+    summary="Bandeja de reclamos entrantes",
+    description="bandeja de reclamos que ve el gestor municipal",
+)
+async def bandeja_reclamos(
+    _gestor: StaffDep,
+    service: ServiceDep,
+    page: Annotated[int, Query(ge=1)] = 1,
+    size: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> Page[ReclamoBandeja]:
+    filtro = FiltroReclamos(
+        estados=[EstadoReclamo.RECIBIDO, EstadoReclamo.EN_REVISION],
+        orden="recientes",
+    )
+    items, total = await service.listar(filtro, page=page, size=size)
+    return Page[ReclamoBandeja](
+        items=[ReclamoBandeja.model_validate(i) for i in items],
+        total=total,
+        page=page,
+        size=size,
+    )
 
 
 @router.get("/{reclamo_id}", response_model=ReclamoDetalle, summary="Detalle de un reclamo")

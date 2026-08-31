@@ -245,6 +245,34 @@ async def test_historial_registra_los_cambios(
     ]
 
 
+async def test_la_bandeja_muestra_reclamos_pendientes(
+    client: AsyncClient, auth, token_ciudadano, token_operador
+) -> None:
+    # Create a claim so the inbox is not empty.
+    await crear_reclamo(client, auth(token_ciudadano))
+
+    # Query the inbox as an operator.
+    respuesta = await client.get("/api/v1/reclamos/bandeja", headers=auth(token_operador))
+
+    assert respuesta.status_code == 200
+    cuerpo = respuesta.json()
+    assert cuerpo["total"] >= 1
+    assert cuerpo["page"] == 1
+    assert len(cuerpo["items"]) >= 1
+    # The item must carry the fields the inbox needs.
+    item = cuerpo["items"][0]
+    assert "categoria" in item
+    assert "prioridad" in item
+    assert "adhesiones_count" in item
+    assert "origen_clasificacion" in item
+
+
+async def test_la_bandeja_requiere_rol_operador(client: AsyncClient, auth, token_ciudadano) -> None:
+    # A regular citizen must not access the operator inbox.
+    respuesta = await client.get("/api/v1/reclamos/bandeja", headers=auth(token_ciudadano))
+    assert respuesta.status_code == 403
+
+
 # --- Participation -----------------------------------------------------------
 async def test_comentar_y_listar_comentarios(
     client: AsyncClient, auth, token_ciudadano, token_operador
