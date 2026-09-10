@@ -1,0 +1,43 @@
+name: Keep Supabase awake
+
+# The free plan pauses a project after about a week without database activity.
+# A paused project takes the deployed API down with it (/health/ready answers
+# 503) and has to be restored by hand from the dashboard.
+#
+# pg_cron is not an option: it runs inside the database, does not count as
+# activity, and stops as soon as the project is paused. The ping has to come
+# from outside.
+#
+# Needs the repository secret SUPABASE_DB_URL: the session pooler URI copied
+# as-is from the Supabase dashboard (postgresql://..., port 5432).
+#
+# GitHub only runs scheduled workflows from the default branch, so this starts
+# working once it reaches main.
+
+on:
+  schedule:
+    # Twice a day. Scheduled runs can be delayed or dropped when GitHub is
+    # under load, so the margin against the seven-day window is deliberate.
+    - cron: "0 */12 * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Query the database
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Install psql if missing
+        run: command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
+
+      # Reads a real table instead of SELECT 1: if the schema ever disappears
+      # (project deleted or recreated), the run fails and GitHub notifies.
+      - name: Read the claims table
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::Falta el secret SUPABASE_DB_URL (Settings > Secrets and variables > Actions)"
+            exit 1
+          fi
+          psql "$SUPABASE_DB_URL" --no-psqlrc --tuples-only --command "select count(*) from reclamos"
