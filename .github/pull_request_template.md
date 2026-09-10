@@ -68,6 +68,7 @@ pytest
 - [ ] `alembic upgrade head` y `alembic downgrade -1` funcionan los dos
       (el CI ademas corre `downgrade base` contra un PostgreSQL real).
 - [ ] Los enums nuevos van como `VARCHAR(32)`, no como tipo nativo de Postgres.
+- [ ] Las tablas nuevas tienen `ENABLE ROW LEVEL SECURITY` en la misma migracion.
 
 </details>
 
