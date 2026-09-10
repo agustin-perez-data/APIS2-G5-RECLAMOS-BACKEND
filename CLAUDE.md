@@ -135,6 +135,12 @@ alembic downgrade -1                      # tiene que funcionar
   agregar una categoría no requiere migración.
 - Para migrar contra Supabase usar el **session pooler** (puerto 5432), no el
   transaction pooler.
+- **Toda tabla nueva lleva `ENABLE ROW LEVEL SECURITY` en la misma migración
+  que la crea.** Supabase expone `public` por su API REST y le da permisos
+  totales a `anon`, cuya key es pública. RLS sin políticas les niega todo, y el
+  backend no se entera porque conecta como `postgres` (dueño y con BYPASSRLS).
+  No nombrar los roles de Supabase en la migración: el CI corre sobre un
+  PostgreSQL pelado donde no existen. Ver `0002_habilita_rls.py`.
 
 ---
 
