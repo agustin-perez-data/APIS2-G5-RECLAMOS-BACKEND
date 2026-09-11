@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
 
+# One deploy at a time: two quick pushes to main must not run migrations
+# against the same database concurrently.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Build & deploy
@@ -13,6 +19,30 @@ jobs:
 
       - name: Build image (chequeo rápido de que el Dockerfile compila)
         run: docker build -t citypass-reclamos:${{ github.sha }} .
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      # Migrations run before the new code goes live, so it never starts
+      # against a schema it does not know; if they fail, nothing is deployed.
+      # SUPABASE_DB_URL is the session pooler URI (port 5432), as ADR 0002
+      # requires for migrations. The keepalive workflow reads the same secret.
+      - name: Migraciones contra Supabase
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Falta el secret SUPABASE_DB_URL (Settings > Secrets and variables > Actions)"
+            exit 1
+          fi
+          alembic upgrade head
 
       - name: Instalar Railway CLI
         run: npm install -g @railway/cli
