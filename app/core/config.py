@@ -62,6 +62,15 @@ class Settings(BaseSettings):
     auth_dev_login_enabled: bool = False
     auth_dev_token_horas: int = 8
 
+    # --- Rate limiting ------------------------------------------------------
+    # In-memory, per-process. Good enough for a single-instance deploy
+    # (Railway). Disable in tests so fast request bursts do not trip 429s.
+    rate_limit_enabled: bool = True
+    rate_limit_login: str = "10/minute"
+    rate_limit_creacion: str = "10/minute"
+    rate_limit_comentarios: str = "15/minute"
+    rate_limit_adhesiones: str = "20/minute"
+
     # --- HTTP ---------------------------------------------------------------
     # Defaults cover the two dev servers the front end uses: CRA-style (3000)
     # and Vite (5173). Production origins come from CORS_ORIGINS in the env.

@@ -9,6 +9,7 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import DomainError
@@ -98,6 +99,21 @@ def registrar_manejadores(app: FastAPI) -> None:
         )
         if exc.headers:
             respuesta.headers.update(exc.headers)
+        return respuesta
+
+    @app.exception_handler(RateLimitExceeded)
+    async def _rate_limit(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+        log.warning("seguridad.rate_limit_excedido", limite=str(exc.detail))
+        respuesta = _problema(
+            request,
+            status_code=429,
+            title="Demasiadas solicitudes",
+            code="rate_limit",
+            detail="Has excedido el limite de solicitudes. Intenta de nuevo mas tarde.",
+        )
+        # Retry-After tells the client how many seconds to wait before retrying.
+        retry_after = exc.headers.get("Retry-After", "60") if exc.headers else "60"
+        respuesta.headers["Retry-After"] = retry_after
         return respuesta
 
     @app.exception_handler(Exception)

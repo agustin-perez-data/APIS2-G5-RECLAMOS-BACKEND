@@ -24,10 +24,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import jwt
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.core.rate_limit import limiter
 from app.core.security import Roles
 from app.schemas.auth import LoginPedido, TokenOut, UsuarioOut
 
@@ -114,7 +115,8 @@ def _emitir_token(usuario: UsuarioDev) -> tuple[str, int]:
     ),
     responses={401: {"description": "Usuario o contrasena incorrectos"}},
 )
-async def login(datos: LoginPedido) -> TokenOut:
+@limiter.limit(settings.rate_limit_login)
+async def login(request: Request, datos: LoginPedido) -> TokenOut:
     usuario = USUARIOS_DEV.get(datos.usuario.strip().lower())
 
     # compare_digest rather than `==`: the habit costs nothing and keeps the

@@ -21,6 +21,7 @@ dependencies = [
     "pyjwt[crypto]>=2.10",
     "python-multipart>=0.0.17",
     "structlog>=24.4",
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]

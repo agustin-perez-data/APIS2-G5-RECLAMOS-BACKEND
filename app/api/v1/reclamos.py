@@ -10,9 +10,11 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Query, Request, status
 
 from app.api.deps import AdminDep, ServiceDep, StaffDep, UsuarioDep
+from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.domain.enums import CategoriaReclamo, EstadoReclamo, PrioridadReclamo
 from app.repositories.reclamo_repository import ORDENES_PERMITIDOS, FiltroReclamos
 from app.schemas.common import Page
@@ -48,8 +50,9 @@ router = APIRouter(prefix="/reclamos", tags=["reclamos"])
         "automatico. Publica el evento `reclamos.reclamo.creado`."
     ),
 )
+@limiter.limit(settings.rate_limit_creacion)
 async def crear_reclamo(
-    datos: ReclamoCrear, usuario: UsuarioDep, service: ServiceDep
+    request: Request, datos: ReclamoCrear, usuario: UsuarioDep, service: ServiceDep
 ) -> ReclamoOut:
     reclamo = await service.crear(datos, ciudadano_id=usuario.id)
     return ReclamoOut.model_validate(reclamo)
@@ -202,7 +205,9 @@ async def reclasificar(
     status_code=status.HTTP_201_CREATED,
     summary="Comentar un reclamo",
 )
+@limiter.limit(settings.rate_limit_comentarios)
 async def comentar(
+    request: Request,
     reclamo_id: uuid.UUID,
     datos: ComentarioCrear,
     usuario: UsuarioDep,
@@ -248,7 +253,10 @@ async def listar_historial(
         "escala de prioridad automaticamente."
     ),
 )
-async def adherir(reclamo_id: uuid.UUID, usuario: UsuarioDep, service: ServiceDep) -> AdhesionOut:
+@limiter.limit(settings.rate_limit_adhesiones)
+async def adherir(
+    request: Request, reclamo_id: uuid.UUID, usuario: UsuarioDep, service: ServiceDep
+) -> AdhesionOut:
     reclamo = await service.adherir(reclamo_id, usuario.id)
     return AdhesionOut(
         reclamo_id=reclamo.id,
