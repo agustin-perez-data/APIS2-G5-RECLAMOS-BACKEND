@@ -161,6 +161,8 @@ Prefijo `/api/v1`.
 | `GET` | `/reclamos/{id}/historial` | autenticado | Trazabilidad de estados. |
 | `POST` | `/reclamos/{id}/adhesiones` | ciudadano | "A mí también me pasa". |
 | `POST` | `/reclamos/clasificacion` | autenticado | Sugerencia del modelo sin persistir. |
+| `POST` | `/reclamos/similares` | autenticado | Reclamos parecidos al que se está escribiendo, para sumarse en vez de duplicar. |
+| `GET` | `/reclamos/{id}/similares` | autenticado | Posibles duplicados de un reclamo ya cargado. |
 | `GET` | `/reclamos/estadisticas` | **admin** | Métricas agregadas (para el Grupo 8). |
 | `POST` | `/auth/dev/login` | público | Login de desarrollo. Solo con `AUTH_DEV_LOGIN_ENABLED=true`. |
 | `GET` | `/auth/dev/usuarios` | público | Usuarios de prueba disponibles, sin contraseñas. |
