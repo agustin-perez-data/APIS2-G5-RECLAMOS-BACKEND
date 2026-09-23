@@ -100,6 +100,12 @@ class Reclamo(Base, TimestampMixin):
     evento_origen_id: Mapped[str | None] = mapped_column(
         String(64), nullable=True, unique=True, index=True
     )
+    # Key of the claim's ticket in the issue tracker (Jira: "REC-12"). Empty
+    # when the tracker is off or was down at filing time, which is what makes
+    # the claims still missing a ticket easy to find.
+    ticket_externo: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
 
     historial: Mapped[list[HistorialEstado]] = relationship(
         back_populates="reclamo",

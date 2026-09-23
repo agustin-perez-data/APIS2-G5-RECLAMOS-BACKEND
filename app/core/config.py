@@ -73,6 +73,19 @@ class Settings(BaseSettings):
     # `https://.*\.vercel\.app` would let every site hosted on Vercel in.
     cors_origin_regex: str | None = None
 
+    # --- Ticketing (Jira) ---------------------------------------------------
+    # Every new claim also opens a ticket in the city's Jira project so the
+    # back office can work it from there. Off by default: tests and local
+    # development never talk to Jira.
+    jira_enabled: bool = False
+    jira_url: str | None = None
+    jira_email: str | None = None
+    jira_api_token: str | None = None
+    jira_project_key: str = "REC"
+    jira_issue_type: str = "Tarea"
+    # Upper bound the tracker can add to the filing of a claim.
+    jira_timeout_segundos: float = 5.0
+
     # --- Business rules -----------------------------------------------------
     # Number of neighbour endorsements that automatically bumps a claim's
     # priority (see `ReclamoService.adherir`).
@@ -108,6 +121,23 @@ class Settings(BaseSettings):
                 "AUTH_DEV_LOGIN_ENABLED=true no esta permitido con ENVIRONMENT="
                 f"'{self.environment}': el login de desarrollo usa usuarios hardcodeados"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _jira_completo(self) -> Settings:
+        """With Jira on, a missing credential should stop the boot, not every claim."""
+        if self.jira_enabled:
+            faltan = [
+                nombre
+                for nombre, valor in (
+                    ("JIRA_URL", self.jira_url),
+                    ("JIRA_EMAIL", self.jira_email),
+                    ("JIRA_API_TOKEN", self.jira_api_token),
+                )
+                if not valor
+            ]
+            if faltan:
+                raise ValueError(f"JIRA_ENABLED=true pero faltan: {', '.join(faltan)}")
         return self
 
     @property

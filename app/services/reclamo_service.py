@@ -48,6 +48,7 @@ from app.events.contracts import (
     ReclamoResuelto,
 )
 from app.events.producer import EventPublisher
+from app.integrations.tickets import SistemaTickets, TicketNuevo, get_sistema_tickets
 from app.repositories.reclamo_repository import FiltroReclamos, ReclamoRepository
 from app.schemas.reclamo import CambioEstado, ReclamoCrear, ReclasificacionPedido
 from app.services.clasificador import Clasificador, get_clasificador
@@ -64,12 +65,14 @@ class ReclamoService:
         publisher: EventPublisher,
         clasificador: Clasificador | None = None,
         cfg: Settings | None = None,
+        tickets: SistemaTickets | None = None,
     ) -> None:
         self.session = session
         self.repo = ReclamoRepository(session)
         self.publisher = publisher
         self.clasificador = clasificador or get_clasificador()
         self.cfg = cfg or settings
+        self.tickets = tickets or get_sistema_tickets()
 
     # --- Intake --------------------------------------------------------------
     async def crear(
@@ -153,7 +156,39 @@ class ReclamoService:
             prioridad=reclamo.prioridad.value,
             origen=origen.value,
         )
+        await self._abrir_ticket(reclamo)
         return reclamo
+
+    async def _abrir_ticket(self, reclamo: Reclamo) -> None:
+        """Open the claim's ticket in the issue tracker.
+
+        Runs after the commit, like event publication: a tracker outage must
+        never undo or block the filing of a claim. When it fails the claim keeps
+        `ticket_externo` empty, which is what makes it findable to retry.
+        """
+        try:
+            clave = await self.tickets.crear(
+                TicketNuevo(
+                    reclamo_id=reclamo.id,
+                    titulo=reclamo.titulo,
+                    descripcion=reclamo.descripcion,
+                    categoria=reclamo.categoria,
+                    prioridad=reclamo.prioridad,
+                    canal=reclamo.canal,
+                    direccion=reclamo.direccion,
+                    barrio=reclamo.barrio,
+                    creado_at=reclamo.created_at,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - the claim is already filed
+            log.warning("reclamo.ticket_fallido", reclamo_id=str(reclamo.id), error=str(exc))
+            return
+
+        if clave is None:
+            return
+        reclamo.ticket_externo = clave
+        await self.session.commit()
+        log.info("reclamo.ticket_abierto", reclamo_id=str(reclamo.id), ticket=clave)
 
     async def _publicar_creado(self, reclamo: Reclamo) -> None:
         await self.publisher.publish(
