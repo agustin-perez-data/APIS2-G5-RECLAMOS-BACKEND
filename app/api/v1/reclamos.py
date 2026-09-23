@@ -13,11 +13,13 @@ from typing import Annotated
 from fastapi import APIRouter, Query, status
 
 from app.api.deps import AdminDep, ServiceDep, StaffDep, UsuarioDep
+from app.core.config import settings
 from app.domain.enums import CategoriaReclamo, EstadoReclamo, PrioridadReclamo
 from app.repositories.reclamo_repository import ORDENES_PERMITIDOS, FiltroReclamos
 from app.schemas.common import Page
 from app.schemas.reclamo import (
     AdhesionOut,
+    BusquedaSimilares,
     CambioEstado,
     ClasificacionPedido,
     ComentarioCrear,
@@ -30,12 +32,25 @@ from app.schemas.reclamo import (
     ReclamoDetalle,
     ReclamoOut,
     ReclamoResumen,
+    ReclamoSimilar,
     ReclasificacionPedido,
     SugerenciaClasificacion,
 )
 from app.services.clasificador import get_clasificador
+from app.services.reclamo_service import ReclamoParecido
 
 router = APIRouter(prefix="/reclamos", tags=["reclamos"])
+
+
+def _a_similar(parecido: ReclamoParecido) -> ReclamoSimilar:
+    return ReclamoSimilar(
+        **ReclamoResumen.model_validate(parecido.reclamo).model_dump(),
+        similitud=parecido.puntaje,
+        distancia_metros=parecido.distancia_metros,
+        terminos_en_comun=parecido.terminos_en_comun,
+        es_propio=parecido.es_propio,
+        ya_adherido=parecido.ya_adherido,
+    )
 
 
 @router.post(
@@ -129,6 +144,36 @@ async def sugerir_clasificacion(
     pedido: ClasificacionPedido, _usuario: UsuarioDep
 ) -> SugerenciaClasificacion:
     return get_clasificador().clasificar(pedido.titulo, pedido.descripcion)
+
+
+@router.post(
+    "/similares",
+    response_model=list[ReclamoSimilar],
+    summary="Buscar reclamos parecidos antes de cargar uno nuevo",
+    description=(
+        "Recibe el reclamo que el vecino esta escribiendo, sin guardarlo, y devuelve "
+        f"hasta {settings.similares_maximo} reclamos abiertos que probablemente sean el "
+        "mismo problema: misma categoria, cargados en los ultimos "
+        f"{settings.similares_ventana_dias} dias y a menos de "
+        f"{settings.similares_radio_metros} m. Se ordenan por similitud de texto y "
+        "cercania. Si hay alguno, la app puede ofrecerle sumarse "
+        "(`POST /reclamos/{id}/adhesiones`) en lugar de crear un duplicado. Lista "
+        "vacia si no hay ninguno parecido."
+    ),
+)
+async def buscar_similares(
+    pedido: BusquedaSimilares, usuario: UsuarioDep, service: ServiceDep
+) -> list[ReclamoSimilar]:
+    parecidos = await service.buscar_similares(
+        titulo=pedido.titulo,
+        descripcion=pedido.descripcion,
+        categoria=pedido.categoria,
+        latitud=pedido.latitud,
+        longitud=pedido.longitud,
+        barrio=pedido.barrio,
+        ciudadano_id=usuario.id,
+    )
+    return [_a_similar(p) for p in parecidos]
 
 
 @router.get(
@@ -236,6 +281,23 @@ async def listar_historial(
     await service.obtener(reclamo_id)
     historial = await service.repo.historial_de(reclamo_id)
     return [HistorialOut.model_validate(h) for h in historial]
+
+
+@router.get(
+    "/{reclamo_id}/similares",
+    response_model=list[ReclamoSimilar],
+    summary="Posibles duplicados de un reclamo",
+    description=(
+        "Otros reclamos abiertos que probablemente sean el mismo problema, con los "
+        "mismos criterios que `POST /reclamos/similares`. Le ahorra al operador "
+        "revisar la bandeja entera para encontrar duplicados."
+    ),
+)
+async def similares_de(
+    reclamo_id: uuid.UUID, usuario: UsuarioDep, service: ServiceDep
+) -> list[ReclamoSimilar]:
+    parecidos = await service.similares_de(reclamo_id, ciudadano_id=usuario.id)
+    return [_a_similar(p) for p in parecidos]
 
 
 @router.post(

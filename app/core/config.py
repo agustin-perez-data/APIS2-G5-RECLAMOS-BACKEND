@@ -98,6 +98,18 @@ class Settings(BaseSettings):
     # How often the worker checks for claims to auto-close.
     intervalo_cierre_automatico_segundos: int = 3600
 
+    # --- Similar claims (ADR 0007) --------------------------------------------
+    # Only open claims of the same category, filed within the window and, when
+    # both have coordinates, within the radius, are compared at all.
+    similares_radio_metros: int = 300
+    similares_ventana_dias: int = 30
+    # score = texto * peso + cercania * (1 - peso). With 0.7 and a 0.20 floor, a
+    # claim under 100 m away shows up even when worded differently; farther
+    # away, the text has to match too.
+    similares_peso_texto: float = 0.7
+    similares_puntaje_minimo: float = 0.20
+    similares_maximo: int = 5
+
     @field_validator("database_url")
     @classmethod
     def _force_async_driver(cls, value: str) -> str:

@@ -62,6 +62,30 @@ class ClasificacionPedido(BaseModel):
     descripcion: str = Field(min_length=1, max_length=5000)
 
 
+class BusquedaSimilares(BaseModel):
+    """The claim the citizen is writing, before filing it."""
+
+    titulo: str = Field(min_length=1, max_length=150)
+    descripcion: str = Field(min_length=1, max_length=5000)
+    # Left out, the classifier infers it, same as when filing.
+    categoria: CategoriaReclamo | None = None
+    latitud: float | None = Field(default=None, ge=-90, le=90)
+    longitud: float | None = Field(default=None, ge=-180, le=180)
+    barrio: str | None = Field(default=None, max_length=120)
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "titulo": "Luminaria apagada en la esquina",
+                "descripcion": "La luz de Rivadavia y Medrano no anda hace dias",
+                "latitud": -34.6037,
+                "longitud": -58.4201,
+                "barrio": "Almagro",
+            }
+        }
+    )
+
+
 class ReclasificacionPedido(BaseModel):
     """What the operator corrects when the model got it wrong."""
 
@@ -114,6 +138,22 @@ class ReclamoResumen(BaseModel):
     longitud: float | None
     adhesiones_count: int
     created_at: datetime
+
+
+class ReclamoSimilar(ReclamoResumen):
+    """A probable duplicate, with why it matched (ADR 0007)."""
+
+    similitud: float = Field(
+        ge=0, le=1, description="Puntaje combinado de texto y cercania; mas alto, mas parecido"
+    )
+    distancia_metros: int | None = Field(
+        description="Distancia al reclamo consultado, si los dos tienen coordenadas"
+    )
+    terminos_en_comun: list[str] = Field(
+        description="Palabras que comparten, para mostrarle al vecino por que coincide"
+    )
+    es_propio: bool = Field(description="Lo cargo el mismo usuario que consulta")
+    ya_adherido: bool = Field(description="El usuario ya se sumo a este reclamo")
 
 
 class ReclamoOut(BaseModel):
