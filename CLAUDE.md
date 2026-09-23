@@ -67,7 +67,7 @@ app/
 - `api/` puede importar `services/`, `schemas/`, `core/`. **No** importa
   `repositories/` ni modelos ORM directamente.
 - `services/` puede importar `repositories/`, `domain/`, `events/`,
-  `integrations/`, `db.models`.
+  `integrations/`, `ml/`, `db.models`.
   **No** importa nada de `api/` ni de FastAPI.
 - `repositories/` solo habla SQLAlchemy. No conoce Pydantic ni HTTP.
 - `domain/` no importa nada del proyecto: son reglas puras, testeables solas.
@@ -252,6 +252,7 @@ supere al anterior:
 | 0004 | Publicación post-commit; outbox como deuda registrada |
 | 0005 | Naive Bayes propio para categoría + reglas para prioridad |
 | 0006 | Ticket en Jira por llamada post-commit; mover al worker como deuda |
+| 0007 | Reclamos similares: filtros + TF-IDF + cercanía, sugeridos en línea |
 
 ---
 

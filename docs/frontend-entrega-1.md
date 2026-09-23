@@ -210,6 +210,58 @@ Si el usuario no tocó nada, podés directamente **no mandar** `categoria` ni
 
 ---
 
+## 4 bis. Reclamos parecidos (evitar duplicados)
+
+Mientras el vecino completa el formulario, el backend busca reclamos abiertos que
+probablemente sean **el mismo problema**, para ofrecerle sumarse en lugar de
+cargar un duplicado. No guarda nada.
+
+```http
+POST /api/v1/reclamos/similares
+
+{
+  "titulo": "Luminaria apagada en la esquina",
+  "descripcion": "La luz de Rivadavia y Medrano no anda hace dias",
+  "latitud": -34.6037,
+  "longitud": -58.4201,
+  "barrio": "Almagro"
+}
+```
+
+`categoria` es opcional: si no se manda, la infiere el clasificador. La respuesta
+es una lista, **vacía si no hay nada parecido**, con hasta 5 reclamos ordenados
+del más parecido al menos:
+
+```json
+[
+  {
+    "id": "6f1c9a4e-...",
+    "titulo": "Poste de luz apagado",
+    "categoria": "ALUMBRADO",
+    "estado": "RECIBIDO",
+    "adhesiones_count": 4,
+    "similitud": 0.61,
+    "distancia_metros": 50,
+    "terminos_en_comun": ["luz", "apagado", "esquina", "rivadavia"],
+    "es_propio": false,
+    "ya_adherido": false
+  }
+]
+```
+
+(También vienen el resto de los campos de un reclamo del listado: prioridad,
+barrio, coordenadas y fecha.)
+
+- `es_propio: true` → lo cargó el mismo usuario: mostrar *"Ya reportaste esto"*,
+  sin botón para sumarse.
+- `ya_adherido: true` → ya se sumó: mostrar *"Ya te sumaste"*.
+- Si no, botón **"Es este, sumarme"** → `POST /reclamos/{id}/adhesiones`.
+
+Para el operador, en el detalle de un reclamo: `GET /reclamos/{id}/similares`
+devuelve sus posibles duplicados, con el mismo formato.
+
+---
+
 ## 5. Vocabulario del dominio
 
 Son los valores exactos que viajan por la API. Los textos que ve el usuario los

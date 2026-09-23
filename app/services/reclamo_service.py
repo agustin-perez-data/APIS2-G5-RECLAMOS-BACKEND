@@ -14,7 +14,9 @@ building one is not justified yet.
 
 from __future__ import annotations
 
+import math
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,9 +32,11 @@ from app.core.exceptions import (
 from app.core.logging import get_logger
 from app.core.security import CurrentUser
 from app.db.models import Adhesion, Comentario, HistorialEstado, Reclamo
+from app.domain import geo
 from app.domain.enums import (
     ESTADOS_FINALES,
     CanalOrigen,
+    CategoriaReclamo,
     EstadoReclamo,
     OrigenClasificacion,
     PrioridadReclamo,
@@ -49,6 +53,7 @@ from app.events.contracts import (
 )
 from app.events.producer import EventPublisher
 from app.integrations.tickets import SistemaTickets, TicketNuevo, get_sistema_tickets
+from app.ml import similitud
 from app.repositories.reclamo_repository import FiltroReclamos, ReclamoRepository
 from app.schemas.reclamo import CambioEstado, ReclamoCrear, ReclasificacionPedido
 from app.services.clasificador import Clasificador, get_clasificador
@@ -56,6 +61,20 @@ from app.services.clasificador import Clasificador, get_clasificador
 log = get_logger(__name__)
 
 USUARIO_SISTEMA = "sistema"
+
+
+@dataclass(frozen=True, slots=True)
+class ReclamoParecido:
+    """A probable duplicate, with the evidence behind the match (ADR 0007)."""
+
+    reclamo: Reclamo
+    puntaje: float
+    distancia_metros: float | None
+    terminos_en_comun: list[str]
+    # Lets the front end offer "join it" only where it can succeed: the author
+    # cannot endorse their own claim, nor anyone endorse twice.
+    es_propio: bool
+    ya_adherido: bool
 
 
 class ReclamoService:
@@ -413,6 +432,110 @@ class ReclamoService:
             correlation_id=reclamo.correlation_id,
         )
         return reclamo
+
+    # --- Similar claims (ADR 0007) ---------------------------------------------
+    async def buscar_similares(
+        self,
+        *,
+        titulo: str,
+        descripcion: str,
+        categoria: CategoriaReclamo | None = None,
+        latitud: float | None = None,
+        longitud: float | None = None,
+        barrio: str | None = None,
+        ciudadano_id: str | None = None,
+        excluir_id: uuid.UUID | None = None,
+    ) -> list[ReclamoParecido]:
+        """Claims that are probably about the same problem, best match first.
+
+        Before filing, the citizen gets the chance to join an existing claim
+        instead of opening a duplicate; on a filed claim, the operator sees its
+        duplicates without reading the whole inbox. Nothing is persisted: the
+        grouping happens through endorsements, which already exist.
+        """
+        cfg = self.cfg
+        if categoria is None:
+            categoria = self.clasificador.clasificar(titulo, descripcion).categoria
+
+        con_coordenadas = latitud is not None and longitud is not None
+        caja = (
+            geo.caja_alrededor(latitud, longitud, cfg.similares_radio_metros)
+            if con_coordenadas
+            else None
+        )
+        candidatos = await self.repo.candidatos_similares(
+            categoria=categoria,
+            desde=datetime.now(UTC) - timedelta(days=cfg.similares_ventana_dias),
+            caja=caja,
+            barrio=barrio,
+            excluir_id=excluir_id,
+        )
+        if not candidatos:
+            return []
+
+        consulta = f"{titulo} {descripcion}"
+        textos = [f"{c.titulo} {c.descripcion}" for c in candidatos]
+        puntajes_texto = similitud.similitudes(
+            similitud.tokens(consulta), [similitud.tokens(t) for t in textos]
+        )
+
+        elegidos: list[tuple[Reclamo, float, float | None, str]] = []
+        for candidato, texto, puntaje_texto in zip(candidatos, textos, puntajes_texto, strict=True):
+            distancia = None
+            if con_coordenadas and candidato.latitud is not None and candidato.longitud is not None:
+                distancia = geo.distancia_metros(
+                    latitud, longitud, candidato.latitud, candidato.longitud
+                )
+                if distancia > cfg.similares_radio_metros:
+                    continue  # inside the bounding box, outside the circle
+            puntaje = self._puntaje_similitud(puntaje_texto, distancia)
+            if puntaje >= cfg.similares_puntaje_minimo:
+                elegidos.append((candidato, puntaje, distancia, texto))
+
+        # Best match first; on a tie, the closest one.
+        elegidos.sort(key=lambda e: (-e[1], e[2] if e[2] is not None else math.inf))
+        elegidos = elegidos[: cfg.similares_maximo]
+
+        adheridos = (
+            await self.repo.adheridos_por(ciudadano_id, [e[0].id for e in elegidos])
+            if ciudadano_id
+            else set()
+        )
+        return [
+            ReclamoParecido(
+                reclamo=candidato,
+                puntaje=round(puntaje, 3),
+                distancia_metros=round(distancia) if distancia is not None else None,
+                terminos_en_comun=similitud.terminos_en_comun(consulta, texto),
+                es_propio=ciudadano_id is not None and candidato.ciudadano_id == ciudadano_id,
+                ya_adherido=candidato.id in adheridos,
+            )
+            for candidato, puntaje, distancia, texto in elegidos
+        ]
+
+    async def similares_de(
+        self, reclamo_id: uuid.UUID, *, ciudadano_id: str | None = None
+    ) -> list[ReclamoParecido]:
+        """Probable duplicates of a filed claim, for the operator's review."""
+        reclamo = await self.obtener(reclamo_id)
+        return await self.buscar_similares(
+            titulo=reclamo.titulo,
+            descripcion=reclamo.descripcion,
+            categoria=reclamo.categoria,
+            latitud=reclamo.latitud,
+            longitud=reclamo.longitud,
+            barrio=reclamo.barrio,
+            ciudadano_id=ciudadano_id,
+            excluir_id=reclamo.id,
+        )
+
+    def _puntaje_similitud(self, texto: float, distancia: float | None) -> float:
+        """Blend text and proximity. Without a distance, the text is all there is."""
+        if distancia is None:
+            return texto
+        peso = self.cfg.similares_peso_texto
+        cercania = 1 - distancia / self.cfg.similares_radio_metros
+        return peso * texto + (1 - peso) * cercania
 
     # --- Reactions to other modules' events -----------------------------------
     async def crear_desde_evento(

@@ -11,11 +11,11 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Adhesion, Comentario, HistorialEstado, Reclamo
-from app.domain.enums import CategoriaReclamo, EstadoReclamo, PrioridadReclamo
+from app.domain.enums import ESTADOS_FINALES, CategoriaReclamo, EstadoReclamo, PrioridadReclamo
 
 ORDENES_PERMITIDOS: dict[str, tuple[str, bool]] = {
     # public alias -> (column, descending)
@@ -111,6 +111,61 @@ class ReclamoRepository:
             )
         )
         return list(resultado.scalars().all())
+
+    async def candidatos_similares(
+        self,
+        *,
+        categoria: CategoriaReclamo,
+        desde: datetime,
+        caja: tuple[float, float, float, float] | None = None,
+        barrio: str | None = None,
+        excluir_id: uuid.UUID | None = None,
+        limite: int = 200,
+    ) -> list[Reclamo]:
+        """Open claims of the same category, recent and nearby (ADR 0007).
+
+        Only the cheap filters run here; text similarity and the exact distance
+        are computed in the service over this short list. With both a box and a
+        neighbourhood, a claim qualifies by either: that keeps the ones filed
+        without coordinates but in the same barrio.
+        """
+        stmt = select(Reclamo).where(
+            Reclamo.categoria == categoria,
+            Reclamo.estado.not_in(list(ESTADOS_FINALES)),
+            Reclamo.created_at >= desde,
+        )
+        if excluir_id is not None:
+            stmt = stmt.where(Reclamo.id != excluir_id)
+
+        mismo_barrio = func.lower(Reclamo.barrio) == barrio.strip().lower() if barrio else None
+        if caja is not None:
+            lat_min, lat_max, lon_min, lon_max = caja
+            en_la_caja = and_(
+                Reclamo.latitud.between(lat_min, lat_max),
+                Reclamo.longitud.between(lon_min, lon_max),
+            )
+            stmt = stmt.where(
+                or_(en_la_caja, mismo_barrio) if mismo_barrio is not None else en_la_caja
+            )
+        elif mismo_barrio is not None:
+            stmt = stmt.where(mismo_barrio)
+
+        stmt = stmt.order_by(Reclamo.created_at.desc()).limit(limite)
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def adheridos_por(
+        self, ciudadano_id: str, reclamo_ids: list[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        """Which of these claims the citizen already endorsed, in one query."""
+        if not reclamo_ids:
+            return set()
+        resultado = await self.session.execute(
+            select(Adhesion.reclamo_id).where(
+                Adhesion.ciudadano_id == ciudadano_id,
+                Adhesion.reclamo_id.in_(reclamo_ids),
+            )
+        )
+        return set(resultado.scalars().all())
 
     def _aplicar_filtros(self, stmt: Select, filtro: FiltroReclamos) -> Select:
         if filtro.estado is not None:
