@@ -129,6 +129,11 @@ Validaciones: `titulo` entre 5 y 150 caracteres, `descripcion` entre 10 y 5000,
 hasta 5 fotos. **`categoria` y `prioridad` son opcionales**: si no los mandás,
 los completa el clasificador automático (§4).
 
+La respuesta incluye **`ticket_externo`**: la clave del ticket que se abrió en
+Jira (por ejemplo `REC-12`), o `null` si Jira no respondió. El reclamo se crea
+igual en los dos casos. Para linkear al ticket:
+`https://grupo-5-da2.atlassian.net/browse/<ticket_externo>`.
+
 ### Listado paginado
 
 `GET /reclamos?estado=RECIBIDO&categoria=BACHES&barrio=Centro&page=1&size=20`

@@ -21,6 +21,9 @@ dependencies = [
     "pyjwt[crypto]>=2.10",
     "python-multipart>=0.0.17",
     "structlog>=24.4",
+    # HTTP client for the Jira integration; it already came with the dev extras
+    # for the API tests, so it adds nothing new to the environment.
+    "httpx>=0.28",
 ]
 
 [project.optional-dependencies]
@@ -28,7 +31,6 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "pytest-cov>=6.0",
-    "httpx>=0.28",
     "aiosqlite>=0.20",
     "ruff>=0.8",
 ]

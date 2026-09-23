@@ -139,6 +139,9 @@ class ReclamoOut(BaseModel):
     resolucion: str | None
     adhesiones_count: int
     correlation_id: str | None
+    ticket_externo: str | None = Field(
+        default=None, description="Clave del ticket en Jira (ej. REC-12), si se pudo abrir"
+    )
     created_at: datetime
     updated_at: datetime
     resuelto_at: datetime | None

@@ -412,3 +412,10 @@ async def test_adhesion_duplicada_devuelve_409(
     respuesta = await client.post(url, headers=auth(token_otro_ciudadano))
 
     assert respuesta.status_code == 409
+
+
+async def test_el_alta_expone_el_ticket_de_jira(client: AsyncClient, auth, token_ciudadano) -> None:
+    # Jira is off in the suite, so the field is present but empty.
+    reclamo = await crear_reclamo(client, auth(token_ciudadano))
+    assert "ticket_externo" in reclamo
+    assert reclamo["ticket_externo"] is None

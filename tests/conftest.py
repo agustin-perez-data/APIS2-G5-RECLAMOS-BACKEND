@@ -23,6 +23,11 @@ os.environ.update(
         "JWT_SECRET": "secreto-de-test",
         "JWT_ISSUER": "citypass-auth",
         "JWT_AUDIENCE": "citypass",
+        # Explicit, so a JIRA_ENABLED=true left in a developer's .env can never
+        # make the suite open real tickets.
+        "JIRA_ENABLED": "false",
+        # Preview deployments of our front end: project prefix, team slug suffix.
+        "CORS_ORIGIN_REGEX": r"https://reclamos-frontend-g5-[a-z0-9-]+-grupo5\.vercel\.app",
     }
 )
 
