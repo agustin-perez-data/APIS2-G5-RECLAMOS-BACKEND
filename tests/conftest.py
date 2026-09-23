@@ -23,6 +23,8 @@ os.environ.update(
         "JWT_SECRET": "secreto-de-test",
         "JWT_ISSUER": "citypass-auth",
         "JWT_AUDIENCE": "citypass",
+        # Preview deployments of our front end: project prefix, team slug suffix.
+        "CORS_ORIGIN_REGEX": r"https://reclamos-frontend-g5-[a-z0-9-]+-grupo5\.vercel\.app",
     }
 )
 

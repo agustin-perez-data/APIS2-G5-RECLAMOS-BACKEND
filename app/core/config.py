@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:3000", "http://localhost:5173"]
     )
+    # For origins that cannot be listed one by one, such as Vercel preview
+    # deployments. Anchor it to the project and its team slug: a bare
+    # `https://.*\.vercel\.app` would let every site hosted on Vercel in.
+    cors_origin_regex: str | None = None
 
     # --- Business rules -----------------------------------------------------
     # Number of neighbour endorsements that automatically bumps a claim's
