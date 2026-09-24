@@ -48,9 +48,15 @@ jobs:
         run: npm install -g @railway/cli
 
       - name: Deploy en Railway
-        run: railway up --service 43e5f259-63e6-4d96-a863-35f7542d6425 --ci
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+        run: |
+          if [ -z "$RAILWAY_SERVICE_ID" ]; then
+            echo "::error::Falta la variable RAILWAY_SERVICE_ID (Settings > Secrets and variables > Actions > Variables)"
+            exit 1
+          fi
+          railway up --service "$RAILWAY_SERVICE_ID" --ci
 
       - name: Smoke test
         env:
