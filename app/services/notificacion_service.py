@@ -101,7 +101,7 @@ def titulo_comentario_para_staff(reclamo: Reclamo) -> str:
 
 def mensaje_comentario_para_staff(reclamo: Reclamo, comentario: Comentario) -> str:
     quien = comentario.autor_nombre or "Un vecino"
-    return f'{quien} comentó: {resumir(comentario.texto)}'
+    return f"{quien} comentó: {resumir(comentario.texto)}"
 
 
 class NotificacionService:
