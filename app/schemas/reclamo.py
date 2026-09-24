@@ -140,6 +140,10 @@ class ReclamoResumen(BaseModel):
     created_at: datetime
 
 
+class ReclamoListado(ReclamoResumen):
+    es_propio: bool
+
+
 class ReclamoSimilar(ReclamoResumen):
     """A probable duplicate, with why it matched (ADR 0007)."""
 

@@ -161,9 +161,12 @@ Cada item del listado es liviano, pensado para tabla y para mapa:
   "latitud": -34.6037,
   "longitud": -58.3816,
   "adhesiones_count": 3,
-  "created_at": "2026-08-20T14:22:31.500Z"
+  "created_at": "2026-08-20T14:22:31.500Z",
+  "es_propio": false
 }
 ```
+
+`es_propio` se calcula con el usuario autenticado que consulta el listado. El frontend puede reutilizar la página cargada en Redux para identificar reclamos propios. Si el listado está paginado, ese subconjunto no representa todos los reclamos del usuario: para una vista completa debe consultar con `ciudadano_id` y respetar la paginación. La caché debe limpiarse al cambiar de sesión.
 
 ---
 
