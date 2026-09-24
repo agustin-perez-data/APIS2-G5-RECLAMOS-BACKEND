@@ -1,5 +1,6 @@
 # CityPass+ · Reclamos y Participación Ciudadana
-
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=agustin-perez-data_APIS2-G5-RECLAMOS-BACKEND&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=agustin-perez-data_APIS2-G5-RECLAMOS-BACKEND)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=agustin-perez-data_APIS2-G5-RECLAMOS-BACKEND&metric=coverage)](https://sonarcloud.io/summary/new_code?id=agustin-perez-data_APIS2-G5-RECLAMOS-BACKEND)
 Backend del **Grupo 5** de la plataforma CityPass+ (UADE · Desarrollo de Aplicaciones II · 2026 2C).
 
 Gestiona el ciclo de vida completo de un reclamo vecinal: alta, **clasificación
