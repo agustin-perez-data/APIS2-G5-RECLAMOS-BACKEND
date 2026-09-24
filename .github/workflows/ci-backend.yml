@@ -87,6 +87,6 @@ jobs:
         with:
           name: coverage
       - name: SonarCloud scan
-        uses: SonarSource/sonarqube-scan-action@v5
+           uses: SonarSource/sonarqube-scan-action@PEGA_ACA_EL_HASH_DE_40_CARACTERES # v5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
