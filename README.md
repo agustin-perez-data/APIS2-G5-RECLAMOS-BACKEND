@@ -290,4 +290,3 @@ docs/             ADRs y contratos de eventos
 Grupo 5 — Reclamos y Participación Ciudadana. Convenciones de trabajo, flujo de
 git y checklist de PR en [`CLAUDE.md`](CLAUDE.md).
 
-<!-- demo pipeline -->
