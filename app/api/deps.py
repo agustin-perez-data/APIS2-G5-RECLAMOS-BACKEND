@@ -43,6 +43,7 @@ async def get_current_user(
         return USUARIO_DEV
 
     if credenciales is None or not credenciales.credentials:
+        log.warning("seguridad.token_ausente")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Falta el header Authorization: Bearer <token>",
@@ -52,6 +53,7 @@ async def get_current_user(
     try:
         claims = decode_token(credenciales.credentials)
     except TokenInvalido as exc:
+        log.warning("seguridad.token_invalido", razon=str(exc))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Token invalido: {exc}",
@@ -68,6 +70,12 @@ def require_roles(*roles: str) -> Callable[[CurrentUser], CurrentUser]:
         usuario: Annotated[CurrentUser, Depends(get_current_user)],
     ) -> CurrentUser:
         if not usuario.tiene_rol(*roles):
+            log.warning(
+                "seguridad.acceso_denegado",
+                usuario_id=usuario.id,
+                roles_usuario=sorted(usuario.roles),
+                roles_requeridos=sorted(roles),
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Requiere alguno de estos roles: {', '.join(roles)}",
