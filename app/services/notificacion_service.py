@@ -40,6 +40,11 @@ TITULOS_FINALES: dict[EstadoReclamo, str] = {
 
 LARGO_RESUMEN = 140
 
+# Staff subs that receive fan-out notifications (new claim, citizen comment).
+# Matches the dev login roster in `app/api/v1/auth_dev.py`; when Group 2's
+# identity service is wired, replace this with a lookup against their roster.
+STAFF_IDS: frozenset[str] = frozenset({"operador-1", "admin-1"})
+
 
 def resumir(texto: str, limite: int = LARGO_RESUMEN) -> str:
     """One line, capped: a notification previews the text, it does not copy it."""
@@ -76,6 +81,27 @@ def mensaje_comentario(reclamo: Reclamo, comentario: Comentario) -> str:
     # them: the operator's identity is internal.
     quien = "El municipio" if comentario.es_oficial else comentario.autor_nombre or "Otro vecino"
     return f'{quien} comentó en "{resumir(reclamo.titulo, 80)}": {resumir(comentario.texto)}'
+
+
+def titulo_nuevo_reclamo() -> str:
+    return "Nuevo reclamo en la bandeja"
+
+
+def mensaje_nuevo_reclamo(reclamo: Reclamo) -> str:
+    barrio = f" ({reclamo.barrio})" if reclamo.barrio else ""
+    return (
+        f'"{resumir(reclamo.titulo, 80)}"{barrio}: {ETIQUETAS_ESTADO[reclamo.estado]}, '
+        f"prioridad {reclamo.prioridad.value.lower()}."
+    )
+
+
+def titulo_comentario_para_staff(reclamo: Reclamo) -> str:
+    return f'Nuevo comentario en "{resumir(reclamo.titulo, 80)}"'
+
+
+def mensaje_comentario_para_staff(reclamo: Reclamo, comentario: Comentario) -> str:
+    quien = comentario.autor_nombre or "Un vecino"
+    return f"{quien} comentó: {resumir(comentario.texto)}"
 
 
 class NotificacionService:
@@ -120,6 +146,55 @@ class NotificacionService:
             ),
             actor_id=comentario.autor_id,
         )
+
+    async def por_nuevo_reclamo(self, reclamo: Reclamo) -> list[Notificacion]:
+        """Fan-out to staff when a citizen files a new claim."""
+        creadas: list[Notificacion] = []
+        for staff_id in STAFF_IDS:
+            notificacion = await self._crear(
+                Notificacion(
+                    destinatario_id=staff_id,
+                    reclamo_id=reclamo.id,
+                    tipo=TipoNotificacion.NUEVO_RECLAMO,
+                    referencia_id=reclamo.id,
+                    titulo=titulo_nuevo_reclamo(),
+                    mensaje=mensaje_nuevo_reclamo(reclamo),
+                    datos={
+                        "categoria": reclamo.categoria.value,
+                        "prioridad": reclamo.prioridad.value,
+                        "estado": reclamo.estado.value,
+                    },
+                ),
+                actor_id=reclamo.ciudadano_id,
+            )
+            if notificacion is not None:
+                creadas.append(notificacion)
+        return creadas
+
+    async def por_comentario_para_staff(
+        self, reclamo: Reclamo, comentario: Comentario
+    ) -> list[Notificacion]:
+        """Fan-out to staff when a citizen comments on a claim."""
+        creadas: list[Notificacion] = []
+        for staff_id in STAFF_IDS:
+            notificacion = await self._crear(
+                Notificacion(
+                    destinatario_id=staff_id,
+                    reclamo_id=reclamo.id,
+                    tipo=TipoNotificacion.COMENTARIO,
+                    referencia_id=comentario.id,
+                    titulo=titulo_comentario_para_staff(reclamo),
+                    mensaje=mensaje_comentario_para_staff(reclamo, comentario),
+                    datos={
+                        "comentario_id": str(comentario.id),
+                        "es_oficial": comentario.es_oficial,
+                    },
+                ),
+                actor_id=comentario.autor_id,
+            )
+            if notificacion is not None:
+                creadas.append(notificacion)
+        return creadas
 
     async def _crear(self, notificacion: Notificacion, *, actor_id: str) -> Notificacion | None:
         destinatario = notificacion.destinatario_id

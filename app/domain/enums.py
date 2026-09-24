@@ -62,6 +62,7 @@ class TipoNotificacion(StrEnum):
 
     ESTADO = "ESTADO"
     COMENTARIO = "COMENTARIO"
+    NUEVO_RECLAMO = "NUEVO_RECLAMO"
 
 
 # Author of what the module does on its own: claims opened by another module's

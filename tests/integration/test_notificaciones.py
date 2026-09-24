@@ -229,7 +229,8 @@ async def test_procesar_dos_veces_el_mismo_cambio_no_duplica(
 
     assert repetida is None
     total = await session.execute(select(func.count()).select_from(Notificacion))
-    assert total.scalar_one() == 1
+    # 1 ESTADO for the owner + 2 NUEVO_RECLAMO for staff (operador-1, admin-1)
+    assert total.scalar_one() == 3
 
 
 def test_el_resumen_queda_en_una_linea_y_acotado() -> None:

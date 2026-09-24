@@ -151,6 +151,8 @@ class ReclamoService:
                 usuario_id=ciudadano_id,
             )
         )
+        if ciudadano_id != USUARIO_SISTEMA:
+            await self.notificaciones.por_nuevo_reclamo(reclamo)
         await self.session.commit()
         await self.session.refresh(reclamo)
 
@@ -392,6 +394,8 @@ class ReclamoService:
         )
         await self.repo.agregar_comentario(comentario)
         await self.notificaciones.por_comentario(reclamo, comentario)
+        if not autor.es_staff:
+            await self.notificaciones.por_comentario_para_staff(reclamo, comentario)
         await self.session.commit()
         await self.session.refresh(comentario)
 
