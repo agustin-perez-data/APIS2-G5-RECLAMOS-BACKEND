@@ -30,6 +30,7 @@ from app.schemas.reclamo import (
     ReclamoBandeja,
     ReclamoCrear,
     ReclamoDetalle,
+    ReclamoListado,
     ReclamoOut,
     ReclamoResumen,
     ReclamoSimilar,
@@ -70,9 +71,9 @@ async def crear_reclamo(
     return ReclamoOut.model_validate(reclamo)
 
 
-@router.get("", response_model=Page[ReclamoResumen], summary="Listar reclamos")
+@router.get("", response_model=Page[ReclamoListado], summary="Listar reclamos")
 async def listar_reclamos(
-    _usuario: UsuarioDep,
+    usuario: UsuarioDep,
     service: ServiceDep,
     estado: EstadoReclamo | None = None,
     categoria: CategoriaReclamo | None = None,
@@ -88,7 +89,7 @@ async def listar_reclamos(
     ),
     page: Annotated[int, Query(ge=1)] = 1,
     size: Annotated[int, Query(ge=1, le=100)] = 20,
-) -> Page[ReclamoResumen]:
+) -> Page[ReclamoListado]:
     filtro = FiltroReclamos(
         estado=estado,
         categoria=categoria,
@@ -102,8 +103,14 @@ async def listar_reclamos(
         orden=orden,
     )
     items, total = await service.listar(filtro, page=page, size=size)
-    return Page[ReclamoResumen](
-        items=[ReclamoResumen.model_validate(item) for item in items],
+    return Page[ReclamoListado](
+        items=[
+            ReclamoListado(
+                **ReclamoResumen.model_validate(item).model_dump(),
+                es_propio=item.ciudadano_id == usuario.id,
+            )
+            for item in items
+        ],
         total=total,
         page=page,
         size=size,
