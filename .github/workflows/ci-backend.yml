@@ -72,6 +72,7 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://citypass:citypass@localhost:5432/reclamos
         run: alembic downgrade base
 
+ feature/sonarcloud
   sonarcloud:
     name: SonarCloud
     runs-on: ubuntu-latest
@@ -90,3 +91,12 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@2f77a1ec69fb1d595b06f35ab27e97605bdef703 # v5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t citypass-reclamos:${{ github.sha }} .
+ main

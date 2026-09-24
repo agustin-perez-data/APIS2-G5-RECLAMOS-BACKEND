@@ -51,3 +51,14 @@ jobs:
         run: railway up --service 43e5f259-63e6-4d96-a863-35f7542d6425 --ci
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Smoke test
+        env:
+          API_URL: ${{ vars.API_URL }}
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS "$API_URL/health/ready"; then exit 0; fi
+            sleep 10
+          done
+          echo "::error::El deploy no respondio /health/ready en 5 minutos"
+          exit 1
