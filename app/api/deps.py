@@ -14,6 +14,7 @@ from app.core.logging import get_logger
 from app.core.security import CurrentUser, Roles, TokenInvalido, decode_token, user_from_claims
 from app.db.session import get_session
 from app.events.producer import EventPublisher
+from app.services.notificacion_service import NotificacionService
 from app.services.reclamo_service import ReclamoService
 
 log = get_logger(__name__)
@@ -43,6 +44,7 @@ async def get_current_user(
         return USUARIO_DEV
 
     if credenciales is None or not credenciales.credentials:
+        log.warning("seguridad.token_ausente")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Falta el header Authorization: Bearer <token>",
@@ -52,6 +54,7 @@ async def get_current_user(
     try:
         claims = decode_token(credenciales.credentials)
     except TokenInvalido as exc:
+        log.warning("seguridad.token_invalido", razon=str(exc))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Token invalido: {exc}",
@@ -68,6 +71,12 @@ def require_roles(*roles: str) -> Callable[[CurrentUser], CurrentUser]:
         usuario: Annotated[CurrentUser, Depends(get_current_user)],
     ) -> CurrentUser:
         if not usuario.tiene_rol(*roles):
+            log.warning(
+                "seguridad.acceso_denegado",
+                usuario_id=usuario.id,
+                roles_usuario=sorted(usuario.roles),
+                roles_requeridos=sorted(roles),
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Requiere alguno de estos roles: {', '.join(roles)}",
@@ -84,8 +93,15 @@ def get_reclamo_service(
     return ReclamoService(session, publisher)
 
 
+def get_notificacion_service(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> NotificacionService:
+    return NotificacionService(session)
+
+
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 ServiceDep = Annotated[ReclamoService, Depends(get_reclamo_service)]
+NotificacionesDep = Annotated[NotificacionService, Depends(get_notificacion_service)]
 UsuarioDep = Annotated[CurrentUser, Depends(get_current_user)]
 StaffDep = Annotated[CurrentUser, Depends(require_roles(Roles.OPERADOR, Roles.ADMIN))]
 # Metrics are management information: an operator works the inbox but does not

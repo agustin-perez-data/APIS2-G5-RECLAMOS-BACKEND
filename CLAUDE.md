@@ -253,6 +253,7 @@ supere al anterior:
 | 0005 | Naive Bayes propio para categoría + reglas para prioridad |
 | 0006 | Ticket en Jira por llamada post-commit; mover al worker como deuda |
 | 0007 | Reclamos similares: filtros + TF-IDF + cercanía, sugeridos en línea |
+| 0008 | Notificaciones internas en la misma transacción, no por el bus |
 
 ---
 

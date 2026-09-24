@@ -165,6 +165,14 @@ Prefijo `/api/v1`.
 | `POST` | `/reclamos/similares` | autenticado | Reclamos parecidos al que se está escribiendo, para sumarse en vez de duplicar. |
 | `GET` | `/reclamos/{id}/similares` | autenticado | Posibles duplicados de un reclamo ya cargado. |
 | `GET` | `/reclamos/estadisticas` | **admin** | Métricas agregadas (para el Grupo 8). |
+| `GET` | `/notificaciones` | autenticado | Bandeja propia, paginada, con `unread_count`. |
+| `GET` | `/notificaciones/conteo` | autenticado | Solo el contador de no leídas, para la campana. |
+| `PATCH` | `/notificaciones/{id}/leer` | autenticado | Marca una como leída (idempotente). |
+| `POST` | `/notificaciones/leer-todas` | autenticado | Marca todas las propias como leídas. |
+
+Las notificaciones le avisan al dueño de un reclamo cada cambio de estado y cada
+comentario de otra persona. Se guardan en la misma transacción que el cambio, así
+que no dependen del bus ([ADR 0008](docs/adr/0008-notificaciones-internas.md)).
 | `POST` | `/auth/dev/login` | público | Login de desarrollo. Solo con `AUTH_DEV_LOGIN_ENABLED=true`. |
 | `GET` | `/auth/dev/usuarios` | público | Usuarios de prueba disponibles, sin contraseñas. |
 | `GET` | `/health`, `/health/ready` | público | Liveness y readiness. |
@@ -212,7 +220,7 @@ Toda transición fuera de este diagrama devuelve `409 transicion_invalida`.
 
 `reclamos.reclamo.creado` · `reclamos.reclamo.clasificado` ·
 `reclamos.reclamo.estado-cambiado` · `reclamos.reclamo.resuelto` ·
-`reclamos.reclamo.adherido`
+`reclamos.reclamo.adherido` · `reclamos.reclamo.comentario-creado`
 
 **Consumimos:**
 
@@ -253,7 +261,7 @@ reclasificó a mano son los ejemplos más valiosos) o implementar el protocolo
 ## Tests y calidad
 
 ```bash
-pytest                  # 90 tests, cobertura ~90% (mínimo exigido: 60%)
+pytest                  # ~200 tests, cobertura ~93% (mínimo exigido: 60%)
 ruff check . --fix
 ruff format .
 ```
