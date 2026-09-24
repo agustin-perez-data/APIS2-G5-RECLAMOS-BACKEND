@@ -14,6 +14,7 @@ RECLAMO_CLASIFICADO = "reclamos.reclamo.clasificado"
 RECLAMO_ESTADO_CAMBIADO = "reclamos.reclamo.estado-cambiado"
 RECLAMO_RESUELTO = "reclamos.reclamo.resuelto"
 RECLAMO_ADHERIDO = "reclamos.reclamo.adherido"
+RECLAMO_COMENTARIO_CREADO = "reclamos.reclamo.comentario-creado"
 
 # Our own dead letter queue: incoming messages we could not process.
 DLQ = "reclamos.dlq"
@@ -29,6 +30,7 @@ PUBLICADOS: tuple[str, ...] = (
     RECLAMO_ESTADO_CAMBIADO,
     RECLAMO_RESUELTO,
     RECLAMO_ADHERIDO,
+    RECLAMO_COMENTARIO_CREADO,
 )
 
 CONSUMIDOS: tuple[str, ...] = (

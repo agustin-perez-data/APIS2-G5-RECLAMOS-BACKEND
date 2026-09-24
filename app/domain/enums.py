@@ -57,6 +57,17 @@ class CanalOrigen(StrEnum):
     EVENTO = "EVENTO"  # opened automatically by another module's event
 
 
+class TipoNotificacion(StrEnum):
+    """What happened to the claim that the owner is being told about."""
+
+    ESTADO = "ESTADO"
+    COMENTARIO = "COMENTARIO"
+
+
+# Author of what the module does on its own: claims opened by another module's
+# event, auto-closes, official comments on incidents.
+USUARIO_SISTEMA = "sistema"
+
 # States that accept no further changes.
 ESTADOS_FINALES: frozenset[EstadoReclamo] = frozenset(
     {EstadoReclamo.CERRADO, EstadoReclamo.RECHAZADO}

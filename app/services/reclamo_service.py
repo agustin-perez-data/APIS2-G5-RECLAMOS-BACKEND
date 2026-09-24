@@ -35,6 +35,7 @@ from app.db.models import Adhesion, Comentario, HistorialEstado, Reclamo
 from app.domain import geo
 from app.domain.enums import (
     ESTADOS_FINALES,
+    USUARIO_SISTEMA,
     CanalOrigen,
     CategoriaReclamo,
     EstadoReclamo,
@@ -47,6 +48,7 @@ from app.events import topics
 from app.events.contracts import (
     ReclamoAdherido,
     ReclamoClasificado,
+    ReclamoComentarioCreado,
     ReclamoCreado,
     ReclamoEstadoCambiado,
     ReclamoResuelto,
@@ -57,10 +59,9 @@ from app.ml import similitud
 from app.repositories.reclamo_repository import FiltroReclamos, ReclamoRepository
 from app.schemas.reclamo import CambioEstado, ReclamoCrear, ReclasificacionPedido
 from app.services.clasificador import Clasificador, get_clasificador
+from app.services.notificacion_service import NotificacionService
 
 log = get_logger(__name__)
-
-USUARIO_SISTEMA = "sistema"
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +93,7 @@ class ReclamoService:
         self.clasificador = clasificador or get_clasificador()
         self.cfg = cfg or settings
         self.tickets = tickets or get_sistema_tickets()
+        self.notificaciones = NotificacionService(session)
 
     # --- Intake --------------------------------------------------------------
     async def crear(
@@ -270,7 +272,7 @@ class ReclamoService:
         if cambio.estado is EstadoReclamo.CERRADO:
             reclamo.cerrado_at = ahora
 
-        await self.repo.agregar_historial(
+        historial = await self.repo.agregar_historial(
             HistorialEstado(
                 reclamo_id=reclamo.id,
                 estado_anterior=anterior,
@@ -279,6 +281,8 @@ class ReclamoService:
                 usuario_id=actor.id,
             )
         )
+        # Same transaction as the change: saved together with it or not at all.
+        await self.notificaciones.por_cambio_de_estado(reclamo, historial, actor_id=actor.id)
         await self.session.commit()
         await self.session.refresh(reclamo)
 
@@ -387,9 +391,28 @@ class ReclamoService:
             es_oficial=autor.es_staff,
         )
         await self.repo.agregar_comentario(comentario)
+        await self.notificaciones.por_comentario(reclamo, comentario)
         await self.session.commit()
         await self.session.refresh(comentario)
+
+        await self._publicar_comentario(reclamo, comentario)
         return comentario
+
+    async def _publicar_comentario(self, reclamo: Reclamo, comentario: Comentario) -> None:
+        await self.publisher.publish(
+            topics.RECLAMO_COMENTARIO_CREADO,
+            ReclamoComentarioCreado(
+                comentario_id=comentario.id,
+                reclamo_id=reclamo.id,
+                ciudadano_id=reclamo.ciudadano_id,
+                autor_id=comentario.autor_id,
+                autor_nombre=comentario.autor_nombre,
+                es_oficial=comentario.es_oficial,
+                created_at=comentario.created_at,
+            ),
+            key=str(reclamo.id),
+            correlation_id=reclamo.correlation_id,
+        )
 
     # --- Citizen participation -----------------------------------------------
     async def adherir(self, reclamo_id: uuid.UUID, ciudadano_id: str) -> Reclamo:
@@ -586,13 +609,13 @@ class ReclamoService:
             FiltroReclamos(barrio=barrio, estados=abiertos), page=1, size=100
         )
 
-        afectados: list[Reclamo] = []
+        afectados: list[tuple[Reclamo, Comentario]] = []
         for reclamo in candidatos:
             nueva = escalar(reclamo.prioridad, prioridad_minima)
             if nueva is reclamo.prioridad:
                 continue
             reclamo.prioridad = nueva
-            await self.repo.agregar_comentario(
+            comentario = await self.repo.agregar_comentario(
                 Comentario(
                     reclamo_id=reclamo.id,
                     autor_id=USUARIO_SISTEMA,
@@ -601,12 +624,17 @@ class ReclamoService:
                     es_oficial=True,
                 )
             )
-            afectados.append(reclamo)
+            await self.notificaciones.por_comentario(reclamo, comentario)
+            afectados.append((reclamo, comentario))
 
-        if afectados:
-            await self.session.commit()
-            log.info("reclamos.escalados_por_incidente", barrio=barrio, cantidad=len(afectados))
-        return afectados
+        if not afectados:
+            return []
+
+        await self.session.commit()
+        for reclamo, comentario in afectados:
+            await self._publicar_comentario(reclamo, comentario)
+        log.info("reclamos.escalados_por_incidente", barrio=barrio, cantidad=len(afectados))
+        return [reclamo for reclamo, _ in afectados]
 
     async def cerrar_resueltos_vencidos(self) -> list[Reclamo]:
         """Auto-close claims sitting in RESUELTO past the response window (US-17).
@@ -621,7 +649,7 @@ class ReclamoService:
         for reclamo in candidatos:
             reclamo.estado = EstadoReclamo.CERRADO
             reclamo.cerrado_at = datetime.now(UTC)
-            await self.repo.agregar_historial(
+            historial = await self.repo.agregar_historial(
                 HistorialEstado(
                     reclamo_id=reclamo.id,
                     estado_anterior=EstadoReclamo.RESUELTO,
@@ -632,6 +660,9 @@ class ReclamoService:
                     ),
                     usuario_id=USUARIO_SISTEMA,
                 )
+            )
+            await self.notificaciones.por_cambio_de_estado(
+                reclamo, historial, actor_id=USUARIO_SISTEMA
             )
             cerrados.append(reclamo)
 
