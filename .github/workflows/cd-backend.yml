@@ -15,7 +15,7 @@ jobs:
     name: Build & deploy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build image (chequeo rápido de que el Dockerfile compila)
         run: docker build -t citypass-reclamos:${{ github.sha }} .
