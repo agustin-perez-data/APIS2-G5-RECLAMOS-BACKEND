@@ -71,3 +71,11 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://citypass:citypass@localhost:5432/reclamos
         run: alembic downgrade base
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t citypass-reclamos:${{ github.sha }} .
