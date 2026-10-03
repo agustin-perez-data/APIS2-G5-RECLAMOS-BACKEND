@@ -43,26 +43,26 @@ async def test_limite_de_login_bloquea_fuerza_bruta(client: AsyncClient) -> None
     url = "/api/v1/auth/dev/login"
     payload = {"usuario": "admin", "password": "wrong"}
 
-    # 1. Hacemos requests hasta el limite. Todos deberian pasar el limiter
-    # y llegar al handler (que devolvera 401 por password incorrecta).
+    # 1. Send requests up to the limit. All should pass through the limiter
+    # and reach the handler (which returns 401 due to invalid credentials).
     for _ in range(limite):
         respuesta = await client.post(url, json=payload)
-        assert respuesta.status_code != 429, "Requests dentro del limite no devuelven 429"
+        assert respuesta.status_code != 429, "Requests within the limit should not return 429"
         assert respuesta.status_code == 401
 
-    # 2. El siguiente request debe exceder el limite y ser interceptado por SlowAPI.
+    # 2. The next request must exceed the limit and be intercepted by SlowAPI.
     respuesta_429 = await client.post(url, json=payload)
 
-    # 3. Verificamos que es 429
+    # 3. Verify it returns HTTP 429.
     assert respuesta_429.status_code == 429
 
-    # 4. Verificamos que respeta nuestro handler personalizado (RFC 7807)
+    # 4. Verify it respects our custom RFC 7807 handler.
     cuerpo = respuesta_429.json()
     assert cuerpo["code"] == "rate_limit"
     assert cuerpo["title"] == "Demasiadas solicitudes"
     assert "detail" in cuerpo
 
-    # 5. Verificamos que existe el header Retry-After
+    # 5. Verify the Retry-After header is present.
     assert "Retry-After" in respuesta_429.headers
     assert respuesta_429.headers["Retry-After"].isdigit()
 
@@ -87,7 +87,7 @@ async def test_creacion_reclamo_tiene_rate_limit(
         assert respuesta.status_code != 429
         assert respuesta.status_code == 201
 
-    # Este request excede el limite
+    # This request exceeds the limit
     respuesta_429 = await client.post(url, json=payload, headers=headers)
     assert respuesta_429.status_code == 429
     assert respuesta_429.json()["code"] == "rate_limit"
