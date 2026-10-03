@@ -54,6 +54,7 @@ app/
 ├── db/           Engine, sesión, modelos ORM
 ├── domain/       Enums, máquina de estados, invariantes puras
 ├── events/       Contratos, producer, consumer, handlers
+├── integrations/ Sistemas externos por HTTP (tickets en Jira)
 ├── ml/           Clasificador (texto, Naive Bayes, corpus)
 ├── schemas/      DTOs Pydantic de entrada/salida
 ├── core/         Config, logging, seguridad, excepciones
@@ -65,7 +66,8 @@ app/
 
 - `api/` puede importar `services/`, `schemas/`, `core/`. **No** importa
   `repositories/` ni modelos ORM directamente.
-- `services/` puede importar `repositories/`, `domain/`, `events/`, `db.models`.
+- `services/` puede importar `repositories/`, `domain/`, `events/`,
+  `integrations/`, `ml/`, `db.models`.
   **No** importa nada de `api/` ni de FastAPI.
 - `repositories/` solo habla SQLAlchemy. No conoce Pydantic ni HTTP.
 - `domain/` no importa nada del proyecto: son reglas puras, testeables solas.
@@ -249,6 +251,9 @@ supere al anterior:
 | 0003 | Envelope propio compatible con CloudEvents |
 | 0004 | Publicación post-commit; outbox como deuda registrada |
 | 0005 | Naive Bayes propio para categoría + reglas para prioridad |
+| 0006 | Ticket en Jira por llamada post-commit; mover al worker como deuda |
+| 0007 | Reclamos similares: filtros + TF-IDF + cercanía, sugeridos en línea |
+| 0008 | Notificaciones internas en la misma transacción, no por el bus |
 
 ---
 
@@ -261,6 +266,7 @@ supere al anterior:
 | 4 — Residuos | Consumimos `residuos.contenedor.desbordado` → alta automática. |
 | 6 — Emergencias | Consumimos `emergencias.incidente.creado` → re-priorización por zona. |
 | 8 — Analítica | Consume nuestros eventos y `GET /api/v1/reclamos/estadisticas`. |
+| Jira (`REC`) | Cada reclamo nuevo abre un ticket. La clave queda en `ticket_externo`. |
 
 Contratos completos con ejemplos: `docs/eventos.md`.
 

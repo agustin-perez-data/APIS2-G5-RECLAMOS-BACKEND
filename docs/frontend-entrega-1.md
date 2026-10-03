@@ -108,6 +108,10 @@ Todos bajo `/api/v1`, todos requieren `Authorization` salvo los de login.
 | `POST` | `/reclamos/{id}/adhesiones` | ciudadano | "A mí también me pasa" |
 | `POST` | `/reclamos/clasificacion` | autenticado | Sugerencia del modelo (§4) |
 | `GET` | `/reclamos/estadisticas` | **admin** | Métricas agregadas |
+| `GET` | `/notificaciones` | autenticado | Mis notificaciones (§4 ter) |
+| `GET` | `/notificaciones/conteo` | autenticado | No leídas, para la campana |
+| `PATCH` | `/notificaciones/{id}/leer` | autenticado | Marca una como leída |
+| `POST` | `/notificaciones/leer-todas` | autenticado | Marca todas como leídas |
 
 ### Alta de reclamo
 
@@ -128,6 +132,11 @@ POST /api/v1/reclamos
 Validaciones: `titulo` entre 5 y 150 caracteres, `descripcion` entre 10 y 5000,
 hasta 5 fotos. **`categoria` y `prioridad` son opcionales**: si no los mandás,
 los completa el clasificador automático (§4).
+
+La respuesta incluye **`ticket_externo`**: la clave del ticket que se abrió en
+Jira (por ejemplo `REC-12`), o `null` si Jira no respondió. El reclamo se crea
+igual en los dos casos. Para linkear al ticket:
+`https://grupo-5-da2.atlassian.net/browse/<ticket_externo>`.
 
 ### Listado paginado
 
@@ -156,9 +165,12 @@ Cada item del listado es liviano, pensado para tabla y para mapa:
   "latitud": -34.6037,
   "longitud": -58.3816,
   "adhesiones_count": 3,
-  "created_at": "2026-08-20T14:22:31.500Z"
+  "created_at": "2026-08-20T14:22:31.500Z",
+  "es_propio": false
 }
 ```
+
+`es_propio` se calcula con el usuario autenticado que consulta el listado. El frontend puede reutilizar la página cargada en Redux para identificar reclamos propios. Si el listado está paginado, ese subconjunto no representa todos los reclamos del usuario: para una vista completa debe consultar con `ciudadano_id` y respetar la paginación. La caché debe limpiarse al cambiar de sesión.
 
 ---
 
@@ -202,6 +214,102 @@ POST /api/v1/reclamos/clasificacion
 Después, en el `POST /reclamos`, mandá los valores que quedaron en el formulario.
 Si el usuario no tocó nada, podés directamente **no mandar** `categoria` ni
 `prioridad` y el backend los recalcula.
+
+---
+
+## 4 bis. Reclamos parecidos (evitar duplicados)
+
+Mientras el vecino completa el formulario, el backend busca reclamos abiertos que
+probablemente sean **el mismo problema**, para ofrecerle sumarse en lugar de
+cargar un duplicado. No guarda nada.
+
+```http
+POST /api/v1/reclamos/similares
+
+{
+  "titulo": "Luminaria apagada en la esquina",
+  "descripcion": "La luz de Rivadavia y Medrano no anda hace dias",
+  "latitud": -34.6037,
+  "longitud": -58.4201,
+  "barrio": "Almagro"
+}
+```
+
+`categoria` es opcional: si no se manda, la infiere el clasificador. La respuesta
+es una lista, **vacía si no hay nada parecido**, con hasta 5 reclamos ordenados
+del más parecido al menos:
+
+```json
+[
+  {
+    "id": "6f1c9a4e-...",
+    "titulo": "Poste de luz apagado",
+    "categoria": "ALUMBRADO",
+    "estado": "RECIBIDO",
+    "adhesiones_count": 4,
+    "similitud": 0.61,
+    "distancia_metros": 50,
+    "terminos_en_comun": ["luz", "apagado", "esquina", "rivadavia"],
+    "es_propio": false,
+    "ya_adherido": false
+  }
+]
+```
+
+(También vienen el resto de los campos de un reclamo del listado: prioridad,
+barrio, coordenadas y fecha.)
+
+- `es_propio: true` → lo cargó el mismo usuario: mostrar *"Ya reportaste esto"*,
+  sin botón para sumarse.
+- `ya_adherido: true` → ya se sumó: mostrar *"Ya te sumaste"*.
+- Si no, botón **"Es este, sumarme"** → `POST /reclamos/{id}/adhesiones`.
+
+Para el operador, en el detalle de un reclamo: `GET /reclamos/{id}/similares`
+devuelve sus posibles duplicados, con el mismo formato.
+
+---
+
+## 4 ter. Notificaciones (campana)
+
+El backend le avisa al **dueño** de un reclamo cada cambio de estado y cada
+comentario de otra persona. Guarda el estado de lectura: el contador es el mismo
+en todos los dispositivos. La campana **no** tiene que calcular nada a partir del
+historial ni de `localStorage`.
+
+```http
+GET /api/v1/notificaciones?page=1&size=20&unread_only=false
+```
+
+```json
+{
+  "items": [
+    {
+      "id": "0b7e4f7a-8a57-4d5e-a0f4-3c1a6f0d9b21",
+      "tipo": "ESTADO",
+      "reclamo_id": "6f1c9a4e-3c2b-4a5d-9e11-2b7d5c8a1f30",
+      "titulo": "Tu reclamo pasó a En revisión",
+      "mensaje": "\"Luminaria apagada en la plaza\" pasó de Recibido a En revisión.",
+      "estado_nuevo": "EN_REVISION",
+      "comentario_id": null,
+      "created_at": "2026-09-24T08:59:12Z",
+      "leida": false,
+      "leida_at": null
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "size": 20,
+  "unread_count": 1
+}
+```
+
+- `tipo`: `ESTADO` (trae `estado_nuevo`) o `COMENTARIO` (trae `comentario_id`).
+- Para la campana, polling cada 15 a 30 s a `GET /notificaciones/conteo`, que
+  devuelve solo `{"unread_count": 1}`.
+- Al abrir una: `PATCH /notificaciones/{id}/leer` y navegar a
+  `/reclamos/{reclamo_id}`. "Marcar todas": `POST /notificaciones/leer-todas`.
+- Una notificación de otro usuario responde `404`
+  (`code: "notificacion_no_encontrada"`).
 
 ---
 

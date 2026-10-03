@@ -10,6 +10,9 @@ el contexto, las opciones que se evaluaron y por qué se descartaron.
 | [0003](0003-contratos-de-eventos.md) | Envelope propio compatible con CloudEvents | Aceptada |
 | [0004](0004-publicacion-de-eventos.md) | Publicación post-commit, outbox como deuda | Aceptada |
 | [0005](0005-clasificacion-automatica.md) | Naive Bayes propio + reglas de prioridad | Aceptada |
+| [0006](0006-tickets-en-jira.md) | Ticket en Jira por llamada post-commit | Aceptada |
+| [0007](0007-agrupacion-de-reclamos-similares.md) | Agrupación de reclamos similares por sugerencia en línea | Aceptada |
+| [0008](0008-notificaciones-internas.md) | Notificaciones internas escritas en la misma transacción | Aceptada |
 
 ## Cómo agregar uno
 

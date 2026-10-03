@@ -50,6 +50,13 @@ class ReclamoCerrado(DomainError):
     code = "reclamo_cerrado"
 
 
+class NotificacionNoEncontrada(DomainError):
+    # Also raised for someone else's notification: a 403 would confirm it exists.
+    status_code = 404
+    title = "Notificacion no encontrada"
+    code = "notificacion_no_encontrada"
+
+
 class PermisoDenegado(DomainError):
     status_code = 403
     title = "No tiene permisos sobre este recurso"

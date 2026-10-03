@@ -107,7 +107,9 @@ clasificación y para que Analítica compare sugerencia vs. corrección manual.
 }
 ```
 
-Consumidor típico: Notificaciones / la app del vecino.
+Consumidor típico: Notificaciones, para canales externos. La campana de la app
+no depende de este evento: la notificación se guarda en la misma transacción que
+el cambio ([ADR 0008](adr/0008-notificaciones-internas.md)).
 
 ### `reclamos.reclamo.resuelto` — v1.0
 
@@ -145,6 +147,35 @@ Analítica y trae la métrica de gestión ya calculada.
 
 `escalado: true` indica que esa adhesión hizo subir la prioridad al alcanzar el
 umbral configurado (`ADHESIONES_PARA_ESCALAR`, default 10).
+
+### `reclamos.reclamo.comentario-creado` — v1.0
+
+Alguien comentó un reclamo: el dueño, otro vecino, un operador o el propio
+sistema (cuando un incidente de Emergencias sube la prioridad).
+
+```json
+{
+  "event_type": "reclamos.reclamo.comentario-creado",
+  "data": {
+    "comentario_id": "3a9d0c1e-5b7f-4e2a-8c6d-1f0e9b8a7c65",
+    "reclamo_id": "6f1c9a4e-...",
+    "ciudadano_id": "auth0|65f2c1...",
+    "autor_id": "operador-014",
+    "autor_nombre": "Operador Municipal",
+    "es_oficial": true,
+    "created_at": "2026-08-15T08:59:12.000Z"
+  }
+}
+```
+
+`ciudadano_id` es el dueño del reclamo, no quien comentó (ese es `autor_id`).
+**No lleva el texto**: es contenido libre del vecino. Si un consumidor lo
+necesita, lo pide por `comentario_id`.
+
+Consumidor típico: Notificaciones, para canales externos (email, push). Las
+notificaciones **dentro de la app** no dependen de este evento: se escriben en la
+misma transacción que el comentario
+([ADR 0008](adr/0008-notificaciones-internas.md)).
 
 ### `reclamos.dlq`
 

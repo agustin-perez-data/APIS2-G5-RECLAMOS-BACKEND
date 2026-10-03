@@ -169,6 +169,24 @@ async def test_listado_pagina_y_filtra(client: AsyncClient, auth, token_ciudadan
     assert cuerpo["items"][0]["categoria"] == CategoriaReclamo.BACHES.value
 
 
+async def test_listado_indica_cuales_reclamos_son_propios(
+    client: AsyncClient, auth, token_ciudadano, token_otro_ciudadano
+) -> None:
+    propio = await crear_reclamo(client, auth(token_ciudadano))
+    ajeno = await crear_reclamo(client, auth(token_otro_ciudadano))
+
+    respuesta = await client.get("/api/v1/reclamos", headers=auth(token_ciudadano))
+    items = {item["id"]: item for item in respuesta.json()["items"]}
+
+    assert items[propio["id"]]["es_propio"] is True
+    assert items[ajeno["id"]]["es_propio"] is False
+
+    respuesta_ajena = await client.get("/api/v1/reclamos", headers=auth(token_otro_ciudadano))
+    items_ajenos = {item["id"]: item for item in respuesta_ajena.json()["items"]}
+    assert items_ajenos[propio["id"]]["es_propio"] is False
+    assert items_ajenos[ajeno["id"]]["es_propio"] is True
+
+
 async def test_estadisticas(client: AsyncClient, auth, token_ciudadano, token_admin) -> None:
     await crear_reclamo(client, auth(token_ciudadano))
 
@@ -412,3 +430,10 @@ async def test_adhesion_duplicada_devuelve_409(
     respuesta = await client.post(url, headers=auth(token_otro_ciudadano))
 
     assert respuesta.status_code == 409
+
+
+async def test_el_alta_expone_el_ticket_de_jira(client: AsyncClient, auth, token_ciudadano) -> None:
+    # Jira is off in the suite, so the field is present but empty.
+    reclamo = await crear_reclamo(client, auth(token_ciudadano))
+    assert "ticket_externo" in reclamo
+    assert reclamo["ticket_externo"] is None

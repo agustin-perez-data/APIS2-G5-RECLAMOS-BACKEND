@@ -14,7 +14,9 @@ building one is not justified yet.
 
 from __future__ import annotations
 
+import math
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,9 +32,12 @@ from app.core.exceptions import (
 from app.core.logging import get_logger
 from app.core.security import CurrentUser
 from app.db.models import Adhesion, Comentario, HistorialEstado, Reclamo
+from app.domain import geo
 from app.domain.enums import (
     ESTADOS_FINALES,
+    USUARIO_SISTEMA,
     CanalOrigen,
+    CategoriaReclamo,
     EstadoReclamo,
     OrigenClasificacion,
     PrioridadReclamo,
@@ -43,18 +48,34 @@ from app.events import topics
 from app.events.contracts import (
     ReclamoAdherido,
     ReclamoClasificado,
+    ReclamoComentarioCreado,
     ReclamoCreado,
     ReclamoEstadoCambiado,
     ReclamoResuelto,
 )
 from app.events.producer import EventPublisher
+from app.integrations.tickets import SistemaTickets, TicketNuevo, get_sistema_tickets
+from app.ml import similitud
 from app.repositories.reclamo_repository import FiltroReclamos, ReclamoRepository
 from app.schemas.reclamo import CambioEstado, ReclamoCrear, ReclasificacionPedido
 from app.services.clasificador import Clasificador, get_clasificador
+from app.services.notificacion_service import NotificacionService
 
 log = get_logger(__name__)
 
-USUARIO_SISTEMA = "sistema"
+
+@dataclass(frozen=True, slots=True)
+class ReclamoParecido:
+    """A probable duplicate, with the evidence behind the match (ADR 0007)."""
+
+    reclamo: Reclamo
+    puntaje: float
+    distancia_metros: float | None
+    terminos_en_comun: list[str]
+    # Lets the front end offer "join it" only where it can succeed: the author
+    # cannot endorse their own claim, nor anyone endorse twice.
+    es_propio: bool
+    ya_adherido: bool
 
 
 class ReclamoService:
@@ -64,12 +85,15 @@ class ReclamoService:
         publisher: EventPublisher,
         clasificador: Clasificador | None = None,
         cfg: Settings | None = None,
+        tickets: SistemaTickets | None = None,
     ) -> None:
         self.session = session
         self.repo = ReclamoRepository(session)
         self.publisher = publisher
         self.clasificador = clasificador or get_clasificador()
         self.cfg = cfg or settings
+        self.tickets = tickets or get_sistema_tickets()
+        self.notificaciones = NotificacionService(session)
 
     # --- Intake --------------------------------------------------------------
     async def crear(
@@ -127,6 +151,8 @@ class ReclamoService:
                 usuario_id=ciudadano_id,
             )
         )
+        if ciudadano_id != USUARIO_SISTEMA:
+            await self.notificaciones.por_nuevo_reclamo(reclamo)
         await self.session.commit()
         await self.session.refresh(reclamo)
 
@@ -153,7 +179,39 @@ class ReclamoService:
             prioridad=reclamo.prioridad.value,
             origen=origen.value,
         )
+        await self._abrir_ticket(reclamo)
         return reclamo
+
+    async def _abrir_ticket(self, reclamo: Reclamo) -> None:
+        """Open the claim's ticket in the issue tracker.
+
+        Runs after the commit, like event publication: a tracker outage must
+        never undo or block the filing of a claim. When it fails the claim keeps
+        `ticket_externo` empty, which is what makes it findable to retry.
+        """
+        try:
+            clave = await self.tickets.crear(
+                TicketNuevo(
+                    reclamo_id=reclamo.id,
+                    titulo=reclamo.titulo,
+                    descripcion=reclamo.descripcion,
+                    categoria=reclamo.categoria,
+                    prioridad=reclamo.prioridad,
+                    canal=reclamo.canal,
+                    direccion=reclamo.direccion,
+                    barrio=reclamo.barrio,
+                    creado_at=reclamo.created_at,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - the claim is already filed
+            log.warning("reclamo.ticket_fallido", reclamo_id=str(reclamo.id), error=str(exc))
+            return
+
+        if clave is None:
+            return
+        reclamo.ticket_externo = clave
+        await self.session.commit()
+        log.info("reclamo.ticket_abierto", reclamo_id=str(reclamo.id), ticket=clave)
 
     async def _publicar_creado(self, reclamo: Reclamo) -> None:
         await self.publisher.publish(
@@ -216,7 +274,7 @@ class ReclamoService:
         if cambio.estado is EstadoReclamo.CERRADO:
             reclamo.cerrado_at = ahora
 
-        await self.repo.agregar_historial(
+        historial = await self.repo.agregar_historial(
             HistorialEstado(
                 reclamo_id=reclamo.id,
                 estado_anterior=anterior,
@@ -225,6 +283,8 @@ class ReclamoService:
                 usuario_id=actor.id,
             )
         )
+        # Same transaction as the change: saved together with it or not at all.
+        await self.notificaciones.por_cambio_de_estado(reclamo, historial, actor_id=actor.id)
         await self.session.commit()
         await self.session.refresh(reclamo)
 
@@ -333,9 +393,30 @@ class ReclamoService:
             es_oficial=autor.es_staff,
         )
         await self.repo.agregar_comentario(comentario)
+        await self.notificaciones.por_comentario(reclamo, comentario)
+        if not autor.es_staff:
+            await self.notificaciones.por_comentario_para_staff(reclamo, comentario)
         await self.session.commit()
         await self.session.refresh(comentario)
+
+        await self._publicar_comentario(reclamo, comentario)
         return comentario
+
+    async def _publicar_comentario(self, reclamo: Reclamo, comentario: Comentario) -> None:
+        await self.publisher.publish(
+            topics.RECLAMO_COMENTARIO_CREADO,
+            ReclamoComentarioCreado(
+                comentario_id=comentario.id,
+                reclamo_id=reclamo.id,
+                ciudadano_id=reclamo.ciudadano_id,
+                autor_id=comentario.autor_id,
+                autor_nombre=comentario.autor_nombre,
+                es_oficial=comentario.es_oficial,
+                created_at=comentario.created_at,
+            ),
+            key=str(reclamo.id),
+            correlation_id=reclamo.correlation_id,
+        )
 
     # --- Citizen participation -----------------------------------------------
     async def adherir(self, reclamo_id: uuid.UUID, ciudadano_id: str) -> Reclamo:
@@ -378,6 +459,110 @@ class ReclamoService:
             correlation_id=reclamo.correlation_id,
         )
         return reclamo
+
+    # --- Similar claims (ADR 0007) ---------------------------------------------
+    async def buscar_similares(
+        self,
+        *,
+        titulo: str,
+        descripcion: str,
+        categoria: CategoriaReclamo | None = None,
+        latitud: float | None = None,
+        longitud: float | None = None,
+        barrio: str | None = None,
+        ciudadano_id: str | None = None,
+        excluir_id: uuid.UUID | None = None,
+    ) -> list[ReclamoParecido]:
+        """Claims that are probably about the same problem, best match first.
+
+        Before filing, the citizen gets the chance to join an existing claim
+        instead of opening a duplicate; on a filed claim, the operator sees its
+        duplicates without reading the whole inbox. Nothing is persisted: the
+        grouping happens through endorsements, which already exist.
+        """
+        cfg = self.cfg
+        if categoria is None:
+            categoria = self.clasificador.clasificar(titulo, descripcion).categoria
+
+        con_coordenadas = latitud is not None and longitud is not None
+        caja = (
+            geo.caja_alrededor(latitud, longitud, cfg.similares_radio_metros)
+            if con_coordenadas
+            else None
+        )
+        candidatos = await self.repo.candidatos_similares(
+            categoria=categoria,
+            desde=datetime.now(UTC) - timedelta(days=cfg.similares_ventana_dias),
+            caja=caja,
+            barrio=barrio,
+            excluir_id=excluir_id,
+        )
+        if not candidatos:
+            return []
+
+        consulta = f"{titulo} {descripcion}"
+        textos = [f"{c.titulo} {c.descripcion}" for c in candidatos]
+        puntajes_texto = similitud.similitudes(
+            similitud.tokens(consulta), [similitud.tokens(t) for t in textos]
+        )
+
+        elegidos: list[tuple[Reclamo, float, float | None, str]] = []
+        for candidato, texto, puntaje_texto in zip(candidatos, textos, puntajes_texto, strict=True):
+            distancia = None
+            if con_coordenadas and candidato.latitud is not None and candidato.longitud is not None:
+                distancia = geo.distancia_metros(
+                    latitud, longitud, candidato.latitud, candidato.longitud
+                )
+                if distancia > cfg.similares_radio_metros:
+                    continue  # inside the bounding box, outside the circle
+            puntaje = self._puntaje_similitud(puntaje_texto, distancia)
+            if puntaje >= cfg.similares_puntaje_minimo:
+                elegidos.append((candidato, puntaje, distancia, texto))
+
+        # Best match first; on a tie, the closest one.
+        elegidos.sort(key=lambda e: (-e[1], e[2] if e[2] is not None else math.inf))
+        elegidos = elegidos[: cfg.similares_maximo]
+
+        adheridos = (
+            await self.repo.adheridos_por(ciudadano_id, [e[0].id for e in elegidos])
+            if ciudadano_id
+            else set()
+        )
+        return [
+            ReclamoParecido(
+                reclamo=candidato,
+                puntaje=round(puntaje, 3),
+                distancia_metros=round(distancia) if distancia is not None else None,
+                terminos_en_comun=similitud.terminos_en_comun(consulta, texto),
+                es_propio=ciudadano_id is not None and candidato.ciudadano_id == ciudadano_id,
+                ya_adherido=candidato.id in adheridos,
+            )
+            for candidato, puntaje, distancia, texto in elegidos
+        ]
+
+    async def similares_de(
+        self, reclamo_id: uuid.UUID, *, ciudadano_id: str | None = None
+    ) -> list[ReclamoParecido]:
+        """Probable duplicates of a filed claim, for the operator's review."""
+        reclamo = await self.obtener(reclamo_id)
+        return await self.buscar_similares(
+            titulo=reclamo.titulo,
+            descripcion=reclamo.descripcion,
+            categoria=reclamo.categoria,
+            latitud=reclamo.latitud,
+            longitud=reclamo.longitud,
+            barrio=reclamo.barrio,
+            ciudadano_id=ciudadano_id,
+            excluir_id=reclamo.id,
+        )
+
+    def _puntaje_similitud(self, texto: float, distancia: float | None) -> float:
+        """Blend text and proximity. Without a distance, the text is all there is."""
+        if distancia is None:
+            return texto
+        peso = self.cfg.similares_peso_texto
+        cercania = 1 - distancia / self.cfg.similares_radio_metros
+        return peso * texto + (1 - peso) * cercania
 
     # --- Reactions to other modules' events -----------------------------------
     async def crear_desde_evento(
@@ -428,13 +613,13 @@ class ReclamoService:
             FiltroReclamos(barrio=barrio, estados=abiertos), page=1, size=100
         )
 
-        afectados: list[Reclamo] = []
+        afectados: list[tuple[Reclamo, Comentario]] = []
         for reclamo in candidatos:
             nueva = escalar(reclamo.prioridad, prioridad_minima)
             if nueva is reclamo.prioridad:
                 continue
             reclamo.prioridad = nueva
-            await self.repo.agregar_comentario(
+            comentario = await self.repo.agregar_comentario(
                 Comentario(
                     reclamo_id=reclamo.id,
                     autor_id=USUARIO_SISTEMA,
@@ -443,12 +628,17 @@ class ReclamoService:
                     es_oficial=True,
                 )
             )
-            afectados.append(reclamo)
+            await self.notificaciones.por_comentario(reclamo, comentario)
+            afectados.append((reclamo, comentario))
 
-        if afectados:
-            await self.session.commit()
-            log.info("reclamos.escalados_por_incidente", barrio=barrio, cantidad=len(afectados))
-        return afectados
+        if not afectados:
+            return []
+
+        await self.session.commit()
+        for reclamo, comentario in afectados:
+            await self._publicar_comentario(reclamo, comentario)
+        log.info("reclamos.escalados_por_incidente", barrio=barrio, cantidad=len(afectados))
+        return [reclamo for reclamo, _ in afectados]
 
     async def cerrar_resueltos_vencidos(self) -> list[Reclamo]:
         """Auto-close claims sitting in RESUELTO past the response window (US-17).
@@ -463,7 +653,7 @@ class ReclamoService:
         for reclamo in candidatos:
             reclamo.estado = EstadoReclamo.CERRADO
             reclamo.cerrado_at = datetime.now(UTC)
-            await self.repo.agregar_historial(
+            historial = await self.repo.agregar_historial(
                 HistorialEstado(
                     reclamo_id=reclamo.id,
                     estado_anterior=EstadoReclamo.RESUELTO,
@@ -474,6 +664,9 @@ class ReclamoService:
                     ),
                     usuario_id=USUARIO_SISTEMA,
                 )
+            )
+            await self.notificaciones.por_cambio_de_estado(
+                reclamo, historial, actor_id=USUARIO_SISTEMA
             )
             cerrados.append(reclamo)
 

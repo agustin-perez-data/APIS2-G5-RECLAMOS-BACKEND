@@ -98,6 +98,18 @@ class ReclamoResuelto(BaseModel):
     resuelto_at: datetime
 
 
+class ReclamoComentarioCreado(BaseModel):
+    # No text on purpose: it is free-form citizen content. A consumer that needs
+    # it asks for the comment by id.
+    comentario_id: uuid.UUID
+    reclamo_id: uuid.UUID
+    ciudadano_id: str
+    autor_id: str
+    autor_nombre: str | None = None
+    es_oficial: bool
+    created_at: datetime
+
+
 class ReclamoAdherido(BaseModel):
     reclamo_id: uuid.UUID
     ciudadano_id: str
