@@ -16,10 +16,11 @@ from app.core.rate_limit import limiter
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def _setup_limiter() -> None:
     """Enable the rate limiter for these tests and clean up afterwards.
-    
+
     The global test suite runs with RATE_LIMIT_ENABLED=false (see conftest.py)
     to prevent fast tests from tripping 429s. We turn it on locally here.
     """
@@ -33,6 +34,7 @@ def _setup_limiter() -> None:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_limite_de_login_bloquea_fuerza_bruta(client: AsyncClient) -> None:
@@ -50,16 +52,16 @@ async def test_limite_de_login_bloquea_fuerza_bruta(client: AsyncClient) -> None
 
     # 2. El siguiente request debe exceder el limite y ser interceptado por SlowAPI.
     respuesta_429 = await client.post(url, json=payload)
-    
+
     # 3. Verificamos que es 429
     assert respuesta_429.status_code == 429
-    
+
     # 4. Verificamos que respeta nuestro handler personalizado (RFC 7807)
     cuerpo = respuesta_429.json()
     assert cuerpo["code"] == "rate_limit"
     assert cuerpo["title"] == "Demasiadas solicitudes"
     assert "detail" in cuerpo
-    
+
     # 5. Verificamos que existe el header Retry-After
     assert "Retry-After" in respuesta_429.headers
     assert respuesta_429.headers["Retry-After"].isdigit()
