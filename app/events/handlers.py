@@ -14,7 +14,12 @@ from typing import Any
 from app.core.logging import get_logger
 from app.domain.enums import CategoriaReclamo, PrioridadReclamo
 from app.events import topics
-from app.events.contracts import ContenedorDesbordado, IncidenteCreado, parse_envelope
+from app.events.contracts import (
+    ContenedorDesbordado,
+    EventoCulturalPublicado,
+    IncidenteCreado,
+    parse_envelope,
+)
 from app.schemas.reclamo import ReclamoCrear
 from app.services.reclamo_service import ReclamoService
 
@@ -31,6 +36,9 @@ _SEVERIDAD_A_PRIORIDAD: dict[str, PrioridadReclamo] = {
     "media": PrioridadReclamo.ALTA,
     "medium": PrioridadReclamo.ALTA,
 }
+
+# Reported severities that do not justify reordering the area's claims.
+_SEVERIDADES_QUE_NO_ESCALAN = frozenset({"baja", "low", "menor", "minor"})
 
 
 async def manejar_contenedor_desbordado(raw: dict[str, Any], service: ReclamoService) -> None:
@@ -85,9 +93,18 @@ async def manejar_incidente_creado(raw: dict[str, Any], service: ReclamoService)
     evento = parse_envelope(raw, IncidenteCreado)
     datos = evento.data
 
-    prioridad_minima = _SEVERIDAD_A_PRIORIDAD.get(
-        (datos.severidad or "").lower(), PrioridadReclamo.ALTA
-    )
+    # CU-INT-01: only incidents that cut circulation reorder the area's claims.
+    # A medical emergency concerns one person, not the neighbourhood's potholes.
+    if datos.afecta_circulacion is False:
+        return
+
+    severidad = (datos.severidad or "").lower()
+    # Without this, an unmapped severity falls back to ALTA and a minor
+    # emergency raises the whole neighbourhood.
+    if severidad in _SEVERIDADES_QUE_NO_ESCALAN:
+        return
+
+    prioridad_minima = _SEVERIDAD_A_PRIORIDAD.get(severidad, PrioridadReclamo.ALTA)
     afectados = await service.escalar_por_incidente(
         barrio=datos.barrio,
         prioridad_minima=prioridad_minima,
@@ -104,7 +121,46 @@ async def manejar_incidente_creado(raw: dict[str, Any], service: ReclamoService)
     )
 
 
+# Events this large make the area's open claims (a pothole, a fallen tree)
+# worth attending before the crowd arrives. Smaller ones change nothing.
+CUPO_MINIMO_EVENTO_MASIVO = 100
+
+
+async def manejar_evento_cultural(raw: dict[str, Any], service: ReclamoService) -> None:
+    """`com.citypass.espacios.EventoComunitarioPublicado` -> raise the area's claims.
+
+    CU-INT-01: a large cultural event concentrates people in a known place and
+    time. Open claims in that neighbourhood go up to at least MEDIA, with an
+    official comment saying why. Like the Emergencies handler, raising is
+    idempotent: a redelivery finds the priority already raised and does nothing.
+    """
+    evento = parse_envelope(raw, EventoCulturalPublicado)
+    datos = evento.data
+
+    if (datos.estado or "").upper() == "CANCELLED":
+        return
+
+    if (datos.cupo_maximo or 0) < CUPO_MINIMO_EVENTO_MASIVO:
+        return
+
+    afectados = await service.escalar_por_incidente(
+        barrio=datos.zona,
+        prioridad_minima=PrioridadReclamo.MEDIA,
+        motivo=(
+            f"Prioridad elevada automaticamente: el evento '{datos.titulo}' "
+            f"({datos.inicio:%d/%m %H:%M}, cupo {datos.cupo_maximo}) se hace en la zona."
+        ),
+    )
+    log.info(
+        "handler.evento_cultural.reclamos_escalados",
+        evento_id=datos.evento_id,
+        zona=datos.zona,
+        cantidad=len(afectados),
+    )
+
+
 HANDLERS: dict[str, Handler] = {
     topics.RESIDUOS_CONTENEDOR_DESBORDADO: manejar_contenedor_desbordado,
     topics.EMERGENCIAS_INCIDENTE_CREADO: manejar_incidente_creado,
+    topics.ESPACIOS_EVENTO_PUBLICADO: manejar_evento_cultural,
 }

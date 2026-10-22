@@ -151,8 +151,10 @@ class ReclamoService:
                 usuario_id=ciudadano_id,
             )
         )
-        if ciudadano_id != USUARIO_SISTEMA:
-            await self.notificaciones.por_nuevo_reclamo(reclamo)
+        # Also for claims opened by another module's event: a saturated container
+        # is precisely the one the staff needs to see. `_crear` already skips the
+        # system user and the actor, so nobody notifies themselves.
+        await self.notificaciones.por_nuevo_reclamo(reclamo)
         await self.session.commit()
         await self.session.refresh(reclamo)
 
@@ -228,6 +230,10 @@ class ReclamoService:
                 latitud=reclamo.latitud,
                 longitud=reclamo.longitud,
                 creado_at=reclamo.created_at,
+                canal=reclamo.canal,
+                descripcion=reclamo.descripcion,
+                origen_clasificacion=reclamo.origen_clasificacion,
+                confianza_clasificacion=reclamo.confianza_clasificacion,
             ),
             # Keyed by claim id, which guarantees ordering per aggregate.
             key=str(reclamo.id),

@@ -181,7 +181,9 @@ class ReclamoRepository:
         if filtro.asignado_a:
             stmt = stmt.where(Reclamo.asignado_a == filtro.asignado_a)
         if filtro.barrio:
-            stmt = stmt.where(Reclamo.barrio == filtro.barrio)
+            # Case-insensitive on purpose: other modules send the area however
+            # they store it, and an exact match silently escalated nothing.
+            stmt = stmt.where(func.lower(Reclamo.barrio) == filtro.barrio.strip().lower())
         if filtro.texto:
             patron = f"%{filtro.texto.lower()}%"
             stmt = stmt.where(

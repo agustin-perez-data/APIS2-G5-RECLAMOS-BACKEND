@@ -282,3 +282,119 @@ Todo request HTTP acepta y devuelve el header `X-Correlation-Id` (se genera uno
 si no viene). Ese id se propaga al `correlation_id` de los eventos y se bindea a
 todos los logs estructurados, así una operación se puede seguir de punta a punta
 aunque atraviese varios módulos.
+
+---
+
+## 6. Integración por el gateway de CityPass+ (CU-INT-01)
+
+Entre módulos **no se habla por Kafka**: el Grupo 1 expone un gateway HTTP y es
+por ahí que entran y salen los eventos del caso de uso integrado. Todo lo de las
+secciones 2 y 3 sigue siendo nuestro contrato interno; esta sección es lo que ven
+los otros equipos. El porqué está en el
+[ADR 0009](adr/0009-integracion-por-el-gateway.md).
+
+Diferencias con nuestro contrato interno, para que no sorprendan:
+
+- Los nombres son los del catálogo del gateway: `com.citypass.reclamos.ReclamoCreado`.
+- Los campos van en **camelCase**.
+- Las fechas van en **milisegundos desde epoch** (`long`), no en ISO. Es lo que
+  lee la capa silver de Analítica.
+- Sólo salen **dos** de nuestros seis eventos. El resto no tiene consumidores
+  fuera del módulo.
+
+### Sobre del gateway
+
+El dispatcher agrega la metadata; nosotros mandamos sólo los campos de negocio.
+
+```json
+{
+  "metadata": {
+    "eventId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "eventType": "com.citypass.reclamos.ReclamoCreado",
+    "source": "reclamos",
+    "receivedAt": 1792345678901
+  },
+  "data": { }
+}
+```
+
+### `com.citypass.reclamos.ReclamoCreado`
+
+Se publica al dar de alta un reclamo, venga de un vecino o de un evento de otro
+módulo.
+
+```json
+{
+  "reclamoId": "b1d4e8f2-6a30-4c99-8e71-0f5a2d6c3b84",
+  "ciudadanoId": "U000042",
+  "canal": "APP",
+  "titulo": "Auto estacionado sobre la ciclovia",
+  "descripcion": "Hay un auto arriba de la bicisenda y no se puede pasar",
+  "categoria": "TRANSITO",
+  "prioridad": "ALTA",
+  "origenClasificacion": "CIUDADANO",
+  "confianzaClasificacion": null,
+  "direccion": "Av. Cordoba 4800",
+  "barrio": "Palermo",
+  "latitud": -34.5955,
+  "longitud": -58.4281,
+  "afectaCirculacion": true,
+  "correlationId": "req-7c9e6679",
+  "createdAt": 1792345678901
+}
+```
+
+`afectaCirculacion` es **verdadero para `TRANSITO`, `BACHES` y `ARBOLADO`**. Es
+el campo que usan Movilidad —para no recomendar estaciones cerca de un
+incidente— y Espacios Públicos —para avisar a los inscriptos de un evento
+cercano—. La misma regla se expone en nuestra API como `afecta_circulacion`, así
+que el frontend no necesita reimplementarla.
+
+El campo `objeto_afectado` que suma G5D-425 **no viaja por acá**: el tipo de
+evento del gateway está validado contra un esquema Avro registrado en el catálogo
+del Grupo 1, así que sumarlo hay que acordarlo con ellos. Por ahora vive sólo en
+el contrato interno.
+
+### `com.citypass.reclamos.ReclamoActualizado`
+
+Se publica en cada transición de estado. **La resolución viaja acá**, con
+`estadoNuevo = RESUELTO`: no hay un evento separado.
+
+```json
+{
+  "reclamoId": "b1d4e8f2-6a30-4c99-8e71-0f5a2d6c3b84",
+  "ciudadanoId": "U000042",
+  "estadoAnterior": "EN_PROCESO",
+  "estadoNuevo": "RESUELTO",
+  "motivo": "Se retiro el vehiculo",
+  "asignadoA": "cuadrilla-3",
+  "cambiadoPor": "operador-1",
+  "correlationId": "req-7c9e6679",
+  "updatedAt": 1792349999000
+}
+```
+
+### Lo que recibimos por webhook
+
+`POST /api/v1/webhooks/citypass`. Se autentica con un secreto compartido, por
+cabecera `X-Webhook-Token` (preferido) o por `?token=...`. Las entregas son
+*at-least-once* y los tres handlers son idempotentes.
+
+| Tipo del gateway | Qué hacemos |
+| --- | --- |
+| `com.citypass.residuos.AlertaGenerada` | Si `tipoAlerta = SATURACION`, abre un reclamo de RESIDUOS. Las de incendio se ignoran. |
+| `com.citypass.emergencias.EmergenciaCreada` | Eleva la prioridad de los reclamos abiertos del barrio. No escala si la severidad es baja ni si `afectaCirculacion` es falso. |
+| `com.citypass.espacios.EventoComunitarioPublicado` | Con cupo ≥ 100, eleva a `MEDIA` los reclamos abiertos de la zona. Los `CANCELLED` se ignoran. |
+
+El barrio se compara **sin distinguir mayúsculas**, así que da igual si mandan
+`Palermo`, `PALERMO` o `palermo`.
+
+### Respuestas del webhook
+
+| Código | Cuándo |
+| --- | --- |
+| `204` | Procesado, o de un tipo que no consumimos (se acepta y se ignora). |
+| `400` | Falta `metadata.eventId`, `metadata.eventType` o `data`. |
+| `401` | Secreto ausente o incorrecto. |
+| `429` | Se superó el límite de entregas por minuto. |
+| `500` | Falló el procesamiento. El dispatcher reintenta y después manda a su cola de muertos. |

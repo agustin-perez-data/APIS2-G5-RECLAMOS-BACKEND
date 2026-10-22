@@ -227,6 +227,17 @@ Toda transición fuera de este diagrama devuelve `409 transicion_invalida`.
 | --- | --- |
 | `residuos.contenedor.desbordado` | Alta automática de un reclamo de RESIDUOS. |
 | `emergencias.incidente.creado` | Sube la prioridad de los reclamos abiertos del barrio. |
+| `espacios.evento.publicado` | Un evento cultural con cupo ≥ 100 eleva a MEDIA los reclamos de la zona. |
+
+### Integración con los otros módulos (CU-INT-01)
+
+Entre módulos no se habla por Kafka sino por el **gateway HTTP del Grupo 1**
+(ver [ADR 0009](docs/adr/0009-integracion-por-el-gateway.md)). Con
+`GATEWAY_ENABLED=true`, `GatewayEventPublisher` traduce nuestros eventos a los
+nombres del catálogo del gateway (`com.citypass.reclamos.ReclamoCreado` y
+`ReclamoActualizado`) y las entregas entrantes llegan por webhook a
+`POST /api/v1/webhooks/citypass`, que ejecuta los mismos handlers que el worker.
+Kafka y Redpanda quedan para desarrollo local.
 
 Garantías: *at-least-once* con commit manual del offset, idempotencia por
 `evento_origen_id` (UNIQUE en base) y DLQ (`reclamos.dlq`) para los mensajes que

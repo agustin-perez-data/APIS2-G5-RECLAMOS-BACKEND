@@ -13,6 +13,7 @@ el contexto, las opciones que se evaluaron y por qué se descartaron.
 | [0006](0006-tickets-en-jira.md) | Ticket en Jira por llamada post-commit | Aceptada |
 | [0007](0007-agrupacion-de-reclamos-similares.md) | Agrupación de reclamos similares por sugerencia en línea | Aceptada |
 | [0008](0008-notificaciones-internas.md) | Notificaciones internas escritas en la misma transacción | Aceptada |
+| [0009](0009-integracion-por-el-gateway.md) | Integración con los otros módulos por el gateway de CityPass+ | Aceptada |
 
 ## Cómo agregar uno
 
