@@ -130,6 +130,7 @@ class ReclamoService:
             categoria=categoria,
             prioridad=prioridad,
             estado=estado,
+            objeto_afectado=datos.objeto_afectado,
             origen_clasificacion=origen,
             confianza_clasificacion=confianza,
             canal=datos.canal,
@@ -163,6 +164,7 @@ class ReclamoService:
                 ReclamoClasificado(
                     reclamo_id=reclamo.id,
                     categoria=reclamo.categoria,
+                    objeto_afectado=reclamo.objeto_afectado,
                     prioridad=reclamo.prioridad,
                     confianza=sugerencia.confianza,
                     modelo=sugerencia.modelo,
@@ -221,6 +223,7 @@ class ReclamoService:
                 ciudadano_id=reclamo.ciudadano_id,
                 titulo=reclamo.titulo,
                 categoria=reclamo.categoria,
+                objeto_afectado=reclamo.objeto_afectado,
                 prioridad=reclamo.prioridad,
                 estado=reclamo.estado,
                 barrio=reclamo.barrio,
@@ -311,6 +314,7 @@ class ReclamoService:
                     reclamo_id=reclamo.id,
                     ciudadano_id=reclamo.ciudadano_id,
                     categoria=reclamo.categoria,
+                    objeto_afectado=reclamo.objeto_afectado,
                     resolucion=reclamo.resolucion,
                     horas_hasta_resolucion=round(
                         (reclamo.resuelto_at - reclamo.created_at).total_seconds() / 3600, 2
@@ -349,6 +353,8 @@ class ReclamoService:
             reclamo.categoria = cambio.categoria
         if cambio.prioridad is not None:
             reclamo.prioridad = cambio.prioridad
+        if cambio.objeto_afectado is not None:
+            reclamo.objeto_afectado = cambio.objeto_afectado
         reclamo.origen_clasificacion = OrigenClasificacion.OPERADOR
         reclamo.confianza_clasificacion = None
 
@@ -360,6 +366,7 @@ class ReclamoService:
             ReclamoClasificado(
                 reclamo_id=reclamo.id,
                 categoria=reclamo.categoria,
+                objeto_afectado=reclamo.objeto_afectado,
                 prioridad=reclamo.prioridad,
                 confianza=1.0,
                 modelo="operador",

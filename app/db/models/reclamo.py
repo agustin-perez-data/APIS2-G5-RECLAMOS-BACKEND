@@ -17,6 +17,7 @@ from app.domain.enums import (
     CanalOrigen,
     CategoriaReclamo,
     EstadoReclamo,
+    ObjetoAfectado,
     OrigenClasificacion,
     PrioridadReclamo,
 )
@@ -66,6 +67,11 @@ class Reclamo(Base, TimestampMixin):
     )
     # Classifier confidence in [0, 1] when the model picked the category.
     confianza_clasificacion: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # What the claim is about, orthogonal to the category. Nullable: not every
+    # claim affects an identifiable space, and the citizen may leave it out.
+    objeto_afectado: Mapped[ObjetoAfectado | None] = mapped_column(
+        enum_column(ObjetoAfectado, "objeto_afectado"), nullable=True, index=True
+    )
 
     # --- Location ------------------------------------------------------------
     direccion: Mapped[str | None] = mapped_column(String(255), nullable=True)

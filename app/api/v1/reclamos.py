@@ -237,10 +237,11 @@ async def cambiar_estado(
 @router.patch(
     "/{reclamo_id}/clasificacion",
     response_model=ReclamoOut,
-    summary="Corregir categoria y/o prioridad de un reclamo (operador/admin)",
+    summary="Corregir la clasificacion de un reclamo (operador/admin)",
     description=(
-        "Para cuando el modelo o el ciudadano clasificaron mal. No cambia el "
-        "estado del reclamo; publica `reclamos.reclamo.clasificado` de nuevo."
+        "Corrige categoria, prioridad y/o objeto afectado, para cuando el modelo "
+        "o el ciudadano clasificaron mal. No cambia el estado del reclamo; "
+        "publica `reclamos.reclamo.clasificado` de nuevo."
     ),
 )
 async def reclasificar(

@@ -11,6 +11,7 @@ from app.domain.enums import (
     CanalOrigen,
     CategoriaReclamo,
     EstadoReclamo,
+    ObjetoAfectado,
     OrigenClasificacion,
     PrioridadReclamo,
 )
@@ -23,6 +24,8 @@ class ReclamoCrear(BaseModel):
     # Left out, the classifier fills them in (see `app/services/clasificador.py`).
     categoria: CategoriaReclamo | None = None
     prioridad: PrioridadReclamo | None = None
+    # Chosen by the citizen; the classifier does not infer it (no corpus for it).
+    objeto_afectado: ObjetoAfectado | None = None
     direccion: str | None = Field(default=None, max_length=255)
     barrio: str | None = Field(default=None, max_length=120)
     latitud: float | None = Field(default=None, ge=-90, le=90)
@@ -91,11 +94,12 @@ class ReclasificacionPedido(BaseModel):
 
     categoria: CategoriaReclamo | None = None
     prioridad: PrioridadReclamo | None = None
+    objeto_afectado: ObjetoAfectado | None = None
 
     @model_validator(mode="after")
     def _al_menos_un_campo(self) -> ReclasificacionPedido:
-        if self.categoria is None and self.prioridad is None:
-            raise ValueError("Debe enviar categoria y/o prioridad")
+        if self.categoria is None and self.prioridad is None and self.objeto_afectado is None:
+            raise ValueError("Debe enviar categoria, prioridad y/o objeto afectado")
         return self
 
 
@@ -172,6 +176,7 @@ class ReclamoOut(BaseModel):
     estado: EstadoReclamo
     origen_clasificacion: OrigenClasificacion
     confianza_clasificacion: float | None
+    objeto_afectado: ObjetoAfectado | None
     canal: CanalOrigen
     direccion: str | None
     barrio: str | None
