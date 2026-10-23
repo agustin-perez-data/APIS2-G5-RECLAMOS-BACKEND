@@ -85,10 +85,9 @@ reclamos afectan un espacio identificable.
 
 ### `reclamos.reclamo.clasificado` — v1.0
 
-Solo cuando la categoría la decidió el modelo, y además cada vez que un operador
-corrige la clasificación. Sirve para medir la calidad del clasificador y para que
-Analítica compare sugerencia vs. corrección manual. Si el operador corrige el
-`objeto_afectado`, el valor nuevo sale por acá.
+Sólo cuando la categoría la decidió **el modelo**. Sirve para medir la calidad del
+clasificador. Si quien corrige es un operador, el evento es
+`reclamos.reclamo.reclasificado`, no éste (ver ADR 0010).
 
 ```json
 {
@@ -101,6 +100,36 @@ Analítica compare sugerencia vs. corrección manual. Si el operador corrige el
     "confianza": 0.8134,
     "modelo": "naive-bayes-corpus-v1",
     "evidencia": ["luminaria", "poste", "apagada"]
+  }
+}
+```
+
+### `reclamos.reclamo.reclasificado` — v1.0
+
+Un **operador** corrigió la clasificación. Lleva el par anterior/nuevo de las tres
+cosas que una reclasificación puede cambiar, porque quien consumió la clasificación
+vieja necesita saber qué deshacer: Residuos libera un contenedor cuando un reclamo
+deja de ser `TRANSITO`.
+
+```json
+{
+  "event_type": "reclamos.reclamo.reclasificado",
+  "data": {
+    "reclamo_id": "6f1c9a4e-...",
+    "ciudadano_id": "U000042",
+    "categoria_anterior": "RUIDOS",
+    "categoria_nueva": "TRANSITO",
+    "prioridad_anterior": "BAJA",
+    "prioridad_nueva": "ALTA",
+    "objeto_afectado_anterior": null,
+    "objeto_afectado_nuevo": "CICLOVIA",
+    "titulo": "Auto estacionado sobre la ciclovia",
+    "descripcion": "Hay un auto arriba de la bicisenda y no se puede pasar",
+    "barrio": "Palermo",
+    "latitud": -34.5955,
+    "longitud": -58.4281,
+    "reclasificado_por": "operador-1",
+    "reclasificado_at": "2026-10-22T20:31:04.120Z"
   }
 }
 ```
@@ -319,8 +348,8 @@ Diferencias con nuestro contrato interno, para que no sorprendan:
 - Los campos van en **camelCase**.
 - Las fechas van en **milisegundos desde epoch** (`long`), no en ISO. Es lo que
   lee la capa silver de Analítica.
-- Sólo salen **dos** de nuestros seis eventos. El resto no tiene consumidores
-  fuera del módulo.
+- Salen **tres** de nuestros siete eventos. El resto no tiene consumidores fuera
+  del módulo.
 
 ### Sobre del gateway
 
@@ -393,6 +422,43 @@ Se publica en cada transición de estado. **La resolución viaja acá**, con
   "updatedAt": 1792349999000
 }
 ```
+
+### `com.citypass.reclamos.ReclamoReclasificado`
+
+Se publica cuando un operador corrige la clasificación. Es el evento que cierra el
+hueco que detectaron Emergencias y Residuos: una reclasificación no cambia el estado
+del reclamo, así que no genera un `ReclamoActualizado` y hasta ahora no salía nada.
+
+```json
+{
+  "reclamoId": "b1d4e8f2-6a30-4c99-8e71-0f5a2d6c3b84",
+  "ciudadanoId": "U000042",
+  "categoriaAnterior": "RUIDOS",
+  "categoriaNueva": "TRANSITO",
+  "prioridadAnterior": "BAJA",
+  "prioridadNueva": "ALTA",
+  "objetoAfectadoAnterior": null,
+  "objetoAfectadoNuevo": "CICLOVIA",
+  "afectaCirculacionAnterior": false,
+  "afectaCirculacionNueva": true,
+  "titulo": "Auto estacionado sobre la ciclovia",
+  "descripcion": "Hay un auto arriba de la bicisenda y no se puede pasar",
+  "barrio": "Palermo",
+  "latitud": -34.5955,
+  "longitud": -58.4281,
+  "reclasificadoPor": "operador-1",
+  "correlationId": "req-7c9e6679",
+  "reclasificadoAt": 1792349999000
+}
+```
+
+`afectaCirculacionAnterior` y `afectaCirculacionNueva` van calculadas de la categoría,
+igual que en `ReclamoCreado`, para que nadie tenga que reimplementar la regla sólo
+para saber si el reclamo pasó a importarle.
+
+**Este evento depende de que el Grupo 1 lo registre en el catálogo.** Hasta entonces
+el gateway lo rechaza, nosotros lo logueamos y seguimos: no rompe nada, pero tampoco
+llega.
 
 ### Lo que recibimos por webhook
 

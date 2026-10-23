@@ -91,6 +91,32 @@ class ReclamoClasificado(BaseModel):
     evidencia: list[str] = Field(default_factory=list)
 
 
+class ReclamoReclasificado(BaseModel):
+    """An operator corrected the classification of a claim.
+
+    Separate from `ReclamoClasificado`, which describes what the model decided
+    and carries its confidence, name and evidence. A human correction has none
+    of that, and consumers need the previous value to undo what they did with
+    the old one: Waste frees a container when a claim stops being TRANSITO.
+    """
+
+    reclamo_id: uuid.UUID
+    ciudadano_id: str
+    categoria_anterior: CategoriaReclamo
+    categoria_nueva: CategoriaReclamo
+    prioridad_anterior: PrioridadReclamo
+    prioridad_nueva: PrioridadReclamo
+    objeto_afectado_anterior: ObjetoAfectado | None = None
+    objeto_afectado_nuevo: ObjetoAfectado | None = None
+    titulo: str
+    descripcion: str
+    barrio: str | None = None
+    latitud: float | None = None
+    longitud: float | None = None
+    reclasificado_por: str
+    reclasificado_at: datetime
+
+
 class ReclamoEstadoCambiado(BaseModel):
     reclamo_id: uuid.UUID
     ciudadano_id: str

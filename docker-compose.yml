@@ -35,6 +35,7 @@ services:
       - |
         for t in reclamos.reclamo.creado \
                  reclamos.reclamo.clasificado \
+                 reclamos.reclamo.reclasificado \
                  reclamos.reclamo.estado-cambiado \
                  reclamos.reclamo.resuelto \
                  reclamos.reclamo.adherido \

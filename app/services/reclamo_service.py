@@ -51,6 +51,7 @@ from app.events.contracts import (
     ReclamoComentarioCreado,
     ReclamoCreado,
     ReclamoEstadoCambiado,
+    ReclamoReclasificado,
     ReclamoResuelto,
 )
 from app.events.producer import EventPublisher
@@ -355,6 +356,10 @@ class ReclamoService:
                 f"El reclamo esta en estado {reclamo.estado.value} y no admite reclasificacion"
             )
 
+        categoria_anterior = reclamo.categoria
+        prioridad_anterior = reclamo.prioridad
+        objeto_anterior = reclamo.objeto_afectado
+
         if cambio.categoria is not None:
             reclamo.categoria = cambio.categoria
         if cambio.prioridad is not None:
@@ -367,16 +372,28 @@ class ReclamoService:
         await self.session.commit()
         await self.session.refresh(reclamo)
 
+        # Not ReclamoClasificado: that one describes what the model decided and
+        # would force us to fill its confidence, name and evidence with made-up
+        # values. Consumers also need the previous classification to undo what
+        # they did with the old one.
         await self.publisher.publish(
-            topics.RECLAMO_CLASIFICADO,
-            ReclamoClasificado(
+            topics.RECLAMO_RECLASIFICADO,
+            ReclamoReclasificado(
                 reclamo_id=reclamo.id,
-                categoria=reclamo.categoria,
-                objeto_afectado=reclamo.objeto_afectado,
-                prioridad=reclamo.prioridad,
-                confianza=1.0,
-                modelo="operador",
-                evidencia=[],
+                ciudadano_id=reclamo.ciudadano_id,
+                categoria_anterior=categoria_anterior,
+                categoria_nueva=reclamo.categoria,
+                prioridad_anterior=prioridad_anterior,
+                prioridad_nueva=reclamo.prioridad,
+                objeto_afectado_anterior=objeto_anterior,
+                objeto_afectado_nuevo=reclamo.objeto_afectado,
+                titulo=reclamo.titulo,
+                descripcion=reclamo.descripcion,
+                barrio=reclamo.barrio,
+                latitud=reclamo.latitud,
+                longitud=reclamo.longitud,
+                reclasificado_por=actor.id,
+                reclasificado_at=reclamo.updated_at,
             ),
             key=str(reclamo.id),
             correlation_id=reclamo.correlation_id,

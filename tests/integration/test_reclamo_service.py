@@ -194,9 +194,35 @@ async def test_reclasificar_actualiza_datos_y_publica_evento(
     assert actualizado.prioridad is PrioridadReclamo.ALTA
     assert actualizado.origen_clasificacion is OrigenClasificacion.OPERADOR
 
-    clasificados = publisher.eventos_de(topics.RECLAMO_CLASIFICADO)
-    assert len(clasificados) == 2  # one from `crear`, one from the reclassification
-    assert clasificados[-1].data.categoria is CategoriaReclamo.BACHES
+    # Only the one from `crear`: an operator correction is not a classification
+    # by the model, it goes out as reclamos.reclamo.reclasificado.
+    assert len(publisher.eventos_de(topics.RECLAMO_CLASIFICADO)) == 1
+    [reclasificado] = publisher.eventos_de(topics.RECLAMO_RECLASIFICADO)
+    assert reclasificado.data.categoria_nueva is CategoriaReclamo.BACHES
+
+
+async def test_reclasificar_publica_el_evento_con_los_valores_anteriores(
+    service: ReclamoService, publisher: InMemoryEventPublisher, usuario_operador
+) -> None:
+    # Waste and Mobility need the before/after pair: a claim that stops being
+    # TRANSITO has to free the container it was blocking.
+    reclamo = await service.crear(
+        datos_reclamo(categoria=CategoriaReclamo.RUIDOS, prioridad=PrioridadReclamo.BAJA),
+        CIUDADANO_ID,
+    )
+
+    await service.reclasificar(
+        reclamo.id,
+        ReclasificacionPedido(categoria=CategoriaReclamo.BACHES, prioridad=PrioridadReclamo.ALTA),
+        usuario_operador,
+    )
+
+    [evento] = publisher.eventos_de(topics.RECLAMO_RECLASIFICADO)
+    assert evento.data.categoria_anterior is CategoriaReclamo.RUIDOS
+    assert evento.data.categoria_nueva is CategoriaReclamo.BACHES
+    assert evento.data.prioridad_anterior is PrioridadReclamo.BAJA
+    assert evento.data.prioridad_nueva is PrioridadReclamo.ALTA
+    assert evento.data.reclasificado_por == usuario_operador.id
 
 
 async def test_reclasificar_corrige_el_objeto_afectado(
@@ -216,8 +242,9 @@ async def test_reclasificar_corrige_el_objeto_afectado(
 
     assert actualizado.objeto_afectado is ObjetoAfectado.CICLOVIA
 
-    clasificados = publisher.eventos_de(topics.RECLAMO_CLASIFICADO)
-    assert clasificados[-1].data.objeto_afectado is ObjetoAfectado.CICLOVIA
+    [reclasificado] = publisher.eventos_de(topics.RECLAMO_RECLASIFICADO)
+    assert reclasificado.data.objeto_afectado_anterior is ObjetoAfectado.CALZADA
+    assert reclasificado.data.objeto_afectado_nuevo is ObjetoAfectado.CICLOVIA
 
 
 async def test_reclasificar_un_reclamo_cerrado_es_rechazada(

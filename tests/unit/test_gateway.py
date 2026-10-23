@@ -17,6 +17,7 @@ from app.events.contracts import (
     ReclamoComentarioCreado,
     ReclamoCreado,
     ReclamoEstadoCambiado,
+    ReclamoReclasificado,
 )
 from app.events.gateway import GatewayEventPublisher, traducir
 
@@ -94,6 +95,37 @@ def test_cambio_de_estado_sale_como_reclamo_actualizado() -> None:
     assert datos["estadoNuevo"] == "RESUELTO"
     assert datos["estadoAnterior"] == "EN_PROCESO"
     assert datos["updatedAt"] == int(CREADO_AT.timestamp() * 1000)
+
+
+def test_la_reclasificacion_sale_con_afecta_circulacion_antes_y_despues() -> None:
+    # The flag is what Mobility, Emergencies and Waste actually act on, so we
+    # send it computed instead of making each of them derive it again.
+    sobre = EventEnvelope(
+        event_type=topics.RECLAMO_RECLASIFICADO,
+        correlation_id="corr-1",
+        data=ReclamoReclasificado(
+            reclamo_id=uuid.uuid4(),
+            ciudadano_id="U000042",
+            categoria_anterior=CategoriaReclamo.RUIDOS,
+            categoria_nueva=CategoriaReclamo.TRANSITO,
+            prioridad_anterior=PrioridadReclamo.BAJA,
+            prioridad_nueva=PrioridadReclamo.ALTA,
+            titulo="Auto sobre la vereda",
+            descripcion="Hay un vehiculo arriba de la vereda hace dos dias",
+            reclasificado_por="operador-1",
+            reclasificado_at=CREADO_AT,
+        ),
+    )
+
+    nombre, datos = traducir(topics.RECLAMO_RECLASIFICADO, sobre)
+
+    assert nombre == "ReclamoReclasificado"
+    assert datos["categoriaAnterior"] == "RUIDOS"
+    assert datos["categoriaNueva"] == "TRANSITO"
+    assert datos["afectaCirculacionAnterior"] is False
+    assert datos["afectaCirculacionNueva"] is True
+    assert datos["correlationId"] == "corr-1"
+    assert datos["reclasificadoAt"] == int(CREADO_AT.timestamp() * 1000)
 
 
 def test_los_eventos_internos_no_salen_al_gateway() -> None:

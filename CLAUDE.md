@@ -256,6 +256,7 @@ supere al anterior:
 | 0007 | Reclamos similares: filtros + TF-IDF + cercanía, sugeridos en línea |
 | 0008 | Notificaciones internas en la misma transacción, no por el bus |
 | 0009 | Integración con los otros módulos por el gateway HTTP del Grupo 1 |
+| 0010 | Las reclasificaciones salen con evento propio, no como `clasificado` |
 
 ---
 
