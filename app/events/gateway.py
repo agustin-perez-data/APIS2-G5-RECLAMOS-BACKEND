@@ -8,6 +8,7 @@ gateway's event types, whose names and fields are the cross-team contract
 
     reclamos.reclamo.creado          -> com.citypass.reclamos.ReclamoCreado
     reclamos.reclamo.estado-cambiado -> com.citypass.reclamos.ReclamoActualizado
+    reclamos.reclamo.reclasificado   -> com.citypass.reclamos.ReclamoReclasificado
 
 Every other internal event (classified, resolved, commented...) has no
 consumer outside the module, so it is not sent. "Resolved" travels inside
@@ -19,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import time
 from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 import httpx
@@ -27,7 +29,12 @@ from app.core.config import Settings, settings
 from app.core.logging import get_logger
 from app.domain.enums import CATEGORIAS_QUE_AFECTAN_CIRCULACION, CategoriaReclamo
 from app.events import topics
-from app.events.contracts import EventEnvelope, ReclamoCreado, ReclamoEstadoCambiado
+from app.events.contracts import (
+    EventEnvelope,
+    ReclamoCreado,
+    ReclamoEstadoCambiado,
+    ReclamoReclasificado,
+)
 from app.events.producer import EventPublisher
 
 log = get_logger(__name__)
@@ -41,6 +48,10 @@ _ESPERA_BASE_SEGUNDOS = 0.5
 
 def _epoch_ms(momento: datetime) -> int:
     return int(momento.timestamp() * 1000)
+
+
+def _valor(miembro: StrEnum | None) -> str | None:
+    return str(miembro) if miembro is not None else None
 
 
 def traducir(topic: str, envelope: EventEnvelope) -> tuple[str, dict[str, Any]] | None:
@@ -66,6 +77,31 @@ def traducir(topic: str, envelope: EventEnvelope) -> tuple[str, dict[str, Any]] 
             in CATEGORIAS_QUE_AFECTAN_CIRCULACION,
             "correlationId": envelope.correlation_id,
             "createdAt": _epoch_ms(data.creado_at),
+        }
+
+    if topic == topics.RECLAMO_RECLASIFICADO and isinstance(data, ReclamoReclasificado):
+        return "ReclamoReclasificado", {
+            "reclamoId": str(data.reclamo_id),
+            "ciudadanoId": data.ciudadano_id,
+            "categoriaAnterior": str(data.categoria_anterior),
+            "categoriaNueva": str(data.categoria_nueva),
+            "prioridadAnterior": str(data.prioridad_anterior),
+            "prioridadNueva": str(data.prioridad_nueva),
+            "objetoAfectadoAnterior": _valor(data.objeto_afectado_anterior),
+            "objetoAfectadoNuevo": _valor(data.objeto_afectado_nuevo),
+            # Sent computed so Mobility, Emergencies and Waste do not each have
+            # to reimplement the rule to know whether the claim now matters.
+            "afectaCirculacionAnterior": data.categoria_anterior
+            in CATEGORIAS_QUE_AFECTAN_CIRCULACION,
+            "afectaCirculacionNueva": data.categoria_nueva in CATEGORIAS_QUE_AFECTAN_CIRCULACION,
+            "titulo": data.titulo,
+            "descripcion": data.descripcion,
+            "barrio": data.barrio,
+            "latitud": data.latitud,
+            "longitud": data.longitud,
+            "reclasificadoPor": data.reclasificado_por,
+            "correlationId": envelope.correlation_id,
+            "reclasificadoAt": _epoch_ms(data.reclasificado_at),
         }
 
     if topic == topics.RECLAMO_ESTADO_CAMBIADO and isinstance(data, ReclamoEstadoCambiado):

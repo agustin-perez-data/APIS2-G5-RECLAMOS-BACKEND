@@ -218,8 +218,12 @@ Toda transición fuera de este diagrama devuelve `409 transicion_invalida`.
 **Publicamos** (key = id del reclamo, para conservar el orden por agregado):
 
 `reclamos.reclamo.creado` · `reclamos.reclamo.clasificado` ·
-`reclamos.reclamo.estado-cambiado` · `reclamos.reclamo.resuelto` ·
-`reclamos.reclamo.adherido` · `reclamos.reclamo.comentario-creado`
+`reclamos.reclamo.reclasificado` · `reclamos.reclamo.estado-cambiado` ·
+`reclamos.reclamo.resuelto` · `reclamos.reclamo.adherido` ·
+`reclamos.reclamo.comentario-creado`
+
+`clasificado` es lo que decidió el modelo; `reclasificado`, la corrección de un
+operador, con el par anterior/nuevo (ver [ADR 0010](docs/adr/0010-propagacion-de-reclasificaciones.md)).
 
 **Consumimos:**
 

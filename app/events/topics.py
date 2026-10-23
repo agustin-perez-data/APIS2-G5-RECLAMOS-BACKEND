@@ -11,6 +11,7 @@ from __future__ import annotations
 # --- Published by this module ------------------------------------------------
 RECLAMO_CREADO = "reclamos.reclamo.creado"
 RECLAMO_CLASIFICADO = "reclamos.reclamo.clasificado"
+RECLAMO_RECLASIFICADO = "reclamos.reclamo.reclasificado"
 RECLAMO_ESTADO_CAMBIADO = "reclamos.reclamo.estado-cambiado"
 RECLAMO_RESUELTO = "reclamos.reclamo.resuelto"
 RECLAMO_ADHERIDO = "reclamos.reclamo.adherido"
@@ -36,6 +37,7 @@ GATEWAY_A_TOPIC: dict[str, str] = {
 PUBLICADOS: tuple[str, ...] = (
     RECLAMO_CREADO,
     RECLAMO_CLASIFICADO,
+    RECLAMO_RECLASIFICADO,
     RECLAMO_ESTADO_CAMBIADO,
     RECLAMO_RESUELTO,
     RECLAMO_ADHERIDO,
