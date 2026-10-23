@@ -39,6 +39,25 @@ class CategoriaReclamo(StrEnum):
     OTROS = "OTROS"
 
 
+class ObjetoAfectado(StrEnum):
+    """Urban space or asset the claim is about.
+
+    Orthogonal to `CategoriaReclamo`: the category says what happened, this says
+    what it happened to. A car blocking a bike lane and a pothole on one are
+    TRANSITO and BACHES respectively, but both are CICLOVIA, which is what lets
+    the mobility module subscribe once instead of tracking every category.
+    """
+
+    CICLOVIA = "CICLOVIA"
+    CALZADA = "CALZADA"
+    VEREDA = "VEREDA"
+    SENDA_PEATONAL = "SENDA_PEATONAL"
+    PLAZA_PARQUE = "PLAZA_PARQUE"
+    MOBILIARIO_URBANO = "MOBILIARIO_URBANO"
+    EDIFICIO_PUBLICO = "EDIFICIO_PUBLICO"
+    OTRO = "OTRO"
+
+
 class OrigenClasificacion(StrEnum):
     """Who decided the claim's category and priority."""
 

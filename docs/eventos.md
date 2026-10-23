@@ -15,6 +15,10 @@ pasado. Ej.: `reclamos.reclamo.estado-cambiado`.
 **Key del mensaje:** siempre el `id` del reclamo. Garantiza que todos los
 eventos del mismo reclamo caigan en la misma partición y conserven el orden.
 
+**Identidad:** `ciudadano_id` es el claim `sub` del token que emite el Grupo 2
+(ej. `U000042`), el mismo identificador estable que cada módulo recibe en su
+propio token. No es un id interno nuestro: se puede cruzar directamente.
+
 **Formato:** JSON UTF-8. Headers de Kafka: `event_type`, `event_version`,
 `source`, `content-type`, y `correlation_id` cuando existe.
 
@@ -51,14 +55,23 @@ También aceptamos el envelope al estilo **CloudEvents** (`id`, `type`, `time`,
 
 Un vecino (o un evento de otro módulo) registró un reclamo.
 
+`objeto_afectado` es el **espacio urbano sobre el que es el reclamo**, un eje
+independiente de `categoria`: la categoría dice *qué pasó* y éste dice *sobre
+qué*. Un auto sobre una bicisenda es `TRANSITO` y un pozo en esa misma bicisenda
+es `BACHES`, pero los dos son `CICLOVIA`, así que quien se ocupa de ciclovías se
+suscribe a un solo valor en vez de seguir todas las categorías. **Es opcional y
+puede venir en `null`**: lo elige el vecino al cargar el reclamo y no todos los
+reclamos afectan un espacio identificable.
+
 ```json
 {
   "event_type": "reclamos.reclamo.creado",
   "data": {
     "reclamo_id": "6f1c9a4e-3c2b-4a5d-9e11-2b7d5c8a1f30",
-    "ciudadano_id": "auth0|65f2c1...",
+    "ciudadano_id": "U000042",
     "titulo": "Luminaria apagada en la plaza",
     "categoria": "ALUMBRADO",
+    "objeto_afectado": "PLAZA_PARQUE",
     "prioridad": "MEDIA",
     "estado": "RECIBIDO",
     "barrio": "Centro",
@@ -72,8 +85,10 @@ Un vecino (o un evento de otro módulo) registró un reclamo.
 
 ### `reclamos.reclamo.clasificado` — v1.0
 
-Solo cuando la categoría la decidió el modelo. Sirve para medir la calidad de la
-clasificación y para que Analítica compare sugerencia vs. corrección manual.
+Solo cuando la categoría la decidió el modelo, y además cada vez que un operador
+corrige la clasificación. Sirve para medir la calidad del clasificador y para que
+Analítica compare sugerencia vs. corrección manual. Si el operador corrige el
+`objeto_afectado`, el valor nuevo sale por acá.
 
 ```json
 {
@@ -81,6 +96,7 @@ clasificación y para que Analítica compare sugerencia vs. corrección manual.
   "data": {
     "reclamo_id": "6f1c9a4e-...",
     "categoria": "ALUMBRADO",
+    "objeto_afectado": "PLAZA_PARQUE",
     "prioridad": "MEDIA",
     "confianza": 0.8134,
     "modelo": "naive-bayes-corpus-v1",
@@ -96,7 +112,7 @@ clasificación y para que Analítica compare sugerencia vs. corrección manual.
   "event_type": "reclamos.reclamo.estado-cambiado",
   "data": {
     "reclamo_id": "6f1c9a4e-...",
-    "ciudadano_id": "auth0|65f2c1...",
+    "ciudadano_id": "U000042",
     "estado_anterior": "ASIGNADO",
     "estado_nuevo": "EN_PROCESO",
     "motivo": "cuadrilla en camino",
@@ -121,8 +137,9 @@ Analítica y trae la métrica de gestión ya calculada.
   "event_type": "reclamos.reclamo.resuelto",
   "data": {
     "reclamo_id": "6f1c9a4e-...",
-    "ciudadano_id": "auth0|65f2c1...",
+    "ciudadano_id": "U000042",
     "categoria": "ALUMBRADO",
+    "objeto_afectado": "PLAZA_PARQUE",
     "resolucion": "Se reemplazo la luminaria",
     "horas_hasta_resolucion": 42.75,
     "resuelto_at": "2026-08-15T08:59:12.000Z"
@@ -159,7 +176,7 @@ sistema (cuando un incidente de Emergencias sube la prioridad).
   "data": {
     "comentario_id": "3a9d0c1e-5b7f-4e2a-8c6d-1f0e9b8a7c65",
     "reclamo_id": "6f1c9a4e-...",
-    "ciudadano_id": "auth0|65f2c1...",
+    "ciudadano_id": "U000042",
     "autor_id": "operador-014",
     "autor_nombre": "Operador Municipal",
     "es_oficial": true,
@@ -271,6 +288,9 @@ contrato.
 - **Categoría:** `ALUMBRADO` · `BACHES` · `RESIDUOS` · `ARBOLADO` ·
   `AGUA_CLOACAS` · `TRANSITO` · `RUIDOS` · `ESPACIOS_PUBLICOS` · `SEGURIDAD` ·
   `OTROS`
+- **Objeto afectado:** `CICLOVIA` · `CALZADA` · `VEREDA` · `SENDA_PEATONAL` ·
+  `PLAZA_PARQUE` · `MOBILIARIO_URBANO` · `EDIFICIO_PUBLICO` · `OTRO`
+  (opcional: puede venir en `null`)
 - **Canal:** `APP` · `WEB` · `TELEFONO` · `PRESENCIAL` · `EVENTO`
 - **Origen de clasificación:** `CIUDADANO` · `MODELO` · `OPERADOR`
 

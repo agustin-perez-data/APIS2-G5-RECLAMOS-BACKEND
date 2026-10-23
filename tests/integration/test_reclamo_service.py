@@ -19,6 +19,7 @@ from app.domain.enums import (
     CanalOrigen,
     CategoriaReclamo,
     EstadoReclamo,
+    ObjetoAfectado,
     OrigenClasificacion,
     PrioridadReclamo,
 )
@@ -54,6 +55,26 @@ async def test_crear_clasifica_y_publica_dos_eventos(
     creado = publisher.eventos_de(topics.RECLAMO_CREADO)[0]
     assert creado.data.reclamo_id == reclamo.id
     assert creado.source == settings.service_source
+
+
+async def test_crear_propaga_el_objeto_afectado_al_evento(
+    service: ReclamoService, publisher: InMemoryEventPublisher
+) -> None:
+    # Movilidad filters by the urban space affected, not by category: a car on a
+    # bike lane and a broken traffic light are both TRANSITO.
+    reclamo = await service.crear(
+        datos_reclamo(
+            titulo="Auto estacionado sobre la ciclovia",
+            descripcion="Hay un auto arriba de la bicisenda y no se puede pasar en bici",
+            objeto_afectado=ObjetoAfectado.CICLOVIA,
+        ),
+        CIUDADANO_ID,
+    )
+
+    assert reclamo.objeto_afectado is ObjetoAfectado.CICLOVIA
+
+    creado = publisher.eventos_de(topics.RECLAMO_CREADO)[0]
+    assert creado.data.objeto_afectado is ObjetoAfectado.CICLOVIA
 
 
 async def test_si_el_ciudadano_clasifica_no_se_publica_clasificado(
@@ -130,6 +151,20 @@ async def test_flujo_completo_hasta_resuelto_publica_evento_de_resolucion(
     assert len(historial) == 4  # alta + tres cambios
 
 
+async def test_el_evento_de_resolucion_lleva_el_objeto_afectado(
+    service: ReclamoService, publisher: InMemoryEventPublisher, usuario_operador
+) -> None:
+    # Analitica Urbana measures resolution times per affected space.
+    reclamo = await service.crear(
+        datos_reclamo(objeto_afectado=ObjetoAfectado.CICLOVIA), CIUDADANO_ID
+    )
+    for estado in (EstadoReclamo.ASIGNADO, EstadoReclamo.EN_PROCESO, EstadoReclamo.RESUELTO):
+        await service.cambiar_estado(reclamo.id, CambioEstado(estado=estado), usuario_operador)
+
+    resuelto = publisher.eventos_de(topics.RECLAMO_RESUELTO)[0]
+    assert resuelto.data.objeto_afectado is ObjetoAfectado.CICLOVIA
+
+
 async def test_el_evento_de_estado_lleva_la_key_del_agregado(
     service: ReclamoService, publisher: InMemoryEventPublisher, usuario_operador
 ) -> None:
@@ -162,6 +197,27 @@ async def test_reclasificar_actualiza_datos_y_publica_evento(
     clasificados = publisher.eventos_de(topics.RECLAMO_CLASIFICADO)
     assert len(clasificados) == 2  # one from `crear`, one from the reclassification
     assert clasificados[-1].data.categoria is CategoriaReclamo.BACHES
+
+
+async def test_reclasificar_corrige_el_objeto_afectado(
+    service: ReclamoService, publisher: InMemoryEventPublisher, usuario_operador
+) -> None:
+    # The citizen can pick the wrong space; the operator fixes it and the
+    # correction travels so the consuming modules can filter again.
+    reclamo = await service.crear(
+        datos_reclamo(objeto_afectado=ObjetoAfectado.CALZADA), CIUDADANO_ID
+    )
+
+    actualizado = await service.reclasificar(
+        reclamo.id,
+        ReclasificacionPedido(objeto_afectado=ObjetoAfectado.CICLOVIA),
+        usuario_operador,
+    )
+
+    assert actualizado.objeto_afectado is ObjetoAfectado.CICLOVIA
+
+    clasificados = publisher.eventos_de(topics.RECLAMO_CLASIFICADO)
+    assert clasificados[-1].data.objeto_afectado is ObjetoAfectado.CICLOVIA
 
 
 async def test_reclasificar_un_reclamo_cerrado_es_rechazada(

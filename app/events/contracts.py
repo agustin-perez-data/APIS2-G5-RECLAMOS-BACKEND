@@ -17,7 +17,12 @@ from typing import Any, Generic, TypeVar
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
-from app.domain.enums import CategoriaReclamo, EstadoReclamo, PrioridadReclamo
+from app.domain.enums import (
+    CategoriaReclamo,
+    EstadoReclamo,
+    ObjetoAfectado,
+    PrioridadReclamo,
+)
 
 TPayload = TypeVar("TPayload", bound=BaseModel)
 
@@ -59,6 +64,8 @@ class ReclamoCreado(BaseModel):
     ciudadano_id: str
     titulo: str
     categoria: CategoriaReclamo
+    # Optional addition: consumers that ignore it keep working, so no version bump.
+    objeto_afectado: ObjetoAfectado | None = None
     prioridad: PrioridadReclamo
     estado: EstadoReclamo
     barrio: str | None = None
@@ -71,6 +78,7 @@ class ReclamoCreado(BaseModel):
 class ReclamoClasificado(BaseModel):
     reclamo_id: uuid.UUID
     categoria: CategoriaReclamo
+    objeto_afectado: ObjetoAfectado | None = None
     prioridad: PrioridadReclamo
     confianza: float
     modelo: str
@@ -92,6 +100,7 @@ class ReclamoResuelto(BaseModel):
     reclamo_id: uuid.UUID
     ciudadano_id: str
     categoria: CategoriaReclamo
+    objeto_afectado: ObjetoAfectado | None = None
     resolucion: str | None = None
     # Metric Group 8 needs for the management dashboards.
     horas_hasta_resolucion: float
