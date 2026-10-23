@@ -73,6 +73,12 @@ class ReclamoCreado(BaseModel):
     latitud: float | None = None
     longitud: float | None = None
     creado_at: datetime
+    # Added for CU-INT-01 (optional, so the contract version stays at 1.0).
+    # Analytics needs them in its silver layer.
+    canal: str | None = None
+    descripcion: str | None = None
+    origen_clasificacion: str | None = None
+    confianza_clasificacion: float | None = None
 
 
 class ReclamoClasificado(BaseModel):
@@ -138,7 +144,8 @@ class ContenedorDesbordado(BaseModel):
         default=None, validation_alias=AliasChoices("nivel_llenado", "nivelLlenado", "nivel")
     )
     direccion: str | None = None
-    barrio: str | None = None
+    # Waste publishes the zone where the container sits as `zona`.
+    barrio: str | None = Field(default=None, validation_alias=AliasChoices("barrio", "zona"))
     latitud: float | None = Field(default=None, validation_alias=AliasChoices("latitud", "lat"))
     longitud: float | None = Field(
         default=None, validation_alias=AliasChoices("longitud", "lng", "lon")
@@ -148,15 +155,38 @@ class ContenedorDesbordado(BaseModel):
 class IncidenteCreado(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    incidente_id: str = Field(validation_alias=AliasChoices("incidente_id", "incidenteId", "id"))
-    tipo: str | None = None
+    incidente_id: str = Field(
+        validation_alias=AliasChoices("incidente_id", "incidenteId", "emergenciaId", "id")
+    )
+    tipo: str | None = Field(default=None, validation_alias=AliasChoices("tipo", "categoria"))
     severidad: str | None = Field(
-        default=None, validation_alias=AliasChoices("severidad", "criticidad", "nivel")
+        default=None, validation_alias=AliasChoices("severidad", "criticidad", "nivel", "prioridad")
     )
     barrio: str | None = None
+    # CU-INT-01: Emergencies marks whether the incident cuts circulation.
+    afecta_circulacion: bool | None = Field(
+        default=None, validation_alias=AliasChoices("afecta_circulacion", "afectaCirculacion")
+    )
     latitud: float | None = Field(default=None, validation_alias=AliasChoices("latitud", "lat"))
     longitud: float | None = Field(
         default=None, validation_alias=AliasChoices("longitud", "lng", "lon")
+    )
+
+
+class EventoCulturalPublicado(BaseModel):
+    """`com.citypass.espacios.EventoComunitarioPublicado` (CU-INT-01)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    evento_id: str = Field(validation_alias=AliasChoices("evento_id", "eventoId"))
+    titulo: str
+    # ACTIVE, ACTIVE_FULL or CANCELLED. A cancelled event concentrates nobody.
+    estado: str | None = None
+    zona: str | None = None
+    inicio: datetime
+    inscriptos: int = 0
+    cupo_maximo: int | None = Field(
+        default=None, validation_alias=AliasChoices("cupo_maximo", "cupoMaximo")
     )
 
 

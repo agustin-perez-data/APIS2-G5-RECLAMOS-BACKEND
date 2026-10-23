@@ -5,9 +5,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from app.domain.enums import (
+    CATEGORIAS_QUE_AFECTAN_CIRCULACION,
     CanalOrigen,
     CategoriaReclamo,
     EstadoReclamo,
@@ -127,7 +128,22 @@ class ComentarioOut(BaseModel):
     created_at: datetime
 
 
-class ReclamoResumen(BaseModel):
+class AfectaCirculacionMixin(BaseModel):
+    """Exposes the CU-INT-01 rule so consumers do not reimplement it.
+
+    The frontend used to derive this from the category on its own, which meant
+    the set lived in two places and could drift. Computed, never stored.
+    """
+
+    categoria: CategoriaReclamo
+
+    @computed_field(description="Si el reclamo corta o entorpece la circulacion")
+    @property
+    def afecta_circulacion(self) -> bool:
+        return self.categoria in CATEGORIAS_QUE_AFECTAN_CIRCULACION
+
+
+class ReclamoResumen(AfectaCirculacionMixin):
     """Lightweight projection for lists and map views."""
 
     model_config = ConfigDict(from_attributes=True)
@@ -164,7 +180,7 @@ class ReclamoSimilar(ReclamoResumen):
     ya_adherido: bool = Field(description="El usuario ya se sumo a este reclamo")
 
 
-class ReclamoOut(BaseModel):
+class ReclamoOut(AfectaCirculacionMixin):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -202,7 +218,7 @@ class ReclamoDetalle(ReclamoOut):
     comentarios: list[ComentarioOut] = Field(default_factory=list)
 
 
-class ReclamoBandeja(BaseModel):
+class ReclamoBandeja(AfectaCirculacionMixin):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID

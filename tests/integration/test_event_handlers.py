@@ -16,7 +16,11 @@ from app.core.config import settings
 from app.domain.enums import CanalOrigen, CategoriaReclamo, EstadoReclamo, PrioridadReclamo
 from app.events import topics
 from app.events.consumer import EventConsumer
-from app.events.handlers import manejar_contenedor_desbordado, manejar_incidente_creado
+from app.events.handlers import (
+    manejar_contenedor_desbordado,
+    manejar_evento_cultural,
+    manejar_incidente_creado,
+)
 from app.events.producer import InMemoryEventPublisher
 from app.repositories.reclamo_repository import FiltroReclamos
 from app.schemas.reclamo import ReclamoCrear
@@ -162,6 +166,90 @@ async def test_incidente_sin_barrio_no_hace_nada(service: ReclamoService) -> Non
 
 
 # --- Consumer ----------------------------------------------------------------
+def evento_cultural(**data) -> dict:
+    payload = {
+        "evento_id": "EV-10",
+        "titulo": "Feria de la plaza",
+        "zona": "Centro",
+        "inicio": datetime.now(UTC).isoformat(),
+        "cupo_maximo": 300,
+        "estado": "ACTIVE",
+    }
+    payload.update(data)
+    return {
+        "event_id": str(uuid.uuid4()),
+        "event_type": topics.ESPACIOS_EVENTO_PUBLICADO,
+        "occurred_at": datetime.now(UTC).isoformat(),
+        "source": "espacios",
+        "data": payload,
+    }
+
+
+async def _reclamo_en(service: ReclamoService, barrio: str) -> uuid.UUID:
+    reclamo = await service.crear(
+        ReclamoCrear(
+            titulo="Ruidos molestos del bar",
+            descripcion="Musica a todo volumen todos los fines de semana hasta tarde",
+            categoria=CategoriaReclamo.RUIDOS,
+            prioridad=PrioridadReclamo.BAJA,
+            barrio=barrio,
+        ),
+        CIUDADANO_ID,
+    )
+    return reclamo.id
+
+
+async def test_una_emergencia_de_prioridad_baja_no_escala(service: ReclamoService) -> None:
+    # Emergencies now reports priority in Spanish. Without "baja" in the map it
+    # fell back to ALTA, so a minor emergency raised the whole neighbourhood.
+    reclamo_id = await _reclamo_en(service, "Centro")
+
+    await manejar_incidente_creado(evento_incidente(severidad="baja"), service)
+
+    assert (await service.obtener(reclamo_id)).prioridad is PrioridadReclamo.BAJA
+
+
+async def test_una_emergencia_que_no_corta_la_circulacion_no_escala(
+    service: ReclamoService,
+) -> None:
+    # A medical emergency concerns one person, not the area's claims.
+    reclamo_id = await _reclamo_en(service, "Centro")
+
+    await manejar_incidente_creado(
+        evento_incidente(tipo="medica", afectaCirculacion=False), service
+    )
+
+    assert (await service.obtener(reclamo_id)).prioridad is PrioridadReclamo.BAJA
+
+
+async def test_el_barrio_se_compara_sin_distinguir_mayusculas(service: ReclamoService) -> None:
+    # Other modules send the area however they store it; an exact comparison
+    # silently escalated nothing.
+    reclamo_id = await _reclamo_en(service, "Centro")
+
+    await manejar_incidente_creado(evento_incidente(barrio="CENTRO"), service)
+
+    assert (await service.obtener(reclamo_id)).prioridad is PrioridadReclamo.CRITICA
+
+
+async def test_un_evento_cultural_cancelado_no_escala(service: ReclamoService) -> None:
+    reclamo_id = await _reclamo_en(service, "Centro")
+
+    await manejar_evento_cultural(evento_cultural(estado="CANCELLED"), service)
+
+    assert (await service.obtener(reclamo_id)).prioridad is PrioridadReclamo.BAJA
+
+
+async def test_un_evento_cultural_masivo_escala_los_reclamos_de_la_zona(
+    service: ReclamoService,
+) -> None:
+    reclamo_id = await _reclamo_en(service, "Centro")
+
+    await manejar_evento_cultural(evento_cultural(), service)
+
+    assert (await service.obtener(reclamo_id)).prioridad is PrioridadReclamo.MEDIA
+
+
 async def test_el_consumer_ignora_topics_sin_handler(
     publisher: InMemoryEventPublisher,
 ) -> None:

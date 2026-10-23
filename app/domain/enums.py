@@ -125,3 +125,15 @@ def puede_transicionar(actual: EstadoReclamo, nuevo: EstadoReclamo) -> bool:
 def escalar(actual: PrioridadReclamo, minima: PrioridadReclamo) -> PrioridadReclamo:
     """Return the higher of `actual` and `minima`; never lowers a priority."""
     return actual if ORDEN_PRIORIDAD[actual] >= ORDEN_PRIORIDAD[minima] else minima
+
+
+# Categories that cut or slow down circulation (CU-INT-01). A claim in one of
+# them is published with `afectaCirculacion = true`, which is what Mobility
+# and Public Spaces use to treat it as an incident on the route.
+CATEGORIAS_QUE_AFECTAN_CIRCULACION: frozenset[CategoriaReclamo] = frozenset(
+    {
+        CategoriaReclamo.TRANSITO,
+        CategoriaReclamo.BACHES,
+        CategoriaReclamo.ARBOLADO,
+    }
+)

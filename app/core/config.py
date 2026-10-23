@@ -42,6 +42,21 @@ class Settings(BaseSettings):
     kafka_client_id: str = "reclamos-service"
     kafka_consumer_group: str = "reclamos-service"
 
+    # --- CityPass+ event gateway (Group 1) ---------------------------------
+    # CU-INT-01. When enabled, domain events are published through the shared
+    # gateway (HTTP + Avro contracts) instead of our own Kafka, and other
+    # modules' events arrive by webhook at POST /api/v1/webhooks/citypass.
+    gateway_enabled: bool = False
+    gateway_url: str = "http://localhost:8080"
+    gateway_token_url: str = "http://localhost:8083/oauth/token"
+    gateway_client_id: str = "svc-reclamos"
+    gateway_client_secret: str = ""
+    gateway_namespace: str = "com.citypass.reclamos"
+    # The dispatcher does not sign deliveries: the secret travels in the
+    # subscription URL (?token=...). Empty = the webhook rejects everything.
+    gateway_webhook_token: str = ""
+    gateway_timeout_seconds: float = 5.0
+
     # --- Security -----------------------------------------------------------
     # Tokens are issued by Group 2 (Federated Login, LDAP + JWT). This service
     # only validates them: no credentials are ever minted here.
@@ -70,6 +85,10 @@ class Settings(BaseSettings):
     rate_limit_creacion: str = "10/minute"
     rate_limit_comentarios: str = "15/minute"
     rate_limit_adhesiones: str = "20/minute"
+    # Generous on purpose: the gateway can deliver bursts and a dropped event
+    # ends in its dead letter queue. What protects the endpoint is the secret;
+    # this only caps a flood from an unauthenticated client.
+    rate_limit_webhook: str = "120/minute"
 
     # --- HTTP ---------------------------------------------------------------
     # Defaults cover the two dev servers the front end uses: CRA-style (3000)

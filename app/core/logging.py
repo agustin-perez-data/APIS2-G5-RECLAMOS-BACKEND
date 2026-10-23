@@ -3,11 +3,33 @@
 from __future__ import annotations
 
 import logging
+import re
 import sys
 
 import structlog
 
 from app.core.config import settings
+
+
+class OcultarTokenEnUrl(logging.Filter):
+    """Mask `?token=...` in uvicorn's access log.
+
+    The gateway's dispatcher cannot always send headers, so the webhook also
+    accepts its secret as a query parameter - and uvicorn logs the full URL on
+    every delivery, which would leave the secret in plain text in the platform
+    logs. Preferring the `X-Webhook-Token` header avoids this entirely; this
+    filter is the net for when the header is not an option.
+    """
+
+    _patron = re.compile(r"(token=)[^&\s\"']+")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                self._patron.sub(r"***", arg) if isinstance(arg, str) else arg
+                for arg in record.args
+            )
+        return True
 
 
 def setup_logging() -> None:
@@ -24,6 +46,8 @@ def setup_logging() -> None:
         if settings.is_local
         else structlog.processors.JSONRenderer()
     )
+
+    logging.getLogger("uvicorn.access").addFilter(OcultarTokenEnUrl())
 
     structlog.configure(
         processors=[

@@ -111,8 +111,9 @@ está en el ADR 0004.
 3. Router en `app/api/v1/`, con `summary` y `description` en español.
 4. Dependencia de identidad: `UsuarioDep` (cualquier usuario autenticado),
    `StaffDep` (operador/admin) o `AdminDep` (solo admin, para métricas de
-   gestión). **Ningún endpoint sin una de las tres**, salvo `/health` y el
-   login de desarrollo.
+   gestión). **Ningún endpoint sin una de las tres**, salvo `/health`, el
+   login de desarrollo y el webhook del gateway (ver ADR 0009: el dispatcher
+   del Grupo 1 no emite JWT, así que se autentica con un secreto compartido).
 5. Test de integración en `tests/integration/test_reclamos_api.py`.
 
 ### Eventos nuevos
@@ -254,6 +255,7 @@ supere al anterior:
 | 0006 | Ticket en Jira por llamada post-commit; mover al worker como deuda |
 | 0007 | Reclamos similares: filtros + TF-IDF + cercanía, sugeridos en línea |
 | 0008 | Notificaciones internas en la misma transacción, no por el bus |
+| 0009 | Integración con los otros módulos por el gateway HTTP del Grupo 1 |
 
 ---
 
@@ -261,7 +263,7 @@ supere al anterior:
 
 | Grupo | Qué nos da / qué le damos |
 | --- | --- |
-| 1 — EDA | Define el bus y la convención de topics. Nos alineamos a su contrato. |
+| 1 — EDA | Define el bus, la convención de topics y el **gateway HTTP** por el que se integran los módulos (ADR 0009). |
 | 2 — Login Federado | Emite los JWT. Nosotros solo validamos; nunca emitimos tokens (excepción temporal abajo). |
 | 4 — Residuos | Consumimos `residuos.contenedor.desbordado` → alta automática. |
 | 6 — Emergencias | Consumimos `emergencias.incidente.creado` → re-priorización por zona. |

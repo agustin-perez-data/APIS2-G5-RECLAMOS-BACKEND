@@ -2,12 +2,13 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import notificaciones, reclamos
+from app.api.v1 import notificaciones, reclamos, webhooks
 from app.core.config import settings
 
 api_router = APIRouter()
 api_router.include_router(reclamos.router)
 api_router.include_router(notificaciones.router)
+api_router.include_router(webhooks.router)
 
 # Mounted only while the development login is on, so in any other environment
 # the endpoint does not exist at all - not even in the OpenAPI page.
