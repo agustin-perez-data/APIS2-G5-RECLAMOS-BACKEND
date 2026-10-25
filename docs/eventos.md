@@ -15,9 +15,14 @@ pasado. Ej.: `reclamos.reclamo.estado-cambiado`.
 **Key del mensaje:** siempre el `id` del reclamo. Garantiza que todos los
 eventos del mismo reclamo caigan en la misma partición y conserven el orden.
 
-**Identidad:** `ciudadano_id` es el claim `sub` del token que emite el Grupo 2
-(ej. `U000042`), el mismo identificador estable que cada módulo recibe en su
-propio token. No es un id interno nuestro: se puede cruzar directamente.
+**Identidad:** hay **dos orígenes distintos** y conviene no confundirlos, porque
+sólo uno se puede cruzar contra el directorio del Grupo 2.
+
+| Campo | Qué es |
+| --- | --- |
+| `ciudadano_id` (`ciudadanoId` en el gateway) | Un **UUID que emite Reclamos**. El IdP del Grupo 2 autentica sólo personal municipal, así que un vecino no existe en su directorio: **este id no se resuelve contra ellos**. |
+| `cambiado_por`, `reclasificado_por`, `asignado_a` | El claim `sub` del token del Grupo 2 (ej. `U000042`). Estos sí se cruzan contra su directorio. |
+| `usuario_id`, `autor_id`, `destinatario_id` | **Mixtos**: puede ser cualquiera de los dos anteriores, o `"sistema"` cuando la acción la disparó un evento de otro módulo. |
 
 **Formato:** JSON UTF-8. Headers de Kafka: `event_type`, `event_version`,
 `source`, `content-type`, y `correlation_id` cuando existe.
@@ -68,7 +73,7 @@ reclamos afectan un espacio identificable.
   "event_type": "reclamos.reclamo.creado",
   "data": {
     "reclamo_id": "6f1c9a4e-3c2b-4a5d-9e11-2b7d5c8a1f30",
-    "ciudadano_id": "U000042",
+    "ciudadano_id": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
     "titulo": "Luminaria apagada en la plaza",
     "categoria": "ALUMBRADO",
     "objeto_afectado": "PLAZA_PARQUE",
@@ -116,7 +121,7 @@ deja de ser `TRANSITO`.
   "event_type": "reclamos.reclamo.reclasificado",
   "data": {
     "reclamo_id": "6f1c9a4e-...",
-    "ciudadano_id": "U000042",
+    "ciudadano_id": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
     "categoria_anterior": "RUIDOS",
     "categoria_nueva": "TRANSITO",
     "prioridad_anterior": "BAJA",
@@ -141,7 +146,7 @@ deja de ser `TRANSITO`.
   "event_type": "reclamos.reclamo.estado-cambiado",
   "data": {
     "reclamo_id": "6f1c9a4e-...",
-    "ciudadano_id": "U000042",
+    "ciudadano_id": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
     "estado_anterior": "ASIGNADO",
     "estado_nuevo": "EN_PROCESO",
     "motivo": "cuadrilla en camino",
@@ -166,7 +171,7 @@ Analítica y trae la métrica de gestión ya calculada.
   "event_type": "reclamos.reclamo.resuelto",
   "data": {
     "reclamo_id": "6f1c9a4e-...",
-    "ciudadano_id": "U000042",
+    "ciudadano_id": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
     "categoria": "ALUMBRADO",
     "objeto_afectado": "PLAZA_PARQUE",
     "resolucion": "Se reemplazo la luminaria",
@@ -183,7 +188,7 @@ Analítica y trae la métrica de gestión ya calculada.
   "event_type": "reclamos.reclamo.adherido",
   "data": {
     "reclamo_id": "6f1c9a4e-...",
-    "ciudadano_id": "auth0|77aa...",
+    "ciudadano_id": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
     "adhesiones_count": 10,
     "prioridad": "ALTA",
     "escalado": true
@@ -205,7 +210,7 @@ sistema (cuando un incidente de Emergencias sube la prioridad).
   "data": {
     "comentario_id": "3a9d0c1e-5b7f-4e2a-8c6d-1f0e9b8a7c65",
     "reclamo_id": "6f1c9a4e-...",
-    "ciudadano_id": "U000042",
+    "ciudadano_id": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
     "autor_id": "operador-014",
     "autor_nombre": "Operador Municipal",
     "es_oficial": true,
@@ -375,7 +380,7 @@ módulo.
 ```json
 {
   "reclamoId": "b1d4e8f2-6a30-4c99-8e71-0f5a2d6c3b84",
-  "ciudadanoId": "U000042",
+  "ciudadanoId": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
   "canal": "APP",
   "titulo": "Auto estacionado sobre la ciclovia",
   "descripcion": "Hay un auto arriba de la bicisenda y no se puede pasar",
@@ -412,7 +417,7 @@ Se publica en cada transición de estado. **La resolución viaja acá**, con
 ```json
 {
   "reclamoId": "b1d4e8f2-6a30-4c99-8e71-0f5a2d6c3b84",
-  "ciudadanoId": "U000042",
+  "ciudadanoId": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
   "estadoAnterior": "EN_PROCESO",
   "estadoNuevo": "RESUELTO",
   "motivo": "Se retiro el vehiculo",
@@ -432,7 +437,7 @@ del reclamo, así que no genera un `ReclamoActualizado` y hasta ahora no salía 
 ```json
 {
   "reclamoId": "b1d4e8f2-6a30-4c99-8e71-0f5a2d6c3b84",
-  "ciudadanoId": "U000042",
+  "ciudadanoId": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
   "categoriaAnterior": "RUIDOS",
   "categoriaNueva": "TRANSITO",
   "prioridadAnterior": "BAJA",

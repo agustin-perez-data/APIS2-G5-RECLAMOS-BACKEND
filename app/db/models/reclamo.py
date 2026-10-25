@@ -40,7 +40,10 @@ class Reclamo(Base, TimestampMixin):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
 
     # --- Who filed it and how ------------------------------------------------
-    # `sub` claim of the JWT issued by the identity module (Group 2).
+    # Issued by this module, not by Group 2: their IdP only authenticates
+    # municipal staff, so a neighbour has no `sub` there. Staff fields such as
+    # `asignado_a` do carry the IdP's `sub`. Also holds "sistema" for claims
+    # opened by another module's event.
     ciudadano_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     canal: Mapped[CanalOrigen] = mapped_column(
         enum_column(CanalOrigen, "canal_origen"), default=CanalOrigen.APP, nullable=False

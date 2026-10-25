@@ -13,7 +13,7 @@ Guía para cualquiera (persona o agente) que toque este código.
 | Persistencia | Supabase (PostgreSQL) vía SQLAlchemy 2.0 async (asyncpg) |
 | Migraciones | Alembic |
 | Eventos | Kafka — Redpanda en local, cliente `aiokafka` |
-| Identidad | JWT emitido por el Grupo 2 (Login Federado LDAP + JWT) |
+| Identidad | **Staff**: JWT del Grupo 2 (Login Federado LDAP + JWT). **Ciudadanos**: los resuelve este módulo, su IdP no los cubre |
 | Tests | pytest + pytest-asyncio, SQLite en memoria |
 | Lint / format | ruff (una sola herramienta para ambos) |
 
@@ -265,7 +265,7 @@ supere al anterior:
 | Grupo | Qué nos da / qué le damos |
 | --- | --- |
 | 1 — EDA | Define el bus, la convención de topics y el **gateway HTTP** por el que se integran los módulos (ADR 0009). |
-| 2 — Login Federado | Emite los JWT. Nosotros solo validamos; nunca emitimos tokens (excepción temporal abajo). |
+| 2 — Login Federado | Emite los JWT **del personal municipal**. Su IdP no autentica ciudadanos: eso es nuestro. |
 | 4 — Residuos | Consumimos `residuos.contenedor.desbordado` → alta automática. |
 | 6 — Emergencias | Consumimos `emergencias.incidente.creado` → re-priorización por zona. |
 | 8 — Analítica | Consume nuestros eventos y `GET /api/v1/reclamos/estadisticas`. |
