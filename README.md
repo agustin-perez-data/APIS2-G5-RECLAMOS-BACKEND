@@ -112,7 +112,9 @@ y RS256 contra el JWKS del emisor.
 
 **Los ciudadanos no están en ese directorio.** El Grupo 2 autentica únicamente
 empleados, así que el registro y el login de los vecinos los resuelve este
-módulo. Hoy eso lo cubre el login de desarrollo; ver la sección de abajo.
+módulo, en `POST /api/v1/auth/ciudadanos/registro` y `.../login`, con un token
+propio del mismo formato (ver [ADR 0011](docs/adr/0011-autenticacion-de-ciudadanos.md)).
+Su identificador es un UUID, no el `U000042` del IdP.
 
 Todos los endpoints excepto `/health*` exigen `Authorization: Bearer`.
 

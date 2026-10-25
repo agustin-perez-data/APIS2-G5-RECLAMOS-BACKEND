@@ -65,10 +65,26 @@ Authorization: Bearer <access_token>
 Sin ese header la API responde **401**. Sugerencia: un interceptor de fetch/axios
 que lo agregue solo, y que ante un 401 mande de vuelta al login.
 
-> **Importante para la Entrega 2:** este flujo es exactamente el que va a usar el
-> login definitivo. Cuando LDAP esté listo, lo único que cambia del lado del
-> front es **la URL del login**. El manejo del token, el header y los roles
-> quedan igual. No hardcodees los usuarios en el front: pedilos siempre a la API.
+> **Importante para la Entrega 2 — esto cambió.** Cuando se escribió esta guía
+> dábamos por hecho que el Login Federado del Grupo 2 iba a autenticar también a
+> los vecinos, y que lo único que les cambiaba era la URL del login. **No es
+> así**: su IdP autentica únicamente personal municipal, y nos lo aclararon por
+> escrito el 25/10.
+>
+> Qué implica para el front:
+>
+> - **Personal municipal** (operador, admin): sí van al Login Federado. Ahí vale
+>   lo de siempre, cambia la URL y nada más.
+> - **Vecinos**: se registran y entran contra *este* backend, en
+>   `POST /api/v1/auth/ciudadanos/registro` y `.../login`. Hace falta **una
+>   pantalla de registro**, que antes no estaba prevista. El registro pide
+>   correo, contraseña (mínimo 10 caracteres) y nombre, y **devuelve el token
+>   directo**, así que no hay que loguear después de registrarse.
+>
+> La buena noticia: la respuesta tiene exactamente la misma forma
+> (`access_token`, `token_type`, `expires_in`, `usuario`), así que el manejo del
+> token, el header y los roles quedan igual. No hardcodees los usuarios en el
+> front: pedilos siempre a la API. Ver [ADR 0011](adr/0011-autenticacion-de-ciudadanos.md).
 
 ---
 
