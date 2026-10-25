@@ -12,7 +12,10 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
-    "pydantic>=2.9",
+    # The email extra (email-validator) is pure Python and from the same author:
+    # the email is the citizens' login identifier and validating it with a regex
+    # of our own is a classic source of bugs (ADR 0011).
+    "pydantic[email]>=2.9",
     "pydantic-settings>=2.6",
     "sqlalchemy[asyncio]>=2.0.36",
     "asyncpg>=0.30",

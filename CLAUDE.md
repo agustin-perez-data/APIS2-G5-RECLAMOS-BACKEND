@@ -111,9 +111,10 @@ está en el ADR 0004.
 3. Router en `app/api/v1/`, con `summary` y `description` en español.
 4. Dependencia de identidad: `UsuarioDep` (cualquier usuario autenticado),
    `StaffDep` (operador/admin) o `AdminDep` (solo admin, para métricas de
-   gestión). **Ningún endpoint sin una de las tres**, salvo `/health`, el
-   login de desarrollo y el webhook del gateway (ver ADR 0009: el dispatcher
-   del Grupo 1 no emite JWT, así que se autentica con un secreto compartido).
+   gestión). **Ningún endpoint sin una de las tres**, salvo cuatro excepciones
+   documentadas: `/health`, el login de desarrollo, el webhook del gateway (ADR
+   0009) y el registro y login de ciudadanos (ADR 0011: no se puede presentar un
+   token antes de tenerlo).
 5. Test de integración en `tests/integration/test_reclamos_api.py`.
 
 ### Eventos nuevos
@@ -257,6 +258,7 @@ supere al anterior:
 | 0008 | Notificaciones internas en la misma transacción, no por el bus |
 | 0009 | Integración con los otros módulos por el gateway HTTP del Grupo 1 |
 | 0010 | Las reclasificaciones salen con evento propio, no como `clasificado` |
+| 0011 | Los ciudadanos se registran y autentican acá; el IdP del Grupo 2 es solo para staff |
 
 ---
 
@@ -279,7 +281,8 @@ Mientras el servicio del Grupo 2 no esté disponible, `app/api/v1/auth_dev.py`
 expone `POST /api/v1/auth/dev/login` con **usuarios hardcodeados** y firma
 tokens HS256 con el mismo formato que va a emitir el Grupo 2.
 
-Es una excepción explícita y acotada a la regla "nunca emitimos tokens":
+Es una excepción acotada, y **sólo para el staff**: desde el ADR 0011 este
+módulo sí emite tokens, pero únicamente los de los ciudadanos que registra.
 
 - Solo se monta con `AUTH_DEV_LOGIN_ENABLED=true`. Con cualquier `ENVIRONMENT`
   que no sea de desarrollo, `Settings` **no arranca**.
@@ -287,7 +290,9 @@ Es una excepción explícita y acotada a la regla "nunca emitimos tokens":
   JWT igual, sin importar quién los firmó.
 - **Criterio de eliminación:** cuando el Grupo 2 exponga su emisor, se borra el
   archivo, se saca el `include` de `router.py` y se apunta `JWT_JWKS_URL` a
-  ellos. No hay refactor asociado.
+  ellos. No hay refactor asociado. Ojo que eso cubre **sólo al personal
+  municipal**: el login de los vecinos vive en `app/api/v1/auth_ciudadanos.py`
+  y no se va a ningún lado (ADR 0011).
 
 Usuarios de prueba (uno por rol, nunca uno con todos): `vecino1` (ciudadano),
 `operador1` (operador), `admin1` (operador + admin). La contraseña es igual al
