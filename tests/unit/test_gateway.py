@@ -105,7 +105,7 @@ def test_la_reclasificacion_sale_con_afecta_circulacion_antes_y_despues() -> Non
         correlation_id="corr-1",
         data=ReclamoReclasificado(
             reclamo_id=uuid.uuid4(),
-            ciudadano_id="U000042",
+            ciudadano_id="7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
             categoria_anterior=CategoriaReclamo.RUIDOS,
             categoria_nueva=CategoriaReclamo.TRANSITO,
             prioridad_anterior=PrioridadReclamo.BAJA,

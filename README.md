@@ -106,9 +106,15 @@ el SSL y el pooler.
 
 ## Autenticación
 
-Los tokens los emite el módulo de **Login Federado (Grupo 2)**. Este servicio
-solo los valida: soporta HS256 con secreto compartido y RS256 contra el JWKS del
-emisor. Todos los endpoints excepto `/health*` exigen `Authorization: Bearer`.
+Los tokens del **personal municipal** los emite el módulo de Login Federado
+(Grupo 2) y este servicio solo los valida: soporta HS256 con secreto compartido
+y RS256 contra el JWKS del emisor.
+
+**Los ciudadanos no están en ese directorio.** El Grupo 2 autentica únicamente
+empleados, así que el registro y el login de los vecinos los resuelve este
+módulo. Hoy eso lo cubre el login de desarrollo; ver la sección de abajo.
+
+Todos los endpoints excepto `/health*` exigen `Authorization: Bearer`.
 
 | Rol | Permisos |
 | --- | --- |
