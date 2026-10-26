@@ -58,6 +58,18 @@ class ObjetoAfectado(StrEnum):
     OTRO = "OTRO"
 
 
+class ResultadoIntervencion(StrEnum):
+    """How Public Spaces closed the job in the street (CU-INT-01).
+
+    "No hacia falta grua" is not the same as "se resolvio": if nobody did
+    anything, telling the neighbour it was solved would be a lie, so the two
+    outcomes land on different states.
+    """
+
+    RESUELTO = "RESUELTO"
+    RECHAZADO = "RECHAZADO"
+
+
 class OrigenClasificacion(StrEnum):
     """Who decided the claim's category and priority."""
 

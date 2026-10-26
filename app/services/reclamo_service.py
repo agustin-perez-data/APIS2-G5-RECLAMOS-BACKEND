@@ -41,6 +41,7 @@ from app.domain.enums import (
     EstadoReclamo,
     OrigenClasificacion,
     PrioridadReclamo,
+    ResultadoIntervencion,
     escalar,
     puede_transicionar,
 )
@@ -63,6 +64,23 @@ from app.services.clasificador import Clasificador, get_clasificador
 from app.services.notificacion_service import NotificacionService
 
 log = get_logger(__name__)
+
+# What the neighbour reads when another module closes their claim. Deliberately
+# generic: Public Spaces reports the outcome, not what they did, so a wording
+# more specific than this would risk claiming something that never happened.
+RESOLUCION_INTERVENCION: dict[ResultadoIntervencion, str] = {
+    ResultadoIntervencion.RESUELTO: (
+        "El area responsable intervino en la via publica y dio por resuelto el reclamo."
+    ),
+    ResultadoIntervencion.RECHAZADO: (
+        "El area responsable reviso el reclamo y no correspondia una intervencion."
+    ),
+}
+
+MOTIVO_INTERVENCION: dict[ResultadoIntervencion, str] = {
+    ResultadoIntervencion.RESUELTO: "Intervencion finalizada por Espacios Publicos y Cultura",
+    ResultadoIntervencion.RECHAZADO: "Espacios Publicos y Cultura no dio curso al reclamo",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,6 +289,20 @@ class ReclamoService:
                 f"No se puede pasar de {anterior.value} a {cambio.estado.value}"
             )
 
+        return await self._aplicar_cambio_estado(reclamo, cambio, actor.id)
+
+    async def _aplicar_cambio_estado(
+        self, reclamo: Reclamo, cambio: CambioEstado, actor_id: str
+    ) -> Reclamo:
+        """Write the change, its history, its notification and its events.
+
+        Split out of `cambiar_estado` because the state machine check is not the
+        only way in: when another module finishes the job in the street the
+        claim lands on its final state without walking our internal workflow
+        (see `finalizar_por_intervencion` and ADR 0012).
+        """
+        anterior = reclamo.estado
+
         ahora = datetime.now(UTC)
         reclamo.estado = cambio.estado
         if cambio.asignado_a:
@@ -290,11 +322,11 @@ class ReclamoService:
                 estado_anterior=anterior,
                 estado_nuevo=cambio.estado,
                 motivo=cambio.motivo,
-                usuario_id=actor.id,
+                usuario_id=actor_id,
             )
         )
         # Same transaction as the change: saved together with it or not at all.
-        await self.notificaciones.por_cambio_de_estado(reclamo, historial, actor_id=actor.id)
+        await self.notificaciones.por_cambio_de_estado(reclamo, historial, actor_id=actor_id)
         await self.session.commit()
         await self.session.refresh(reclamo)
 
@@ -307,7 +339,7 @@ class ReclamoService:
                 estado_nuevo=reclamo.estado,
                 motivo=cambio.motivo,
                 asignado_a=reclamo.asignado_a,
-                cambiado_por=actor.id,
+                cambiado_por=actor_id,
                 cambiado_at=ahora,
             ),
             key=str(reclamo.id),
@@ -337,7 +369,7 @@ class ReclamoService:
             reclamo_id=str(reclamo.id),
             de=anterior.value,
             a=reclamo.estado.value,
-            actor=actor.id,
+            actor=actor_id,
         )
         return reclamo
 
@@ -595,6 +627,48 @@ class ReclamoService:
         return peso * texto + (1 - peso) * cercania
 
     # --- Reactions to other modules' events -----------------------------------
+    async def finalizar_por_intervencion(
+        self, reclamo_id: uuid.UUID, resultado: ResultadoIntervencion
+    ) -> Reclamo | None:
+        """Close a claim that another module resolved out in the street (CU-INT-01).
+
+        Public Spaces does the work, so the claim never walked our own
+        ASIGNADO and EN_PROCESO. Forcing it through them to satisfy the state
+        machine would be inventing a history that did not happen: nobody here
+        was assigned to it and nobody here worked it. It lands on its final
+        state in one step, and the history entry says the change came from
+        outside.
+
+        Returns None when there is nothing to do, which is what makes a
+        redelivery harmless: the gateway is at-least-once.
+        """
+        reclamo = await self.repo.obtener(reclamo_id)
+        if reclamo is None:
+            # A claim of another module, or one that no longer exists. Ignoring
+            # it beats a 500 that makes the gateway retry forever.
+            log.warning("handler.intervencion.reclamo_inexistente", reclamo_id=str(reclamo_id))
+            return None
+
+        destino = (
+            EstadoReclamo.RESUELTO
+            if resultado is ResultadoIntervencion.RESUELTO
+            else EstadoReclamo.RECHAZADO
+        )
+        if reclamo.estado is destino or reclamo.estado in ESTADOS_FINALES:
+            log.info(
+                "handler.intervencion.sin_cambios",
+                reclamo_id=str(reclamo.id),
+                estado=reclamo.estado.value,
+            )
+            return None
+
+        cambio = CambioEstado(
+            estado=destino,
+            motivo=MOTIVO_INTERVENCION[resultado],
+            resolucion=RESOLUCION_INTERVENCION[resultado],
+        )
+        return await self._aplicar_cambio_estado(reclamo, cambio, USUARIO_SISTEMA)
+
     async def crear_desde_evento(
         self,
         datos: ReclamoCrear,
