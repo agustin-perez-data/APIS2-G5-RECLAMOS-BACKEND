@@ -208,6 +208,20 @@ def test_los_dos_emisores_no_pueden_compartir_la_audiencia() -> None:
         _config(jwt_ciudadanos_audience="citypass")
 
 
+def test_el_login_de_desarrollo_no_convive_con_el_idp_real() -> None:
+    # It signs HS256 with our own secret and the staff issuer. Once that slot
+    # points at Group 2, its tokens stop validating and it would be minting
+    # credentials that open nothing - a confusing way to find out.
+    with pytest.raises(ValueError, match="AUTH_DEV_LOGIN_ENABLED"):
+        _config(
+            jwt_algorithm="RS256",
+            jwt_jwks_url="https://api.citypass-login.pp.ua/.well-known/jwks.json",
+            jwt_staff_estricto=True,
+            jwt_token_use_esperado="human",
+            auth_dev_login_enabled=True,
+        )
+
+
 def test_el_idp_real_exige_modo_estricto() -> None:
     # Pointing at an asymmetric algorithm means the real IdP is wired, and the
     # checks that guard staff access stop being optional.
