@@ -259,6 +259,7 @@ supere al anterior:
 | 0009 | Integración con los otros módulos por el gateway HTTP del Grupo 1 |
 | 0010 | Las reclasificaciones salen con evento propio, no como `clasificado` |
 | 0011 | Los ciudadanos se registran y autentican acá; el IdP del Grupo 2 es solo para staff |
+| 0012 | Un cierre que viene de otro módulo saltea la máquina de estados, pero sólo la validación |
 
 ---
 

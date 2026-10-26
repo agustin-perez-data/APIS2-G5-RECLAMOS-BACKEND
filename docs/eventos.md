@@ -476,6 +476,35 @@ cabecera `X-Webhook-Token` (preferido) o por `?token=...`. Las entregas son
 | `com.citypass.residuos.AlertaGenerada` | Si `tipoAlerta = SATURACION`, abre un reclamo de RESIDUOS. Las de incendio se ignoran. |
 | `com.citypass.emergencias.EmergenciaCreada` | Eleva la prioridad de los reclamos abiertos del barrio. No escala si la severidad es baja ni si `afectaCirculacion` es falso. |
 | `com.citypass.espacios.EventoComunitarioPublicado` | Con cupo ≥ 100, eleva a `MEDIA` los reclamos abiertos de la zona. Los `CANCELLED` se ignoran. |
+| `com.citypass.espacios.IntervencionFinalizada` | **Cierra el reclamo.** Con `resultado: RESUELTO` pasa a RESUELTO; con `RECHAZADO`, a RECHAZADO. Ver abajo. |
+
+#### `IntervencionFinalizada`, el que cierra el circuito
+
+Es el ultimo eslabon del caso de uso: el vecino reporta, nosotros derivamos,
+Espacios Publicos resuelve en la calle y nos avisa como termino.
+
+```json
+{
+  "reclamoId": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
+  "resultado": "RESUELTO",
+  "idAuto": "AB123CD",
+  "solicitadoAt": 1792346000000,
+  "resueltoAt": 1792349999000
+}
+```
+
+`resultado` es el campo que importa y acepta **`RESUELTO`** o **`RECHAZADO`**.
+No son lo mismo: Espacios manda el evento aunque no hayan intervenido - si no
+hacia falta una grua, por ejemplo - y en ese caso el reclamo no se resolvio, no
+se tomo. El vecino lee un texto distinto en cada caso, y mandar todo como
+resuelto seria decirle que su problema se soluciono cuando puede seguir ahi.
+
+El resto de los campos son del dominio de ellos: no los guardamos, viajan para
+que Analitica pueda medir cuanto tardo la intervencion.
+
+**Idempotencia:** si el reclamo ya esta en ese estado, o ya esta cerrado o
+rechazado, el evento no hace nada. Una reentrega del gateway es inofensiva.
+
 
 El barrio se compara **sin distinguir mayúsculas**, así que da igual si mandan
 `Palermo`, `PALERMO` o `palermo`.

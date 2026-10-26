@@ -228,6 +228,16 @@ class Settings(BaseSettings):
                 f"JWT_ALGORITHM='{self.jwt_algorithm}' apunta al IdP real: "
                 "falta JWT_TOKEN_USE_ESPERADO (el Grupo 2 emite 'human')"
             )
+        if self.auth_dev_login_enabled:
+            # It signs HS256 with our own secret and the staff issuer, so once
+            # that slot points at Group 2 its tokens no longer validate. Leaving
+            # it on would mint credentials that open nothing, and the symptom
+            # (a 401 on a token that was just issued) sends you looking in the
+            # wrong place.
+            raise ValueError(
+                f"JWT_ALGORITHM='{self.jwt_algorithm}' apunta al IdP real: "
+                "AUTH_DEV_LOGIN_ENABLED tiene que estar en false, sus tokens ya no validan"
+            )
         return self
 
     @model_validator(mode="after")

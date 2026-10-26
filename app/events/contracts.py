@@ -22,6 +22,7 @@ from app.domain.enums import (
     EstadoReclamo,
     ObjetoAfectado,
     PrioridadReclamo,
+    ResultadoIntervencion,
 )
 
 TPayload = TypeVar("TPayload", bound=BaseModel)
@@ -196,6 +197,28 @@ class IncidenteCreado(BaseModel):
     latitud: float | None = Field(default=None, validation_alias=AliasChoices("latitud", "lat"))
     longitud: float | None = Field(
         default=None, validation_alias=AliasChoices("longitud", "lng", "lon")
+    )
+
+
+class IntervencionFinalizada(BaseModel):
+    """`com.citypass.espacios.IntervencionFinalizada` (CU-INT-01).
+
+    Public Spaces closing the job in the street. `resultado` is what tells a
+    real fix apart from a claim they did not take: both end the claim, but the
+    neighbour reads something different.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    reclamo_id: uuid.UUID = Field(validation_alias=AliasChoices("reclamo_id", "reclamoId"))
+    resultado: ResultadoIntervencion
+    # Operational detail of their domain: we store none of it, but it travels so
+    # Analytics can measure how long the intervention took.
+    solicitado_at: int | None = Field(
+        default=None, validation_alias=AliasChoices("solicitado_at", "solicitadoAt")
+    )
+    resuelto_at: int | None = Field(
+        default=None, validation_alias=AliasChoices("resuelto_at", "resueltoAt")
     )
 
 

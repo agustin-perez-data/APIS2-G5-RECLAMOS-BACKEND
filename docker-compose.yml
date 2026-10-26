@@ -42,7 +42,8 @@ services:
                  residuos.contenedor.desbordado \
                  emergencias.incidente.creado \
                  espacios.reserva.creada \
-                 espacios.evento.publicado; do
+                 espacios.evento.publicado \
+                 espacios.intervencion.finalizada; do
           rpk topic create "$$t" --brokers redpanda:9092 --partitions 3 --replicas 1 || true
         done
         rpk topic list --brokers redpanda:9092

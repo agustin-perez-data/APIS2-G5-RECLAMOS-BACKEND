@@ -20,6 +20,7 @@ from app.events.handlers import (
     manejar_contenedor_desbordado,
     manejar_evento_cultural,
     manejar_incidente_creado,
+    manejar_intervencion_finalizada,
 )
 from app.events.producer import InMemoryEventPublisher
 from app.repositories.reclamo_repository import FiltroReclamos
@@ -248,6 +249,105 @@ async def test_un_evento_cultural_masivo_escala_los_reclamos_de_la_zona(
     await manejar_evento_cultural(evento_cultural(), service)
 
     assert (await service.obtener(reclamo_id)).prioridad is PrioridadReclamo.MEDIA
+
+
+# --- Espacios Publicos finishing the job in the street -------------------------
+def evento_intervencion(reclamo_id, **data) -> dict:
+    payload = {
+        "reclamoId": str(reclamo_id),
+        "resultado": "RESUELTO",
+        "idAuto": "AB123CD",
+        "solicitadoAt": 1792346000000,
+        "resueltoAt": 1792349999000,
+    }
+    payload.update(data)
+    return {
+        "event_id": str(uuid.uuid4()),
+        "event_type": topics.ESPACIOS_INTERVENCION_FINALIZADA,
+        "occurred_at": datetime.now(UTC).isoformat(),
+        "source": "espacios",
+        "data": payload,
+    }
+
+
+async def test_una_intervencion_resuelta_cierra_un_reclamo_recien_creado(
+    service: ReclamoService,
+) -> None:
+    # The claim never went through our own ASIGNADO/EN_PROCESO: Public Spaces
+    # did the work, so it jumps straight to RESUELTO.
+    reclamo_id = await _reclamo_en(service, "Palermo")
+
+    await manejar_intervencion_finalizada(evento_intervencion(reclamo_id), service)
+
+    actualizado = await service.obtener(reclamo_id)
+    assert actualizado.estado is EstadoReclamo.RESUELTO
+    assert actualizado.resuelto_at is not None
+    # The citizen has to read something, not an empty field.
+    assert actualizado.resolucion
+
+
+async def test_una_intervencion_rechazada_manda_el_reclamo_a_rechazado(
+    service: ReclamoService,
+) -> None:
+    # "No hacia falta grua" is not the same as "se resolvio": if nobody did
+    # anything, telling the neighbour it was solved would be a lie.
+    reclamo_id = await _reclamo_en(service, "Palermo")
+
+    await manejar_intervencion_finalizada(
+        evento_intervencion(reclamo_id, resultado="RECHAZADO"), service
+    )
+
+    actualizado = await service.obtener(reclamo_id)
+    assert actualizado.estado is EstadoReclamo.RECHAZADO
+    assert actualizado.resuelto_at is None
+
+
+async def test_la_intervencion_resuelta_publica_el_evento_de_resolucion(
+    service: ReclamoService, publisher: InMemoryEventPublisher
+) -> None:
+    reclamo_id = await _reclamo_en(service, "Palermo")
+
+    await manejar_intervencion_finalizada(evento_intervencion(reclamo_id), service)
+
+    [resuelto] = publisher.eventos_de(topics.RECLAMO_RESUELTO)
+    assert resuelto.data.reclamo_id == reclamo_id
+    assert resuelto.data.horas_hasta_resolucion >= 0
+
+
+async def test_la_misma_intervencion_reentregada_no_duplica_nada(
+    service: ReclamoService, publisher: InMemoryEventPublisher
+) -> None:
+    # The gateway delivers at-least-once.
+    reclamo_id = await _reclamo_en(service, "Palermo")
+    evento = evento_intervencion(reclamo_id)
+
+    await manejar_intervencion_finalizada(evento, service)
+    await manejar_intervencion_finalizada(evento, service)
+
+    assert len(publisher.eventos_de(topics.RECLAMO_RESUELTO)) == 1
+
+
+async def test_una_intervencion_sobre_un_reclamo_cerrado_no_lo_toca(
+    service: ReclamoService, usuario_operador
+) -> None:
+    from app.schemas.reclamo import CambioEstado
+
+    reclamo_id = await _reclamo_en(service, "Palermo")
+    await service.cambiar_estado(
+        reclamo_id, CambioEstado(estado=EstadoReclamo.RECHAZADO), usuario_operador
+    )
+
+    await manejar_intervencion_finalizada(evento_intervencion(reclamo_id), service)
+
+    assert (await service.obtener(reclamo_id)).estado is EstadoReclamo.RECHAZADO
+
+
+async def test_una_intervencion_sobre_un_reclamo_inexistente_no_falla(
+    service: ReclamoService,
+) -> None:
+    # A claim of another module, or one we deleted: ignoring it beats a 500
+    # that makes the gateway retry forever.
+    await manejar_intervencion_finalizada(evento_intervencion(uuid.uuid4()), service)
 
 
 async def test_el_consumer_ignora_topics_sin_handler(

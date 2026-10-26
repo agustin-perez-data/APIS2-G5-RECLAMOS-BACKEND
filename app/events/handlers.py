@@ -18,6 +18,7 @@ from app.events.contracts import (
     ContenedorDesbordado,
     EventoCulturalPublicado,
     IncidenteCreado,
+    IntervencionFinalizada,
     parse_envelope,
 )
 from app.schemas.reclamo import ReclamoCrear
@@ -159,8 +160,32 @@ async def manejar_evento_cultural(raw: dict[str, Any], service: ReclamoService) 
     )
 
 
+async def manejar_intervencion_finalizada(raw: dict[str, Any], service: ReclamoService) -> None:
+    """`com.citypass.espacios.IntervencionFinalizada` -> close the claim.
+
+    The last link of CU-INT-01: the neighbour reports, we route it, Public
+    Spaces does the work in the street and tells us how it ended. `resultado`
+    is what decides whether the claim is resolved or was never taken, which is
+    the difference between telling the neighbour the truth or not.
+    """
+    evento = parse_envelope(raw, IntervencionFinalizada)
+    datos = evento.data
+
+    reclamo = await service.finalizar_por_intervencion(datos.reclamo_id, datos.resultado)
+    if reclamo is None:
+        return
+
+    log.info(
+        "handler.intervencion_finalizada.reclamo_cerrado",
+        reclamo_id=str(reclamo.id),
+        resultado=datos.resultado.value,
+        estado=reclamo.estado.value,
+    )
+
+
 HANDLERS: dict[str, Handler] = {
     topics.RESIDUOS_CONTENEDOR_DESBORDADO: manejar_contenedor_desbordado,
     topics.EMERGENCIAS_INCIDENTE_CREADO: manejar_incidente_creado,
     topics.ESPACIOS_EVENTO_PUBLICADO: manejar_evento_cultural,
+    topics.ESPACIOS_INTERVENCION_FINALIZADA: manejar_intervencion_finalizada,
 }

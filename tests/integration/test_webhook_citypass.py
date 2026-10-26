@@ -111,6 +111,42 @@ async def test_una_alerta_de_incendio_no_es_un_reclamo(
     assert listado.json()["items"] == []
 
 
+async def test_una_intervencion_finalizada_cierra_el_reclamo(
+    client: AsyncClient, auth, token_ciudadano
+) -> None:
+    """The last link of CU-INT-01, through the door the gateway really uses."""
+    creado = await client.post(
+        "/api/v1/reclamos",
+        json={
+            "titulo": "Auto estacionado sobre la ciclovia",
+            "descripcion": "Hay un auto arriba de la bicisenda y no se puede pasar",
+            "barrio": "Palermo",
+        },
+        headers=auth(token_ciudadano),
+    )
+    reclamo_id = creado.json()["id"]
+
+    respuesta = await client.post(
+        URL,
+        headers={"X-Webhook-Token": TOKEN},
+        json=sobre(
+            "com.citypass.espacios.IntervencionFinalizada",
+            {
+                "reclamoId": reclamo_id,
+                "resultado": "RESUELTO",
+                "idAuto": "AB123CD",
+                "solicitadoAt": 1792346000000,
+                "resueltoAt": 1792349999000,
+            },
+        ),
+    )
+    assert respuesta.status_code == 204, respuesta.text
+
+    detalle = await client.get(f"/api/v1/reclamos/{reclamo_id}", headers=auth(token_ciudadano))
+    assert detalle.json()["estado"] == "RESUELTO"
+    assert detalle.json()["resolucion"]
+
+
 async def test_un_tipo_que_no_consumimos_se_acepta_y_se_ignora(client: AsyncClient) -> None:
     respuesta = await client.post(
         URL,
