@@ -341,6 +341,12 @@ aunque atraviese varios módulos.
 
 ## 6. Integración por el gateway de CityPass+ (CU-INT-01)
 
+> **Schemas Avro.** Estos tres tipos estan registrados en el catalogo del gateway del
+> Grupo 1, que valida cada evento contra ellos antes de aceptarlo. Los schemas viven en
+> [`avro/`](avro/) y hay un test que los compara contra lo que el codigo realmente manda,
+> asi que no se pueden desincronizar en silencio.
+
+
 Entre módulos **no se habla por Kafka**: el Grupo 1 expone un gateway HTTP y es
 por ahí que entran y salen los eventos del caso de uso integrado. Todo lo de las
 secciones 2 y 3 sigue siendo nuestro contrato interno; esta sección es lo que ven
