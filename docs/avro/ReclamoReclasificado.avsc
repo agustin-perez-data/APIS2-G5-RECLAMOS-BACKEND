@@ -1,0 +1,26 @@
+{
+  "type": "record",
+  "name": "ReclamoReclasificado",
+  "namespace": "com.citypass.reclamos",
+  "doc": "Un operador corrigio la clasificacion de un reclamo. Lleva el par anterior y nuevo porque quien consumio la clasificacion vieja necesita saber que deshacer.",
+  "fields": [
+    { "name": "reclamoId", "type": "string" },
+    { "name": "ciudadanoId", "type": "string", "doc": "UUID emitido por Reclamos, no resoluble contra el IdP del Grupo 2." },
+    { "name": "categoriaAnterior", "type": "string" },
+    { "name": "categoriaNueva", "type": "string" },
+    { "name": "prioridadAnterior", "type": "string" },
+    { "name": "prioridadNueva", "type": "string" },
+    { "name": "objetoAfectadoAnterior", "type": ["null", "string"], "default": null, "doc": "Espacio urbano afectado: CICLOVIA, CALZADA, VEREDA, SENDA_PEATONAL, PLAZA_PARQUE, MOBILIARIO_URBANO, EDIFICIO_PUBLICO u OTRO." },
+    { "name": "objetoAfectadoNuevo", "type": ["null", "string"], "default": null },
+    { "name": "afectaCirculacionAnterior", "type": "boolean", "doc": "Calculado de la categoria anterior, para no reimplementar la regla." },
+    { "name": "afectaCirculacionNueva", "type": "boolean", "doc": "Si pasa de falso a verdadero, el reclamo acaba de volverse relevante." },
+    { "name": "titulo", "type": "string" },
+    { "name": "descripcion", "type": "string" },
+    { "name": "barrio", "type": ["null", "string"], "default": null },
+    { "name": "latitud", "type": ["null", "double"], "default": null },
+    { "name": "longitud", "type": ["null", "double"], "default": null },
+    { "name": "reclasificadoPor", "type": "string", "doc": "Claim sub del token del Grupo 2: una reclasificacion siempre la hace una persona del staff." },
+    { "name": "correlationId", "type": ["null", "string"], "default": null },
+    { "name": "reclasificadoAt", "type": "long", "doc": "Milisegundos desde epoch." }
+  ]
+}
