@@ -101,8 +101,8 @@ class Settings(BaseSettings):
     auth_dev_token_horas: int = 8
 
     # --- Rate limiting ------------------------------------------------------
-    # In-memory, per-process. Good enough for a single-instance deploy
-    # (Railway). Disable in tests so fast request bursts do not trip 429s.
+    # In-memory, per-process. Good enough for a single-instance deploy.
+    # Disable in tests so fast request bursts do not trip 429s.
     rate_limit_enabled: bool = True
     rate_limit_login: str = "10/minute"
     # Tighter than login: a registration costs CPU (hashing) and creates rows.
