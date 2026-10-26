@@ -150,10 +150,30 @@ def _emisores(cfg: Settings) -> dict[str, EmisorJWT]:
     return registro
 
 
+# urllib announces itself as `Python-urllib/<version>`, and the IdP sits behind
+# Cloudflare, which answers that user agent with a 403 (error 1010, "browser
+# signature banned"). PyJWKClient fetches the JWKS with urllib, so leaving the
+# default user agent means every staff token fails to validate with a confusing
+# "Fail to fetch data from the url" -- verified against their endpoint on
+# 2026-10-26: curl, a browser and this user agent all get a 200, `Python-urllib`
+# alone gets the 403.
+_JWKS_USER_AGENT = "citypass-reclamos/1.0"
+
+# Their service belongs to another group and is deployed on free tier. The
+# default is 30 s, and this fetch is blocking (see ADR 0012), so a slow response
+# would hold the event loop for half a minute.
+_JWKS_TIMEOUT = 5.0
+
+
 @lru_cache
 def _jwks_client(url: str) -> PyJWKClient:
     # Cache the issuer's public keys so we don't hit it on every request.
-    return PyJWKClient(url, cache_keys=True)
+    return PyJWKClient(
+        url,
+        cache_keys=True,
+        headers={"User-Agent": _JWKS_USER_AGENT},
+        timeout=_JWKS_TIMEOUT,
+    )
 
 
 def _signing_key(token: str, emisor: EmisorJWT) -> Any:
