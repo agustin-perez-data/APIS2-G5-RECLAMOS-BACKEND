@@ -73,6 +73,12 @@ def traducir(topic: str, envelope: EventEnvelope) -> tuple[str, dict[str, Any]] 
             "barrio": data.barrio,
             "latitud": data.latitud,
             "longitud": data.longitud,
+            # Emergencies asked for this on the alta: without it the only way
+            # they learn a report is about a bike lane is an operator
+            # reclassifying it, which may never happen. It already travelled in
+            # ReclamoReclasificado, so leaving it out here was an asymmetry, not
+            # a decision.
+            "objetoAfectado": _valor(data.objeto_afectado),
             "afectaCirculacion": CategoriaReclamo(data.categoria)
             in CATEGORIAS_QUE_AFECTAN_CIRCULACION,
             "correlationId": envelope.correlation_id,

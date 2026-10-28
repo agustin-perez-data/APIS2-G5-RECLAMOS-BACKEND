@@ -398,11 +398,19 @@ módulo.
   "barrio": "Palermo",
   "latitud": -34.5955,
   "longitud": -58.4281,
+  "objetoAfectado": "CICLOVIA",
   "afectaCirculacion": true,
   "correlationId": "req-7c9e6679",
   "createdAt": 1792345678901
 }
 ```
+
+`objetoAfectado` responde *sobre qué* pasó, mientras `categoria` responde *qué* pasó:
+un auto sobre la bicisenda es `TRANSITO` + `CICLOVIA`, y un pozo en la misma bicisenda
+es `BACHES` + `CICLOVIA`. **Lo elige el vecino al dar de alta** —el clasificador no lo
+infiere— así que **viaja nulo cada vez que no lo completó**: cualquier consumidor que
+filtre por él tiene que contar con eso. Valores: `CICLOVIA`, `CALZADA`, `VEREDA`,
+`SENDA_PEATONAL`, `PLAZA_PARQUE`, `MOBILIARIO_URBANO`, `EDIFICIO_PUBLICO` y `OTRO`.
 
 `afectaCirculacion` es **verdadero para `TRANSITO`, `BACHES` y `ARBOLADO`**. Es
 el campo que usan Movilidad —para no recomendar estaciones cerca de un
