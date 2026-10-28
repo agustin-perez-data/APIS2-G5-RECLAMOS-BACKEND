@@ -10,7 +10,12 @@ import httpx
 import pytest
 
 from app.core.config import Settings
-from app.domain.enums import CategoriaReclamo, EstadoReclamo, PrioridadReclamo
+from app.domain.enums import (
+    CategoriaReclamo,
+    EstadoReclamo,
+    ObjetoAfectado,
+    PrioridadReclamo,
+)
 from app.events import topics
 from app.events.contracts import (
     EventEnvelope,
@@ -57,6 +62,26 @@ def test_reclamo_creado_lleva_los_campos_del_contrato() -> None:
     assert datos["correlationId"] == "corr-1"
     # Analytics reads createdAt as epoch millis.
     assert datos["createdAt"] == int(CREADO_AT.timestamp() * 1000)
+
+
+def test_el_alta_lleva_el_objeto_afectado() -> None:
+    # Emergencies filters bike lane reports straight from the alta. Before this
+    # the field only travelled in ReclamoReclasificado, so a report nobody
+    # reclassified never told them what it was about.
+    sobre = sobre_creado()
+    sobre.data.objeto_afectado = ObjetoAfectado.CICLOVIA
+
+    _, datos = traducir(topics.RECLAMO_CREADO, sobre)
+
+    assert datos["objetoAfectado"] == "CICLOVIA"
+
+
+def test_el_alta_sin_objeto_afectado_lo_manda_nulo() -> None:
+    # It is the neighbour who picks it and the field is optional, so null is the
+    # common case: the schema declares it nullable and consumers have to cope.
+    _, datos = traducir(topics.RECLAMO_CREADO, sobre_creado())
+
+    assert datos["objetoAfectado"] is None
 
 
 @pytest.mark.parametrize(
