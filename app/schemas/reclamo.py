@@ -16,6 +16,13 @@ from app.domain.enums import (
     OrigenClasificacion,
     PrioridadReclamo,
 )
+from app.schemas.actividad import ActividadVinculada
+
+# Shared by every claim response that can carry the relation (ADR 0013).
+_DESCRIPCION_ACTIVIDAD = (
+    "Actividad masiva con la que se relaciona: el reclamo se cargo cerca de ella "
+    "mientras duraba o en las horas siguientes. Nulo si no hay ninguna."
+)
 
 
 # --- Input -------------------------------------------------------------------
@@ -158,6 +165,7 @@ class ReclamoResumen(AfectaCirculacionMixin):
     longitud: float | None
     adhesiones_count: int
     created_at: datetime
+    actividad: ActividadVinculada | None = Field(default=None, description=_DESCRIPCION_ACTIVIDAD)
 
 
 class ReclamoListado(ReclamoResumen):
@@ -211,6 +219,7 @@ class ReclamoOut(AfectaCirculacionMixin):
     updated_at: datetime
     resuelto_at: datetime | None
     cerrado_at: datetime | None
+    actividad: ActividadVinculada | None = Field(default=None, description=_DESCRIPCION_ACTIVIDAD)
 
 
 class ReclamoDetalle(ReclamoOut):
@@ -229,6 +238,7 @@ class ReclamoBandeja(AfectaCirculacionMixin):
     estado: EstadoReclamo
     adhesiones_count: int
     created_at: datetime
+    actividad: ActividadVinculada | None = Field(default=None, description=_DESCRIPCION_ACTIVIDAD)
 
 
 class AdhesionOut(BaseModel):

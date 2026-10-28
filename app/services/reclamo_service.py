@@ -60,6 +60,7 @@ from app.integrations.tickets import SistemaTickets, TicketNuevo, get_sistema_ti
 from app.ml import similitud
 from app.repositories.reclamo_repository import FiltroReclamos, ReclamoRepository
 from app.schemas.reclamo import CambioEstado, ReclamoCrear, ReclasificacionPedido
+from app.services.actividad_service import ActividadService
 from app.services.clasificador import Clasificador, get_clasificador
 from app.services.notificacion_service import NotificacionService
 
@@ -113,6 +114,7 @@ class ReclamoService:
         self.cfg = cfg or settings
         self.tickets = tickets or get_sistema_tickets()
         self.notificaciones = NotificacionService(session)
+        self.actividades = ActividadService(session, self.cfg)
 
     # --- Intake --------------------------------------------------------------
     async def crear(
@@ -142,6 +144,12 @@ class ReclamoService:
             if confianza < self.cfg.confianza_minima_clasificador:
                 estado = EstadoReclamo.EN_REVISION
 
+        # Squad 3 (ADR 0013): a claim filed near a mass activity while it lasts
+        # is related to it. Without coordinates there is no way to tell.
+        actividad = None
+        if datos.latitud is not None and datos.longitud is not None:
+            actividad = await self.actividades.en_curso_cerca(datos.latitud, datos.longitud)
+
         reclamo = Reclamo(
             ciudadano_id=ciudadano_id,
             titulo=datos.titulo,
@@ -160,6 +168,7 @@ class ReclamoService:
             fotos=list(datos.fotos),
             correlation_id=correlation_id,
             evento_origen_id=evento_origen_id,
+            actividad=actividad,
         )
         await self.repo.agregar(reclamo)
         await self.repo.agregar_historial(
@@ -202,6 +211,12 @@ class ReclamoService:
             prioridad=reclamo.prioridad.value,
             origen=origen.value,
         )
+        if actividad is not None:
+            log.info(
+                "reclamo.relacionado_con_actividad",
+                reclamo_id=str(reclamo.id),
+                actividad_id=str(actividad.id),
+            )
         await self._abrir_ticket(reclamo)
         return reclamo
 

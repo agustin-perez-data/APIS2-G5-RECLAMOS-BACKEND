@@ -91,6 +91,10 @@ async def listar_reclamos(
     ),
     page: Annotated[int, Query(ge=1)] = 1,
     size: Annotated[int, Query(ge=1, le=100)] = 20,
+    actividad_id: Annotated[
+        uuid.UUID | None,
+        Query(description="Solo los relacionados con esta actividad masiva (GET /actividades)"),
+    ] = None,
 ) -> Page[ReclamoListado]:
     filtro = FiltroReclamos(
         estado=estado,
@@ -103,6 +107,7 @@ async def listar_reclamos(
         desde=desde,
         hasta=hasta,
         orden=orden,
+        actividad_id=actividad_id,
     )
     items, total = await service.listar(filtro, page=page, size=size)
     return Page[ReclamoListado](

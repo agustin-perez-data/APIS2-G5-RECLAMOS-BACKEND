@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime as SADateTime
-from sqlalchemy import Float, Index, Integer, String, Text, Uuid
+from sqlalchemy import Float, ForeignKey, Index, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
@@ -23,6 +23,7 @@ from app.domain.enums import (
 )
 
 if TYPE_CHECKING:
+    from app.db.models.actividad import ActividadMasiva
     from app.db.models.adhesion import Adhesion
     from app.db.models.comentario import Comentario
     from app.db.models.historial import HistorialEstado
@@ -115,6 +116,16 @@ class Reclamo(Base, TimestampMixin):
     ticket_externo: Mapped[str | None] = mapped_column(
         String(64), nullable=True, unique=True, index=True
     )
+
+    # --- Mass activity (squad 3, ADR 0013) -----------------------------------
+    # Set at filing time when the claim lands near a mass activity while it
+    # lasts. SET NULL: losing the activity must never take the claim with it.
+    actividad_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("actividades_masivas.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Many-to-one and joined: every claim response can show the activity's
+    # title without an extra query per row.
+    actividad: Mapped[ActividadMasiva | None] = relationship(lazy="joined")
 
     historial: Mapped[list[HistorialEstado]] = relationship(
         back_populates="reclamo",

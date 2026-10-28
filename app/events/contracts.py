@@ -15,7 +15,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Generic, TypeVar
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.enums import (
     CategoriaReclamo,
@@ -237,6 +237,63 @@ class EventoCulturalPublicado(BaseModel):
     cupo_maximo: int | None = Field(
         default=None, validation_alias=AliasChoices("cupo_maximo", "cupoMaximo")
     )
+
+
+class UbicacionActividad(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    lat: float = Field(ge=-90, le=90, validation_alias=AliasChoices("lat", "latitud", "latitude"))
+    lng: float = Field(
+        ge=-180, le=180, validation_alias=AliasChoices("lng", "lon", "longitud", "longitude")
+    )
+
+
+class ActividadCreada(BaseModel):
+    """`com.citypass.espacios.ActividadCreada` (squad 3, ADR 0013).
+
+    Public Spaces announcing an activity. Field names follow the squad's plan
+    (`actividadId`, `fechaHoraFinalizacion` in epoch millis, `ubicacion`), and
+    the English ones of the first draft (`communityEventId`, `endDate`,
+    `latitude`) are still accepted, so either version of their publisher works.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    actividad_id: str = Field(
+        validation_alias=AliasChoices("actividad_id", "actividadId", "communityEventId")
+    )
+    titulo: str = Field(validation_alias=AliasChoices("titulo", "title"))
+    # Always PROGRAMADA on creation; checked anyway in case a cancelled one is
+    # ever republished with this type.
+    estado: str | None = Field(default=None, validation_alias=AliasChoices("estado", "status"))
+    capacidad: int | None = Field(
+        default=None, validation_alias=AliasChoices("capacidad", "capacity")
+    )
+    # Epoch millis or ISO 8601: Pydantic reads both.
+    inicio: datetime | None = Field(
+        default=None, validation_alias=AliasChoices("fechaHoraInicio", "inicio", "startDate")
+    )
+    fin: datetime = Field(
+        validation_alias=AliasChoices(
+            "fechaHoraFinalizacion", "fin", "endDate", "datetimeFinalizacion"
+        )
+    )
+    ubicacion: UbicacionActividad | None = None
+    direccion: str | None = None
+    espacio_nombre: str | None = Field(
+        default=None, validation_alias=AliasChoices("espacio_nombre", "espacioNombre")
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coordenadas_sueltas(cls, valores: Any) -> Any:
+        """The first draft sent `latitude`/`longitude` loose instead of `ubicacion`."""
+        if isinstance(valores, dict) and not valores.get("ubicacion"):
+            lat = valores.get("latitude", valores.get("latitud"))
+            lng = valores.get("longitude", valores.get("longitud"))
+            if lat is not None and lng is not None:
+                return {**valores, "ubicacion": {"lat": lat, "lng": lng}}
+        return valores
 
 
 class MensajeFallido(BaseModel):

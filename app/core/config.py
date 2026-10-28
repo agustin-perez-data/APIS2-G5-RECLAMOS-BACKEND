@@ -163,6 +163,15 @@ class Settings(BaseSettings):
     similares_puntaje_minimo: float = 0.20
     similares_maximo: int = 5
 
+    # --- Mass activities (squad 3, ADR 0013) -----------------------------------
+    # A Public Spaces activity this large is a mass event: claims filed near it
+    # while it lasts, and for a while after it ends, are related to it. Same cut,
+    # radius and window as Waste and Mobility, so every module of the squad talks
+    # about the same area and the same hours.
+    actividad_masiva_capacidad_minima: int = 1000
+    actividad_masiva_radio_metros: int = 300
+    actividad_masiva_horas_despues: int = 6
+
     @field_validator("database_url")
     @classmethod
     def _force_async_driver(cls, value: str) -> str:

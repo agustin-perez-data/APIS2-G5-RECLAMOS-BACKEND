@@ -39,6 +39,7 @@ class FiltroReclamos:
     hasta: datetime | None = None
     orden: str = "recientes"
     estados: list[EstadoReclamo] = field(default_factory=list)
+    actividad_id: uuid.UUID | None = None
 
 
 class ReclamoRepository:
@@ -196,6 +197,8 @@ class ReclamoRepository:
             stmt = stmt.where(Reclamo.created_at >= filtro.desde)
         if filtro.hasta:
             stmt = stmt.where(Reclamo.created_at <= filtro.hasta)
+        if filtro.actividad_id is not None:
+            stmt = stmt.where(Reclamo.actividad_id == filtro.actividad_id)
         return stmt
 
     async def listar(

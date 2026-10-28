@@ -15,6 +15,7 @@ from app.core.logging import get_logger
 from app.domain.enums import CategoriaReclamo, PrioridadReclamo
 from app.events import topics
 from app.events.contracts import (
+    ActividadCreada,
     ContenedorDesbordado,
     EventoCulturalPublicado,
     IncidenteCreado,
@@ -183,9 +184,34 @@ async def manejar_intervencion_finalizada(raw: dict[str, Any], service: ReclamoS
     )
 
 
+async def manejar_actividad_creada(raw: dict[str, Any], service: ReclamoService) -> None:
+    """`com.citypass.espacios.ActividadCreada` -> remember the mass activity.
+
+    Squad 3, "smart collection after a mass event": nothing changes on arrival.
+    The activity is stored so that the claims filed around it from its start
+    until a few hours after its end get related to it (ADR 0013). Idempotent:
+    a redelivery finds the activity already stored and does nothing.
+    """
+    evento = parse_envelope(raw, ActividadCreada)
+    actividad = await service.actividades.registrar(
+        evento.data,
+        recibida_at=evento.occurred_at,
+        correlation_id=evento.correlation_id,
+    )
+    if actividad is None:
+        return
+
+    log.info(
+        "handler.actividad_creada.registrada",
+        id=str(actividad.id),
+        actividad_id=evento.data.actividad_id,
+    )
+
+
 HANDLERS: dict[str, Handler] = {
     topics.RESIDUOS_CONTENEDOR_DESBORDADO: manejar_contenedor_desbordado,
     topics.EMERGENCIAS_INCIDENTE_CREADO: manejar_incidente_creado,
     topics.ESPACIOS_EVENTO_PUBLICADO: manejar_evento_cultural,
     topics.ESPACIOS_INTERVENCION_FINALIZADA: manejar_intervencion_finalizada,
+    topics.ESPACIOS_ACTIVIDAD_CREADA: manejar_actividad_creada,
 }
