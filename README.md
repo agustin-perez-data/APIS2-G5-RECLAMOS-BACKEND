@@ -176,6 +176,7 @@ Prefijo `/api/v1`.
 | `GET` | `/notificaciones/conteo` | autenticado | Solo el contador de no leídas, para la campana. |
 | `PATCH` | `/notificaciones/{id}/leer` | autenticado | Marca una como leída (idempotente). |
 | `POST` | `/notificaciones/leer-todas` | autenticado | Marca todas las propias como leídas. |
+| `GET` | `/actividades` | operador | Actividades masivas en curso, con cuántos reclamos lleva cada una ([ADR 0013](docs/adr/0013-reclamos-relacionados-con-actividades-masivas.md)). |
 
 Las notificaciones le avisan al dueño de un reclamo cada cambio de estado y cada
 comentario de otra persona. Se guardan en la misma transacción que el cambio, así

@@ -491,6 +491,7 @@ cabecera `X-Webhook-Token` (preferido) o por `?token=...`. Las entregas son
 | `com.citypass.emergencias.EmergenciaCreada` | Eleva la prioridad de los reclamos abiertos del barrio. No escala si la severidad es baja ni si `afectaCirculacion` es falso. |
 | `com.citypass.espacios.EventoComunitarioPublicado` | Con cupo ≥ 100, eleva a `MEDIA` los reclamos abiertos de la zona. Los `CANCELLED` se ignoran. |
 | `com.citypass.espacios.IntervencionFinalizada` | **Cierra el reclamo.** Con `resultado: RESUELTO` pasa a RESUELTO; con `RECHAZADO`, a RECHAZADO. Ver abajo. |
+| `com.citypass.espacios.ActividadCreada` | Squad 3. Guarda la actividad masiva; los reclamos que se carguen cerca mientras dura quedan relacionados con ella. Ver abajo. |
 
 #### `IntervencionFinalizada`, el que cierra el circuito
 
@@ -522,6 +523,54 @@ rechazado, el evento no hace nada. Una reentrega del gateway es inofensiva.
 
 El barrio se compara **sin distinguir mayúsculas**, así que da igual si mandan
 `Palermo`, `PALERMO` o `palermo`.
+
+#### `ActividadCreada`, el caso del squad 3
+
+"Recolección inteligente después de un evento masivo". Lo publica Espacios
+Públicos al crear una actividad. Al recibirlo **no cambia ningún reclamo**:
+guardamos la actividad y, desde ahí, cada reclamo nuevo que se carga cerca
+mientras dura queda relacionado con ella. El porqué está en el
+[ADR 0013](adr/0013-reclamos-relacionados-con-actividades-masivas.md).
+
+```json
+{
+  "correlationId": "act-3f1c2a9e-0000-4000-8000-000000000001",
+  "actividadId": "3f1c2a9e-0000-4000-8000-000000000001",
+  "titulo": "Festival de Primavera",
+  "estado": "PROGRAMADA",
+  "capacidad": 5000,
+  "fechaHoraInicio": 1793545200000,
+  "fechaHoraFinalizacion": 1793563200000,
+  "ubicacion": { "lat": -34.6083, "lng": -58.3712 },
+  "direccion": "Av. Rivadavia 1",
+  "espacioNombre": "Plaza de Mayo",
+  "actorSub": null
+}
+```
+
+| Campo | Uso en Reclamos |
+| --- | --- |
+| `actividadId` | Clave de idempotencia: la misma actividad no se guarda dos veces |
+| `titulo` | Lo que ve el operador: "Relacionado con: Festival de Primavera" |
+| `estado` | Las canceladas se ignoran |
+| `capacidad` | Menos de **1.000** personas no es masiva y se ignora |
+| `fechaHoraInicio` | Desde cuándo se relacionan reclamos. Si no viene, desde que llega el evento |
+| `fechaHoraFinalizacion` | Obligatorio. Se relacionan reclamos hasta **6 h** después |
+| `ubicacion` | Centro de la zona. Sin coordenadas, la actividad se ignora |
+| `direccion`, `espacioNombre` | Se guardan para mostrarlos |
+
+También aceptamos los nombres del primer borrador, en inglés (`communityEventId`,
+`title`, `status`, `capacity`, `startDate`, `endDate`, `latitude`, `longitude`),
+con fechas en milisegundos o en ISO 8601.
+
+**Qué reclamos se relacionan:** los que se dan de alta con coordenadas, a
+**300 m** o menos del centro, entre el inicio y 6 h después del fin. Con dos
+actividades en rango gana la más cercana. Incluye los que abre Residuos por un
+contenedor desbordado. Se ven en el campo `actividad` del reclamo, en
+`GET /reclamos?actividad_id=` y en `GET /actividades`.
+
+**No publicamos nada en respuesta.** En el diagrama del squad, Reclamos solo
+recibe.
 
 ### Respuestas del webhook
 

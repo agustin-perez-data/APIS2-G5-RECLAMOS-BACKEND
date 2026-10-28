@@ -260,6 +260,7 @@ supere al anterior:
 | 0010 | Las reclasificaciones salen con evento propio, no como `clasificado` |
 | 0011 | Los ciudadanos se registran y autentican acá; el IdP del Grupo 2 es solo para staff |
 | 0012 | Un cierre que viene de otro módulo saltea la máquina de estados, pero sólo la validación |
+| 0013 | Un reclamo se relaciona con una actividad masiva en su alta, por distancia y horario |
 
 ---
 
