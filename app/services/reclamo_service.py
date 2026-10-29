@@ -41,6 +41,7 @@ from app.domain.enums import (
     EstadoReclamo,
     OrigenClasificacion,
     PrioridadReclamo,
+    ResultadoIntervencion,
     escalar,
     puede_transicionar,
 )
@@ -51,6 +52,7 @@ from app.events.contracts import (
     ReclamoComentarioCreado,
     ReclamoCreado,
     ReclamoEstadoCambiado,
+    ReclamoReclasificado,
     ReclamoResuelto,
 )
 from app.events.producer import EventPublisher
@@ -58,10 +60,28 @@ from app.integrations.tickets import SistemaTickets, TicketNuevo, get_sistema_ti
 from app.ml import similitud
 from app.repositories.reclamo_repository import FiltroReclamos, ReclamoRepository
 from app.schemas.reclamo import CambioEstado, ReclamoCrear, ReclasificacionPedido
+from app.services.actividad_service import ActividadService
 from app.services.clasificador import Clasificador, get_clasificador
 from app.services.notificacion_service import NotificacionService
 
 log = get_logger(__name__)
+
+# What the neighbour reads when another module closes their claim. Deliberately
+# generic: Public Spaces reports the outcome, not what they did, so a wording
+# more specific than this would risk claiming something that never happened.
+RESOLUCION_INTERVENCION: dict[ResultadoIntervencion, str] = {
+    ResultadoIntervencion.RESUELTO: (
+        "El area responsable intervino en la via publica y dio por resuelto el reclamo."
+    ),
+    ResultadoIntervencion.RECHAZADO: (
+        "El area responsable reviso el reclamo y no correspondia una intervencion."
+    ),
+}
+
+MOTIVO_INTERVENCION: dict[ResultadoIntervencion, str] = {
+    ResultadoIntervencion.RESUELTO: "Intervencion finalizada por Espacios Publicos y Cultura",
+    ResultadoIntervencion.RECHAZADO: "Espacios Publicos y Cultura no dio curso al reclamo",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +114,7 @@ class ReclamoService:
         self.cfg = cfg or settings
         self.tickets = tickets or get_sistema_tickets()
         self.notificaciones = NotificacionService(session)
+        self.actividades = ActividadService(session, self.cfg)
 
     # --- Intake --------------------------------------------------------------
     async def crear(
@@ -123,6 +144,12 @@ class ReclamoService:
             if confianza < self.cfg.confianza_minima_clasificador:
                 estado = EstadoReclamo.EN_REVISION
 
+        # Squad 3 (ADR 0013): a claim filed near a mass activity while it lasts
+        # is related to it. Without coordinates there is no way to tell.
+        actividad = None
+        if datos.latitud is not None and datos.longitud is not None:
+            actividad = await self.actividades.en_curso_cerca(datos.latitud, datos.longitud)
+
         reclamo = Reclamo(
             ciudadano_id=ciudadano_id,
             titulo=datos.titulo,
@@ -130,6 +157,7 @@ class ReclamoService:
             categoria=categoria,
             prioridad=prioridad,
             estado=estado,
+            objeto_afectado=datos.objeto_afectado,
             origen_clasificacion=origen,
             confianza_clasificacion=confianza,
             canal=datos.canal,
@@ -140,6 +168,7 @@ class ReclamoService:
             fotos=list(datos.fotos),
             correlation_id=correlation_id,
             evento_origen_id=evento_origen_id,
+            actividad=actividad,
         )
         await self.repo.agregar(reclamo)
         await self.repo.agregar_historial(
@@ -151,8 +180,10 @@ class ReclamoService:
                 usuario_id=ciudadano_id,
             )
         )
-        if ciudadano_id != USUARIO_SISTEMA:
-            await self.notificaciones.por_nuevo_reclamo(reclamo)
+        # Also for claims opened by another module's event: a saturated container
+        # is precisely the one the staff needs to see. `_crear` already skips the
+        # system user and the actor, so nobody notifies themselves.
+        await self.notificaciones.por_nuevo_reclamo(reclamo)
         await self.session.commit()
         await self.session.refresh(reclamo)
 
@@ -163,6 +194,7 @@ class ReclamoService:
                 ReclamoClasificado(
                     reclamo_id=reclamo.id,
                     categoria=reclamo.categoria,
+                    objeto_afectado=reclamo.objeto_afectado,
                     prioridad=reclamo.prioridad,
                     confianza=sugerencia.confianza,
                     modelo=sugerencia.modelo,
@@ -179,6 +211,12 @@ class ReclamoService:
             prioridad=reclamo.prioridad.value,
             origen=origen.value,
         )
+        if actividad is not None:
+            log.info(
+                "reclamo.relacionado_con_actividad",
+                reclamo_id=str(reclamo.id),
+                actividad_id=str(actividad.id),
+            )
         await self._abrir_ticket(reclamo)
         return reclamo
 
@@ -221,6 +259,7 @@ class ReclamoService:
                 ciudadano_id=reclamo.ciudadano_id,
                 titulo=reclamo.titulo,
                 categoria=reclamo.categoria,
+                objeto_afectado=reclamo.objeto_afectado,
                 prioridad=reclamo.prioridad,
                 estado=reclamo.estado,
                 barrio=reclamo.barrio,
@@ -228,6 +267,10 @@ class ReclamoService:
                 latitud=reclamo.latitud,
                 longitud=reclamo.longitud,
                 creado_at=reclamo.created_at,
+                canal=reclamo.canal,
+                descripcion=reclamo.descripcion,
+                origen_clasificacion=reclamo.origen_clasificacion,
+                confianza_clasificacion=reclamo.confianza_clasificacion,
             ),
             # Keyed by claim id, which guarantees ordering per aggregate.
             key=str(reclamo.id),
@@ -261,6 +304,20 @@ class ReclamoService:
                 f"No se puede pasar de {anterior.value} a {cambio.estado.value}"
             )
 
+        return await self._aplicar_cambio_estado(reclamo, cambio, actor.id)
+
+    async def _aplicar_cambio_estado(
+        self, reclamo: Reclamo, cambio: CambioEstado, actor_id: str
+    ) -> Reclamo:
+        """Write the change, its history, its notification and its events.
+
+        Split out of `cambiar_estado` because the state machine check is not the
+        only way in: when another module finishes the job in the street the
+        claim lands on its final state without walking our internal workflow
+        (see `finalizar_por_intervencion` and ADR 0012).
+        """
+        anterior = reclamo.estado
+
         ahora = datetime.now(UTC)
         reclamo.estado = cambio.estado
         if cambio.asignado_a:
@@ -280,11 +337,11 @@ class ReclamoService:
                 estado_anterior=anterior,
                 estado_nuevo=cambio.estado,
                 motivo=cambio.motivo,
-                usuario_id=actor.id,
+                usuario_id=actor_id,
             )
         )
         # Same transaction as the change: saved together with it or not at all.
-        await self.notificaciones.por_cambio_de_estado(reclamo, historial, actor_id=actor.id)
+        await self.notificaciones.por_cambio_de_estado(reclamo, historial, actor_id=actor_id)
         await self.session.commit()
         await self.session.refresh(reclamo)
 
@@ -297,7 +354,7 @@ class ReclamoService:
                 estado_nuevo=reclamo.estado,
                 motivo=cambio.motivo,
                 asignado_a=reclamo.asignado_a,
-                cambiado_por=actor.id,
+                cambiado_por=actor_id,
                 cambiado_at=ahora,
             ),
             key=str(reclamo.id),
@@ -311,6 +368,7 @@ class ReclamoService:
                     reclamo_id=reclamo.id,
                     ciudadano_id=reclamo.ciudadano_id,
                     categoria=reclamo.categoria,
+                    objeto_afectado=reclamo.objeto_afectado,
                     resolucion=reclamo.resolucion,
                     horas_hasta_resolucion=round(
                         (reclamo.resuelto_at - reclamo.created_at).total_seconds() / 3600, 2
@@ -326,7 +384,7 @@ class ReclamoService:
             reclamo_id=str(reclamo.id),
             de=anterior.value,
             a=reclamo.estado.value,
-            actor=actor.id,
+            actor=actor_id,
         )
         return reclamo
 
@@ -345,25 +403,44 @@ class ReclamoService:
                 f"El reclamo esta en estado {reclamo.estado.value} y no admite reclasificacion"
             )
 
+        categoria_anterior = reclamo.categoria
+        prioridad_anterior = reclamo.prioridad
+        objeto_anterior = reclamo.objeto_afectado
+
         if cambio.categoria is not None:
             reclamo.categoria = cambio.categoria
         if cambio.prioridad is not None:
             reclamo.prioridad = cambio.prioridad
+        if cambio.objeto_afectado is not None:
+            reclamo.objeto_afectado = cambio.objeto_afectado
         reclamo.origen_clasificacion = OrigenClasificacion.OPERADOR
         reclamo.confianza_clasificacion = None
 
         await self.session.commit()
         await self.session.refresh(reclamo)
 
+        # Not ReclamoClasificado: that one describes what the model decided and
+        # would force us to fill its confidence, name and evidence with made-up
+        # values. Consumers also need the previous classification to undo what
+        # they did with the old one.
         await self.publisher.publish(
-            topics.RECLAMO_CLASIFICADO,
-            ReclamoClasificado(
+            topics.RECLAMO_RECLASIFICADO,
+            ReclamoReclasificado(
                 reclamo_id=reclamo.id,
-                categoria=reclamo.categoria,
-                prioridad=reclamo.prioridad,
-                confianza=1.0,
-                modelo="operador",
-                evidencia=[],
+                ciudadano_id=reclamo.ciudadano_id,
+                categoria_anterior=categoria_anterior,
+                categoria_nueva=reclamo.categoria,
+                prioridad_anterior=prioridad_anterior,
+                prioridad_nueva=reclamo.prioridad,
+                objeto_afectado_anterior=objeto_anterior,
+                objeto_afectado_nuevo=reclamo.objeto_afectado,
+                titulo=reclamo.titulo,
+                descripcion=reclamo.descripcion,
+                barrio=reclamo.barrio,
+                latitud=reclamo.latitud,
+                longitud=reclamo.longitud,
+                reclasificado_por=actor.id,
+                reclasificado_at=reclamo.updated_at,
             ),
             key=str(reclamo.id),
             correlation_id=reclamo.correlation_id,
@@ -565,6 +642,48 @@ class ReclamoService:
         return peso * texto + (1 - peso) * cercania
 
     # --- Reactions to other modules' events -----------------------------------
+    async def finalizar_por_intervencion(
+        self, reclamo_id: uuid.UUID, resultado: ResultadoIntervencion
+    ) -> Reclamo | None:
+        """Close a claim that another module resolved out in the street (CU-INT-01).
+
+        Public Spaces does the work, so the claim never walked our own
+        ASIGNADO and EN_PROCESO. Forcing it through them to satisfy the state
+        machine would be inventing a history that did not happen: nobody here
+        was assigned to it and nobody here worked it. It lands on its final
+        state in one step, and the history entry says the change came from
+        outside.
+
+        Returns None when there is nothing to do, which is what makes a
+        redelivery harmless: the gateway is at-least-once.
+        """
+        reclamo = await self.repo.obtener(reclamo_id)
+        if reclamo is None:
+            # A claim of another module, or one that no longer exists. Ignoring
+            # it beats a 500 that makes the gateway retry forever.
+            log.warning("handler.intervencion.reclamo_inexistente", reclamo_id=str(reclamo_id))
+            return None
+
+        destino = (
+            EstadoReclamo.RESUELTO
+            if resultado is ResultadoIntervencion.RESUELTO
+            else EstadoReclamo.RECHAZADO
+        )
+        if reclamo.estado is destino or reclamo.estado in ESTADOS_FINALES:
+            log.info(
+                "handler.intervencion.sin_cambios",
+                reclamo_id=str(reclamo.id),
+                estado=reclamo.estado.value,
+            )
+            return None
+
+        cambio = CambioEstado(
+            estado=destino,
+            motivo=MOTIVO_INTERVENCION[resultado],
+            resolucion=RESOLUCION_INTERVENCION[resultado],
+        )
+        return await self._aplicar_cambio_estado(reclamo, cambio, USUARIO_SISTEMA)
+
     async def crear_desde_evento(
         self,
         datos: ReclamoCrear,

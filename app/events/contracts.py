@@ -15,9 +15,15 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Generic, TypeVar
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
-from app.domain.enums import CategoriaReclamo, EstadoReclamo, PrioridadReclamo
+from app.domain.enums import (
+    CategoriaReclamo,
+    EstadoReclamo,
+    ObjetoAfectado,
+    PrioridadReclamo,
+    ResultadoIntervencion,
+)
 
 TPayload = TypeVar("TPayload", bound=BaseModel)
 
@@ -59,6 +65,8 @@ class ReclamoCreado(BaseModel):
     ciudadano_id: str
     titulo: str
     categoria: CategoriaReclamo
+    # Optional addition: consumers that ignore it keep working, so no version bump.
+    objeto_afectado: ObjetoAfectado | None = None
     prioridad: PrioridadReclamo
     estado: EstadoReclamo
     barrio: str | None = None
@@ -66,15 +74,48 @@ class ReclamoCreado(BaseModel):
     latitud: float | None = None
     longitud: float | None = None
     creado_at: datetime
+    # Added for CU-INT-01 (optional, so the contract version stays at 1.0).
+    # Analytics needs them in its silver layer.
+    canal: str | None = None
+    descripcion: str | None = None
+    origen_clasificacion: str | None = None
+    confianza_clasificacion: float | None = None
 
 
 class ReclamoClasificado(BaseModel):
     reclamo_id: uuid.UUID
     categoria: CategoriaReclamo
+    objeto_afectado: ObjetoAfectado | None = None
     prioridad: PrioridadReclamo
     confianza: float
     modelo: str
     evidencia: list[str] = Field(default_factory=list)
+
+
+class ReclamoReclasificado(BaseModel):
+    """An operator corrected the classification of a claim.
+
+    Separate from `ReclamoClasificado`, which describes what the model decided
+    and carries its confidence, name and evidence. A human correction has none
+    of that, and consumers need the previous value to undo what they did with
+    the old one: Waste frees a container when a claim stops being TRANSITO.
+    """
+
+    reclamo_id: uuid.UUID
+    ciudadano_id: str
+    categoria_anterior: CategoriaReclamo
+    categoria_nueva: CategoriaReclamo
+    prioridad_anterior: PrioridadReclamo
+    prioridad_nueva: PrioridadReclamo
+    objeto_afectado_anterior: ObjetoAfectado | None = None
+    objeto_afectado_nuevo: ObjetoAfectado | None = None
+    titulo: str
+    descripcion: str
+    barrio: str | None = None
+    latitud: float | None = None
+    longitud: float | None = None
+    reclasificado_por: str
+    reclasificado_at: datetime
 
 
 class ReclamoEstadoCambiado(BaseModel):
@@ -92,6 +133,7 @@ class ReclamoResuelto(BaseModel):
     reclamo_id: uuid.UUID
     ciudadano_id: str
     categoria: CategoriaReclamo
+    objeto_afectado: ObjetoAfectado | None = None
     resolucion: str | None = None
     # Metric Group 8 needs for the management dashboards.
     horas_hasta_resolucion: float
@@ -129,7 +171,8 @@ class ContenedorDesbordado(BaseModel):
         default=None, validation_alias=AliasChoices("nivel_llenado", "nivelLlenado", "nivel")
     )
     direccion: str | None = None
-    barrio: str | None = None
+    # Waste publishes the zone where the container sits as `zona`.
+    barrio: str | None = Field(default=None, validation_alias=AliasChoices("barrio", "zona"))
     latitud: float | None = Field(default=None, validation_alias=AliasChoices("latitud", "lat"))
     longitud: float | None = Field(
         default=None, validation_alias=AliasChoices("longitud", "lng", "lon")
@@ -139,16 +182,118 @@ class ContenedorDesbordado(BaseModel):
 class IncidenteCreado(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    incidente_id: str = Field(validation_alias=AliasChoices("incidente_id", "incidenteId", "id"))
-    tipo: str | None = None
+    incidente_id: str = Field(
+        validation_alias=AliasChoices("incidente_id", "incidenteId", "emergenciaId", "id")
+    )
+    tipo: str | None = Field(default=None, validation_alias=AliasChoices("tipo", "categoria"))
     severidad: str | None = Field(
-        default=None, validation_alias=AliasChoices("severidad", "criticidad", "nivel")
+        default=None, validation_alias=AliasChoices("severidad", "criticidad", "nivel", "prioridad")
     )
     barrio: str | None = None
+    # CU-INT-01: Emergencies marks whether the incident cuts circulation.
+    afecta_circulacion: bool | None = Field(
+        default=None, validation_alias=AliasChoices("afecta_circulacion", "afectaCirculacion")
+    )
     latitud: float | None = Field(default=None, validation_alias=AliasChoices("latitud", "lat"))
     longitud: float | None = Field(
         default=None, validation_alias=AliasChoices("longitud", "lng", "lon")
     )
+
+
+class IntervencionFinalizada(BaseModel):
+    """`com.citypass.espacios.IntervencionFinalizada` (CU-INT-01).
+
+    Public Spaces closing the job in the street. `resultado` is what tells a
+    real fix apart from a claim they did not take: both end the claim, but the
+    neighbour reads something different.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    reclamo_id: uuid.UUID = Field(validation_alias=AliasChoices("reclamo_id", "reclamoId"))
+    resultado: ResultadoIntervencion
+    # Operational detail of their domain: we store none of it, but it travels so
+    # Analytics can measure how long the intervention took.
+    solicitado_at: int | None = Field(
+        default=None, validation_alias=AliasChoices("solicitado_at", "solicitadoAt")
+    )
+    resuelto_at: int | None = Field(
+        default=None, validation_alias=AliasChoices("resuelto_at", "resueltoAt")
+    )
+
+
+class EventoCulturalPublicado(BaseModel):
+    """`com.citypass.espacios.EventoComunitarioPublicado` (CU-INT-01)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    evento_id: str = Field(validation_alias=AliasChoices("evento_id", "eventoId"))
+    titulo: str
+    # ACTIVE, ACTIVE_FULL or CANCELLED. A cancelled event concentrates nobody.
+    estado: str | None = None
+    zona: str | None = None
+    inicio: datetime
+    inscriptos: int = 0
+    cupo_maximo: int | None = Field(
+        default=None, validation_alias=AliasChoices("cupo_maximo", "cupoMaximo")
+    )
+
+
+class UbicacionActividad(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    lat: float = Field(ge=-90, le=90, validation_alias=AliasChoices("lat", "latitud", "latitude"))
+    lng: float = Field(
+        ge=-180, le=180, validation_alias=AliasChoices("lng", "lon", "longitud", "longitude")
+    )
+
+
+class ActividadCreada(BaseModel):
+    """`com.citypass.espacios.ActividadCreada` (squad 3, ADR 0013).
+
+    Public Spaces announcing an activity. Field names follow the squad's plan
+    (`actividadId`, `fechaHoraFinalizacion` in epoch millis, `ubicacion`), and
+    the English ones of the first draft (`communityEventId`, `endDate`,
+    `latitude`) are still accepted, so either version of their publisher works.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    actividad_id: str = Field(
+        validation_alias=AliasChoices("actividad_id", "actividadId", "communityEventId")
+    )
+    titulo: str = Field(validation_alias=AliasChoices("titulo", "title"))
+    # Always PROGRAMADA on creation; checked anyway in case a cancelled one is
+    # ever republished with this type.
+    estado: str | None = Field(default=None, validation_alias=AliasChoices("estado", "status"))
+    capacidad: int | None = Field(
+        default=None, validation_alias=AliasChoices("capacidad", "capacity")
+    )
+    # Epoch millis or ISO 8601: Pydantic reads both.
+    inicio: datetime | None = Field(
+        default=None, validation_alias=AliasChoices("fechaHoraInicio", "inicio", "startDate")
+    )
+    fin: datetime = Field(
+        validation_alias=AliasChoices(
+            "fechaHoraFinalizacion", "fin", "endDate", "datetimeFinalizacion"
+        )
+    )
+    ubicacion: UbicacionActividad | None = None
+    direccion: str | None = None
+    espacio_nombre: str | None = Field(
+        default=None, validation_alias=AliasChoices("espacio_nombre", "espacioNombre")
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coordenadas_sueltas(cls, valores: Any) -> Any:
+        """The first draft sent `latitude`/`longitude` loose instead of `ubicacion`."""
+        if isinstance(valores, dict) and not valores.get("ubicacion"):
+            lat = valores.get("latitude", valores.get("latitud"))
+            lng = valores.get("longitude", valores.get("longitud"))
+            if lat is not None and lng is not None:
+                return {**valores, "ubicacion": {"lat": lat, "lng": lng}}
+        return valores
 
 
 class MensajeFallido(BaseModel):

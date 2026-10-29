@@ -39,6 +39,7 @@ class FiltroReclamos:
     hasta: datetime | None = None
     orden: str = "recientes"
     estados: list[EstadoReclamo] = field(default_factory=list)
+    actividad_id: uuid.UUID | None = None
 
 
 class ReclamoRepository:
@@ -181,7 +182,9 @@ class ReclamoRepository:
         if filtro.asignado_a:
             stmt = stmt.where(Reclamo.asignado_a == filtro.asignado_a)
         if filtro.barrio:
-            stmt = stmt.where(Reclamo.barrio == filtro.barrio)
+            # Case-insensitive on purpose: other modules send the area however
+            # they store it, and an exact match silently escalated nothing.
+            stmt = stmt.where(func.lower(Reclamo.barrio) == filtro.barrio.strip().lower())
         if filtro.texto:
             patron = f"%{filtro.texto.lower()}%"
             stmt = stmt.where(
@@ -194,6 +197,8 @@ class ReclamoRepository:
             stmt = stmt.where(Reclamo.created_at >= filtro.desde)
         if filtro.hasta:
             stmt = stmt.where(Reclamo.created_at <= filtro.hasta)
+        if filtro.actividad_id is not None:
+            stmt = stmt.where(Reclamo.actividad_id == filtro.actividad_id)
         return stmt
 
     async def listar(

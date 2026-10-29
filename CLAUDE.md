@@ -13,7 +13,7 @@ Guía para cualquiera (persona o agente) que toque este código.
 | Persistencia | Supabase (PostgreSQL) vía SQLAlchemy 2.0 async (asyncpg) |
 | Migraciones | Alembic |
 | Eventos | Kafka — Redpanda en local, cliente `aiokafka` |
-| Identidad | JWT emitido por el Grupo 2 (Login Federado LDAP + JWT) |
+| Identidad | **Staff**: JWT del Grupo 2 (Login Federado LDAP + JWT). **Ciudadanos**: los resuelve este módulo, su IdP no los cubre |
 | Tests | pytest + pytest-asyncio, SQLite en memoria |
 | Lint / format | ruff (una sola herramienta para ambos) |
 
@@ -111,8 +111,10 @@ está en el ADR 0004.
 3. Router en `app/api/v1/`, con `summary` y `description` en español.
 4. Dependencia de identidad: `UsuarioDep` (cualquier usuario autenticado),
    `StaffDep` (operador/admin) o `AdminDep` (solo admin, para métricas de
-   gestión). **Ningún endpoint sin una de las tres**, salvo `/health` y el
-   login de desarrollo.
+   gestión). **Ningún endpoint sin una de las tres**, salvo cuatro excepciones
+   documentadas: `/health`, el login de desarrollo, el webhook del gateway (ADR
+   0009) y el registro y login de ciudadanos (ADR 0011: no se puede presentar un
+   token antes de tenerlo).
 5. Test de integración en `tests/integration/test_reclamos_api.py`.
 
 ### Eventos nuevos
@@ -254,6 +256,11 @@ supere al anterior:
 | 0006 | Ticket en Jira por llamada post-commit; mover al worker como deuda |
 | 0007 | Reclamos similares: filtros + TF-IDF + cercanía, sugeridos en línea |
 | 0008 | Notificaciones internas en la misma transacción, no por el bus |
+| 0009 | Integración con los otros módulos por el gateway HTTP del Grupo 1 |
+| 0010 | Las reclasificaciones salen con evento propio, no como `clasificado` |
+| 0011 | Los ciudadanos se registran y autentican acá; el IdP del Grupo 2 es solo para staff |
+| 0012 | Un cierre que viene de otro módulo saltea la máquina de estados, pero sólo la validación |
+| 0013 | Un reclamo se relaciona con una actividad masiva en su alta, por distancia y horario |
 
 ---
 
@@ -261,8 +268,8 @@ supere al anterior:
 
 | Grupo | Qué nos da / qué le damos |
 | --- | --- |
-| 1 — EDA | Define el bus y la convención de topics. Nos alineamos a su contrato. |
-| 2 — Login Federado | Emite los JWT. Nosotros solo validamos; nunca emitimos tokens (excepción temporal abajo). |
+| 1 — EDA | Define el bus, la convención de topics y el **gateway HTTP** por el que se integran los módulos (ADR 0009). |
+| 2 — Login Federado | Emite los JWT **del personal municipal**. Su IdP no autentica ciudadanos: eso es nuestro. |
 | 4 — Residuos | Consumimos `residuos.contenedor.desbordado` → alta automática. |
 | 6 — Emergencias | Consumimos `emergencias.incidente.creado` → re-priorización por zona. |
 | 8 — Analítica | Consume nuestros eventos y `GET /api/v1/reclamos/estadisticas`. |
@@ -276,7 +283,8 @@ Mientras el servicio del Grupo 2 no esté disponible, `app/api/v1/auth_dev.py`
 expone `POST /api/v1/auth/dev/login` con **usuarios hardcodeados** y firma
 tokens HS256 con el mismo formato que va a emitir el Grupo 2.
 
-Es una excepción explícita y acotada a la regla "nunca emitimos tokens":
+Es una excepción acotada, y **sólo para el staff**: desde el ADR 0011 este
+módulo sí emite tokens, pero únicamente los de los ciudadanos que registra.
 
 - Solo se monta con `AUTH_DEV_LOGIN_ENABLED=true`. Con cualquier `ENVIRONMENT`
   que no sea de desarrollo, `Settings` **no arranca**.
@@ -284,7 +292,9 @@ Es una excepción explícita y acotada a la regla "nunca emitimos tokens":
   JWT igual, sin importar quién los firmó.
 - **Criterio de eliminación:** cuando el Grupo 2 exponga su emisor, se borra el
   archivo, se saca el `include` de `router.py` y se apunta `JWT_JWKS_URL` a
-  ellos. No hay refactor asociado.
+  ellos. No hay refactor asociado. Ojo que eso cubre **sólo al personal
+  municipal**: el login de los vecinos vive en `app/api/v1/auth_ciudadanos.py`
+  y no se va a ningún lado (ADR 0011).
 
 Usuarios de prueba (uno por rol, nunca uno con todos): `vecino1` (ciudadano),
 `operador1` (operador), `admin1` (operador + admin). La contraseña es igual al

@@ -5,14 +5,23 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from app.domain.enums import (
+    CATEGORIAS_QUE_AFECTAN_CIRCULACION,
     CanalOrigen,
     CategoriaReclamo,
     EstadoReclamo,
+    ObjetoAfectado,
     OrigenClasificacion,
     PrioridadReclamo,
+)
+from app.schemas.actividad import ActividadVinculada
+
+# Shared by every claim response that can carry the relation (ADR 0013).
+_DESCRIPCION_ACTIVIDAD = (
+    "Actividad masiva con la que se relaciona: el reclamo se cargo cerca de ella "
+    "mientras duraba o en las horas siguientes. Nulo si no hay ninguna."
 )
 
 
@@ -23,6 +32,8 @@ class ReclamoCrear(BaseModel):
     # Left out, the classifier fills them in (see `app/services/clasificador.py`).
     categoria: CategoriaReclamo | None = None
     prioridad: PrioridadReclamo | None = None
+    # Chosen by the citizen; the classifier does not infer it (no corpus for it).
+    objeto_afectado: ObjetoAfectado | None = None
     direccion: str | None = Field(default=None, max_length=255)
     barrio: str | None = Field(default=None, max_length=120)
     latitud: float | None = Field(default=None, ge=-90, le=90)
@@ -91,11 +102,12 @@ class ReclasificacionPedido(BaseModel):
 
     categoria: CategoriaReclamo | None = None
     prioridad: PrioridadReclamo | None = None
+    objeto_afectado: ObjetoAfectado | None = None
 
     @model_validator(mode="after")
     def _al_menos_un_campo(self) -> ReclasificacionPedido:
-        if self.categoria is None and self.prioridad is None:
-            raise ValueError("Debe enviar categoria y/o prioridad")
+        if self.categoria is None and self.prioridad is None and self.objeto_afectado is None:
+            raise ValueError("Debe enviar categoria, prioridad y/o objeto afectado")
         return self
 
 
@@ -123,7 +135,22 @@ class ComentarioOut(BaseModel):
     created_at: datetime
 
 
-class ReclamoResumen(BaseModel):
+class AfectaCirculacionMixin(BaseModel):
+    """Exposes the CU-INT-01 rule so consumers do not reimplement it.
+
+    The frontend used to derive this from the category on its own, which meant
+    the set lived in two places and could drift. Computed, never stored.
+    """
+
+    categoria: CategoriaReclamo
+
+    @computed_field(description="Si el reclamo corta o entorpece la circulacion")
+    @property
+    def afecta_circulacion(self) -> bool:
+        return self.categoria in CATEGORIAS_QUE_AFECTAN_CIRCULACION
+
+
+class ReclamoResumen(AfectaCirculacionMixin):
     """Lightweight projection for lists and map views."""
 
     model_config = ConfigDict(from_attributes=True)
@@ -138,6 +165,7 @@ class ReclamoResumen(BaseModel):
     longitud: float | None
     adhesiones_count: int
     created_at: datetime
+    actividad: ActividadVinculada | None = Field(default=None, description=_DESCRIPCION_ACTIVIDAD)
 
 
 class ReclamoListado(ReclamoResumen):
@@ -160,7 +188,7 @@ class ReclamoSimilar(ReclamoResumen):
     ya_adherido: bool = Field(description="El usuario ya se sumo a este reclamo")
 
 
-class ReclamoOut(BaseModel):
+class ReclamoOut(AfectaCirculacionMixin):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -172,6 +200,7 @@ class ReclamoOut(BaseModel):
     estado: EstadoReclamo
     origen_clasificacion: OrigenClasificacion
     confianza_clasificacion: float | None
+    objeto_afectado: ObjetoAfectado | None
     canal: CanalOrigen
     direccion: str | None
     barrio: str | None
@@ -190,6 +219,7 @@ class ReclamoOut(BaseModel):
     updated_at: datetime
     resuelto_at: datetime | None
     cerrado_at: datetime | None
+    actividad: ActividadVinculada | None = Field(default=None, description=_DESCRIPCION_ACTIVIDAD)
 
 
 class ReclamoDetalle(ReclamoOut):
@@ -197,7 +227,7 @@ class ReclamoDetalle(ReclamoOut):
     comentarios: list[ComentarioOut] = Field(default_factory=list)
 
 
-class ReclamoBandeja(BaseModel):
+class ReclamoBandeja(AfectaCirculacionMixin):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -208,6 +238,7 @@ class ReclamoBandeja(BaseModel):
     estado: EstadoReclamo
     adhesiones_count: int
     created_at: datetime
+    actividad: ActividadVinculada | None = Field(default=None, description=_DESCRIPCION_ACTIVIDAD)
 
 
 class AdhesionOut(BaseModel):

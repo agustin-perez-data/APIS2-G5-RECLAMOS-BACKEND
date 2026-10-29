@@ -42,9 +42,25 @@ class Settings(BaseSettings):
     kafka_client_id: str = "reclamos-service"
     kafka_consumer_group: str = "reclamos-service"
 
-    # --- Security -----------------------------------------------------------
-    # Tokens are issued by Group 2 (Federated Login, LDAP + JWT). This service
-    # only validates them: no credentials are ever minted here.
+    # --- CityPass+ event gateway (Group 1) ---------------------------------
+    # CU-INT-01. When enabled, domain events are published through the shared
+    # gateway (HTTP + Avro contracts) instead of our own Kafka, and other
+    # modules' events arrive by webhook at POST /api/v1/webhooks/citypass.
+    gateway_enabled: bool = False
+    gateway_url: str = "http://localhost:8080"
+    gateway_token_url: str = "http://localhost:8083/oauth/token"
+    gateway_client_id: str = "svc-reclamos"
+    gateway_client_secret: str = ""
+    gateway_namespace: str = "com.citypass.reclamos"
+    # The dispatcher does not sign deliveries: the secret travels in the
+    # subscription URL (?token=...). Empty = the webhook rejects everything.
+    gateway_webhook_token: str = ""
+    gateway_timeout_seconds: float = 5.0
+
+    # --- Security: municipal staff ------------------------------------------
+    # Group 2's Federated Login (LDAP + JWT) issues these and we only validate
+    # them. Their IdP covers staff only, so citizens have their own issuer
+    # below (see ADR 0011).
     auth_enabled: bool = True
     jwt_algorithm: str = "HS256"
     jwt_secret: str = "dev-secret-no-usar-en-produccion"
@@ -52,6 +68,28 @@ class Settings(BaseSettings):
     jwt_audience: str | None = "citypass"
     jwt_jwks_url: str | None = None
     jwt_roles_claim: str = "roles"
+    # Group 2 marks person tokens apart from service ones. Left as None while
+    # the development login is the issuer, since it does not emit the claim.
+    jwt_token_use_esperado: str | None = None
+    # The IdP hands out raw LDAP group names; our delegate chooses them, so the
+    # mapping to roles lives here and not in their directory.
+    jwt_staff_grupos_operador: list[str] = []
+    jwt_staff_grupos_admin: list[str] = []
+    # Turns on the rules that only make sense against the real IdP: the
+    # token_use check, the group mapping and the role whitelist. A group that
+    # maps to nothing grants nothing, deliberately: an employee with no groups
+    # assigned yet must not end up with staff access.
+    jwt_staff_estricto: bool = False
+
+    # --- Security: citizens (issued here) -----------------------------------
+    # Group 2's IdP does not authenticate neighbours, so this module registers
+    # and authenticates them. The algorithm is not configurable on purpose:
+    # there is no reason an .env should be able to weaken it.
+    ciudadanos_auth_enabled: bool = True
+    jwt_ciudadanos_issuer: str = "citypass-reclamos"
+    jwt_ciudadanos_audience: str = "citypass-reclamos-ciudadanos"
+    jwt_ciudadanos_secret: str = "dev-secret-ciudadanos-no-usar-en-produccion"
+    jwt_ciudadanos_ttl_horas: int = 12
 
     # --- Development login (scaffolding for Entrega 1) ----------------------
     # Stand-in for Group 2's Federated Login while that service is not up: it
@@ -63,13 +101,19 @@ class Settings(BaseSettings):
     auth_dev_token_horas: int = 8
 
     # --- Rate limiting ------------------------------------------------------
-    # In-memory, per-process. Good enough for a single-instance deploy
-    # (Railway). Disable in tests so fast request bursts do not trip 429s.
+    # In-memory, per-process. Good enough for a single-instance deploy.
+    # Disable in tests so fast request bursts do not trip 429s.
     rate_limit_enabled: bool = True
     rate_limit_login: str = "10/minute"
+    # Tighter than login: a registration costs CPU (hashing) and creates rows.
+    rate_limit_registro: str = "5/hour"
     rate_limit_creacion: str = "10/minute"
     rate_limit_comentarios: str = "15/minute"
     rate_limit_adhesiones: str = "20/minute"
+    # Generous on purpose: the gateway can deliver bursts and a dropped event
+    # ends in its dead letter queue. What protects the endpoint is the secret;
+    # this only caps a flood from an unauthenticated client.
+    rate_limit_webhook: str = "120/minute"
 
     # --- HTTP ---------------------------------------------------------------
     # Defaults cover the two dev servers the front end uses: CRA-style (3000)
@@ -119,6 +163,15 @@ class Settings(BaseSettings):
     similares_puntaje_minimo: float = 0.20
     similares_maximo: int = 5
 
+    # --- Mass activities (squad 3, ADR 0013) -----------------------------------
+    # A Public Spaces activity this large is a mass event: claims filed near it
+    # while it lasts, and for a while after it ends, are related to it. Same cut,
+    # radius and window as Waste and Mobility, so every module of the squad talks
+    # about the same area and the same hours.
+    actividad_masiva_capacidad_minima: int = 1000
+    actividad_masiva_radio_metros: int = 300
+    actividad_masiva_horas_despues: int = 6
+
     @field_validator("database_url")
     @classmethod
     def _force_async_driver(cls, value: str) -> str:
@@ -141,6 +194,70 @@ class Settings(BaseSettings):
             raise ValueError(
                 "AUTH_DEV_LOGIN_ENABLED=true no esta permitido con ENVIRONMENT="
                 f"'{self.environment}': el login de desarrollo usa usuarios hardcodeados"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _emisores_no_se_pisan(self) -> Settings:
+        """The two issuers must stay distinguishable.
+
+        A token is routed to its issuer by its `iss` claim; if both ends shared
+        it, a citizen token and a staff token would validate against the same
+        configuration and the role whitelist would stop meaning anything.
+        """
+        if self.jwt_ciudadanos_issuer == self.jwt_issuer:
+            raise ValueError(
+                "JWT_CIUDADANOS_ISSUER no puede ser igual a JWT_ISSUER "
+                f"('{self.jwt_issuer}'): son dos emisores distintos"
+            )
+        if self.jwt_ciudadanos_audience == self.jwt_audience:
+            raise ValueError(
+                f"JWT_CIUDADANOS_AUDIENCE no puede ser igual a JWT_AUDIENCE ('{self.jwt_audience}')"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _idp_real_exige_modo_estricto(self) -> Settings:
+        """Fail closed once the real IdP is wired.
+
+        An asymmetric algorithm means we are pointing at Group 2's JWKS rather
+        than at the development login, and at that point the checks that guard
+        staff access are no longer optional.
+        """
+        asimetrico = self.jwt_algorithm.startswith(("RS", "ES"))
+        if not asimetrico:
+            return self
+        if not self.jwt_staff_estricto:
+            raise ValueError(
+                f"JWT_ALGORITHM='{self.jwt_algorithm}' apunta al IdP real: "
+                "JWT_STAFF_ESTRICTO tiene que estar en true"
+            )
+        if not self.jwt_token_use_esperado:
+            raise ValueError(
+                f"JWT_ALGORITHM='{self.jwt_algorithm}' apunta al IdP real: "
+                "falta JWT_TOKEN_USE_ESPERADO (el Grupo 2 emite 'human')"
+            )
+        if self.auth_dev_login_enabled:
+            # It signs HS256 with our own secret and the staff issuer, so once
+            # that slot points at Group 2 its tokens no longer validate. Leaving
+            # it on would mint credentials that open nothing, and the symptom
+            # (a 401 on a token that was just issued) sends you looking in the
+            # wrong place.
+            raise ValueError(
+                f"JWT_ALGORITHM='{self.jwt_algorithm}' apunta al IdP real: "
+                "AUTH_DEV_LOGIN_ENABLED tiene que estar en false, sus tokens ya no validan"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _secreto_de_ciudadanos_fuera_de_desarrollo(self) -> Settings:
+        """The default signing secret is public: it must not reach a deploy."""
+        default = "dev-secret-ciudadanos-no-usar-en-produccion"
+        usa_el_default = self.jwt_ciudadanos_secret == default
+        if self.ciudadanos_auth_enabled and not self.is_local and usa_el_default:
+            raise ValueError(
+                "JWT_CIUDADANOS_SECRET sigue siendo el valor de ejemplo con "
+                f"ENVIRONMENT='{self.environment}': cualquiera podria firmar tokens"
             )
         return self
 

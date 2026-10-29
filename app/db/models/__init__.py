@@ -1,10 +1,21 @@
 """ORM models. Import them from here so Alembic sees the full metadata."""
 
 from app.db.base import Base
+from app.db.models.actividad import ActividadMasiva
 from app.db.models.adhesion import Adhesion
+from app.db.models.ciudadano import Ciudadano
 from app.db.models.comentario import Comentario
 from app.db.models.historial import HistorialEstado
 from app.db.models.notificacion import Notificacion
 from app.db.models.reclamo import Reclamo
 
-__all__ = ["Adhesion", "Base", "Comentario", "HistorialEstado", "Notificacion", "Reclamo"]
+__all__ = [
+    "ActividadMasiva",
+    "Adhesion",
+    "Base",
+    "Ciudadano",
+    "Comentario",
+    "HistorialEstado",
+    "Notificacion",
+    "Reclamo",
+]

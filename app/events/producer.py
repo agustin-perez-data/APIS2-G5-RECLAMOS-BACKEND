@@ -141,4 +141,9 @@ class KafkaEventPublisher(EventPublisher):
 
 def crear_publisher(cfg: Settings | None = None) -> EventPublisher:
     cfg = cfg or settings
+    if cfg.gateway_enabled:
+        # CU-INT-01: the shared CityPass+ gateway replaces our own Kafka.
+        from app.events.gateway import GatewayEventPublisher
+
+        return GatewayEventPublisher(cfg)
     return KafkaEventPublisher(cfg) if cfg.kafka_enabled else InMemoryEventPublisher()
