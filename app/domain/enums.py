@@ -58,6 +58,34 @@ class ObjetoAfectado(StrEnum):
     OTRO = "OTRO"
 
 
+class NivelCriticidad(StrEnum):
+    """How severe the weather alert is, as Public Spaces declares it.
+
+    Taken from the enum registered in their event type, verified against the bus
+    catalogue on 2026-11-03. They declared it as an Avro `enum`, so these four
+    are the only values that can ever arrive: adding one would break their own
+    schema.
+    """
+
+    BAJA = "BAJA"
+    MEDIA = "MEDIA"
+    ALTA = "ALTA"
+    CRITICA = "CRITICA"
+
+
+class EstadoEventoClimatico(StrEnum):
+    """Where a weather alert is in its own lifecycle.
+
+    CONFIRMADA is what arrives with the event; ACTIVA starts at `vigencia_desde`
+    and is evaluated when a claim is filed, not by a scheduler; FINALIZADA is
+    terminal and comes from Public Spaces.
+    """
+
+    CONFIRMADA = "CONFIRMADA"
+    ACTIVA = "ACTIVA"
+    FINALIZADA = "FINALIZADA"
+
+
 class MotivoPrioridad(StrEnum):
     """Why a claim sits at the priority it has.
 

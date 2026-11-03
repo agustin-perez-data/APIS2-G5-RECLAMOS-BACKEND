@@ -17,6 +17,7 @@ from app.domain.enums import (
     CanalOrigen,
     CategoriaReclamo,
     EstadoReclamo,
+    MotivoPrioridad,
     ObjetoAfectado,
     OrigenClasificacion,
     PrioridadReclamo,
@@ -126,6 +127,17 @@ class Reclamo(Base, TimestampMixin):
     # Many-to-one and joined: every claim response can show the activity's
     # title without an extra query per row.
     actividad: Mapped[ActividadMasiva | None] = relationship(lazy="joined")
+
+    # --- Weather alert (squad 3, ADR 0014) -----------------------------------
+    # Set when the claim falls inside an active alert's area. No foreign key on
+    # purpose: the alert is Public Spaces' record, and an alert we never received
+    # must not stop a claim from being filed.
+    alerta_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
+    # Why the claim sits at its current priority. Analytics reads it to tell the
+    # alert-driven claims from the ones neighbours pushed up by joining in.
+    motivo_prioridad: Mapped[MotivoPrioridad | None] = mapped_column(
+        enum_column(MotivoPrioridad, "motivo_prioridad"), nullable=True
+    )
 
     historial: Mapped[list[HistorialEstado]] = relationship(
         back_populates="reclamo",
