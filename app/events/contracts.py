@@ -20,6 +20,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from app.domain.enums import (
     CategoriaReclamo,
     EstadoReclamo,
+    NivelCriticidad,
     ObjetoAfectado,
     PrioridadReclamo,
     ResultadoIntervencion,
@@ -205,6 +206,62 @@ class IncidenteCreado(BaseModel):
     latitud: float | None = Field(default=None, validation_alias=AliasChoices("latitud", "lat"))
     longitud: float | None = Field(
         default=None, validation_alias=AliasChoices("longitud", "lng", "lon")
+    )
+
+
+class UbicacionClimatica(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    latitud: float
+    longitud: float
+
+
+class CriticidadClimaticaConfirmada(BaseModel):
+    """`com.citypass.espacios.CriticidadClimaticaConfirmada` (squad 3, ADR 0014).
+
+    Public Spaces declaring bad weather over part of the city. Fields taken from
+    the schema they have registered in the bus catalogue, read on 2026-11-03,
+    not from the design document: `barrios` is in the schema even though the
+    document said it was not, and it is what makes the primary cross possible.
+
+    `barrios` carries a default of `[]` in their schema, so it can arrive empty:
+    that is the case the geographic fallback exists for.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    alerta_id: uuid.UUID = Field(validation_alias=AliasChoices("alerta_id", "alertaId"))
+    nivel_criticidad: NivelCriticidad = Field(
+        validation_alias=AliasChoices("nivel_criticidad", "nivelCriticidad")
+    )
+    fenomeno: str
+    barrios: list[str] = Field(default_factory=list)
+    ubicaciones: list[UbicacionClimatica] = Field(default_factory=list)
+    # Epoch millis in their schema (`logicalType: timestamp-millis`).
+    vigencia_desde: int = Field(validation_alias=AliasChoices("vigencia_desde", "vigenciaDesde"))
+    vigencia_hasta: int = Field(validation_alias=AliasChoices("vigencia_hasta", "vigenciaHasta"))
+    actor_sub: str | None = Field(
+        default=None, validation_alias=AliasChoices("actor_sub", "actorSub")
+    )
+    temperatura_min_c: float | None = Field(
+        default=None, validation_alias=AliasChoices("temperatura_min_c", "temperaturaMinC")
+    )
+    temperatura_max_c: float | None = Field(
+        default=None, validation_alias=AliasChoices("temperatura_max_c", "temperaturaMaxC")
+    )
+
+
+class CriticidadClimaticaFinalizada(BaseModel):
+    """`com.citypass.espacios.CriticidadClimaticaFinalizada` (squad 3, ADR 0014)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    alerta_id: uuid.UUID = Field(validation_alias=AliasChoices("alerta_id", "alertaId"))
+    finalizada_en: int | None = Field(
+        default=None, validation_alias=AliasChoices("finalizada_en", "finalizadaEn")
+    )
+    actor_sub: str | None = Field(
+        default=None, validation_alias=AliasChoices("actor_sub", "actorSub")
     )
 
 

@@ -17,6 +17,8 @@ from app.events import topics
 from app.events.contracts import (
     ActividadCreada,
     ContenedorDesbordado,
+    CriticidadClimaticaConfirmada,
+    CriticidadClimaticaFinalizada,
     EventoCulturalPublicado,
     IncidenteCreado,
     IntervencionFinalizada,
@@ -208,10 +210,75 @@ async def manejar_actividad_creada(raw: dict[str, Any], service: ReclamoService)
     )
 
 
+async def _descartar_si_repetido(raw: dict, service: ReclamoService, tipo: str) -> bool:
+    """True when this event id was already handled and there is nothing to do.
+
+    The bus delivers at least once and a redelivered confirmation would notify
+    every affected neighbour a second time, so this guard runs before any work.
+    """
+    event_id = str(raw.get("event_id") or "")
+    if not event_id:
+        return False
+    if await service.clima.ya_procesado(event_id):
+        log.info("handler.clima.evento_repetido", event_id=event_id, tipo=tipo)
+        return True
+    # Written before the work, inside the same transaction: if the handler
+    # fails, the rollback takes this with it and the retry is processed.
+    await service.clima.marcar_procesado(event_id, tipo)
+    return False
+
+
+async def manejar_criticidad_confirmada(raw: dict[str, Any], service: ReclamoService) -> None:
+    """`com.citypass.espacios.CriticidadClimaticaConfirmada` -> record the alert.
+
+    Step 2 only stores it and keeps its order straight. Marking the claims in
+    the area and moving their priority is step 3.
+    """
+    if await _descartar_si_repetido(raw, service, topics.ESPACIOS_CLIMA_CONFIRMADA):
+        return
+
+    evento = parse_envelope(raw, CriticidadClimaticaConfirmada)
+    alerta = await service.clima.registrar_confirmada(evento.data, occurred_at=evento.occurred_at)
+    if alerta is None:
+        # Older than what we already applied: their event carries no version,
+        # so the bus' timestamp is the only ordering available.
+        log.info("handler.clima.evento_viejo", alerta_id=str(evento.data.alerta_id))
+        return
+
+    await service.session.commit()
+    log.info(
+        "handler.clima.alerta_registrada",
+        alerta_id=str(alerta.alerta_id),
+        nivel=alerta.nivel.value,
+        barrios=len(alerta.barrios),
+        ubicaciones=len(alerta.ubicaciones),
+    )
+
+
+async def manejar_criticidad_finalizada(raw: dict[str, Any], service: ReclamoService) -> None:
+    """`com.citypass.espacios.CriticidadClimaticaFinalizada` -> close the alert."""
+    if await _descartar_si_repetido(raw, service, topics.ESPACIOS_CLIMA_FINALIZADA):
+        return
+
+    evento = parse_envelope(raw, CriticidadClimaticaFinalizada)
+    alerta = await service.clima.registrar_finalizada(evento.data, occurred_at=evento.occurred_at)
+    if alerta is None:
+        # Unknown alert or a stale event. Not an error: Public Spaces can close
+        # an alert whose confirmation never reached us.
+        log.info("handler.clima.finalizada_ignorada", alerta_id=str(evento.data.alerta_id))
+        await service.session.commit()
+        return
+
+    await service.session.commit()
+    log.info("handler.clima.alerta_finalizada", alerta_id=str(alerta.alerta_id))
+
+
 HANDLERS: dict[str, Handler] = {
     topics.RESIDUOS_CONTENEDOR_DESBORDADO: manejar_contenedor_desbordado,
     topics.EMERGENCIAS_INCIDENTE_CREADO: manejar_incidente_creado,
     topics.ESPACIOS_EVENTO_PUBLICADO: manejar_evento_cultural,
     topics.ESPACIOS_INTERVENCION_FINALIZADA: manejar_intervencion_finalizada,
+    topics.ESPACIOS_CLIMA_CONFIRMADA: manejar_criticidad_confirmada,
+    topics.ESPACIOS_CLIMA_FINALIZADA: manejar_criticidad_finalizada,
     topics.ESPACIOS_ACTIVIDAD_CREADA: manejar_actividad_creada,
 }
