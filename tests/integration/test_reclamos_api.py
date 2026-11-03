@@ -40,6 +40,30 @@ async def test_readiness_verifica_la_base(client: AsyncClient) -> None:
     assert respuesta.json()["database"] == "ok"
 
 
+async def test_la_api_expone_si_el_reclamo_afecta_la_circulacion(
+    client: AsyncClient, auth, token_ciudadano, token_operador
+) -> None:
+    # Exposed as a computed field so the front does not duplicate the rule.
+    creado = await crear_reclamo(client, auth(token_ciudadano), categoria="BACHES")
+    assert creado["afecta_circulacion"] is True
+
+    detalle = await client.get(f"/api/v1/reclamos/{creado['id']}", headers=auth(token_ciudadano))
+    assert detalle.json()["afecta_circulacion"] is True
+
+    listado = await client.get("/api/v1/reclamos", headers=auth(token_ciudadano))
+    assert listado.json()["items"][0]["afecta_circulacion"] is True
+
+    bandeja = await client.get("/api/v1/reclamos/bandeja", headers=auth(token_operador))
+    assert bandeja.json()["items"][0]["afecta_circulacion"] is True
+
+
+async def test_un_reclamo_de_ruidos_no_afecta_la_circulacion(
+    client: AsyncClient, auth, token_ciudadano
+) -> None:
+    creado = await crear_reclamo(client, auth(token_ciudadano), categoria="RUIDOS")
+    assert creado["afecta_circulacion"] is False
+
+
 # --- Security ----------------------------------------------------------------
 async def test_sin_token_devuelve_401(client: AsyncClient) -> None:
     respuesta = await client.post("/api/v1/reclamos", json=RECLAMO)

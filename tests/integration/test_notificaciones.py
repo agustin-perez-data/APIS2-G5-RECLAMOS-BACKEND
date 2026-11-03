@@ -26,11 +26,12 @@ from app.domain.enums import (
     TipoNotificacion,
 )
 from app.events import topics
+from app.events.handlers import manejar_contenedor_desbordado
 from app.events.producer import InMemoryEventPublisher
 from app.schemas.reclamo import CambioEstado, ReclamoCrear
 from app.services.notificacion_service import NotificacionService, resumir
 from app.services.reclamo_service import ReclamoService
-from tests.conftest import CIUDADANO_ID, OTRO_CIUDADANO_ID
+from tests.conftest import CIUDADANO_ID, OTRO_CIUDADANO_ID, evento_contenedor_desbordado
 
 OTRO_VECINO = CurrentUser(
     id=OTRO_CIUDADANO_ID, nombre="Vecina de enfrente", roles=frozenset({Roles.CIUDADANO})
@@ -52,6 +53,17 @@ def datos_reclamo(**overrides) -> ReclamoCrear:
 async def bandeja(session: AsyncSession, destinatario_id: str = CIUDADANO_ID) -> list[Notificacion]:
     items, _ = await NotificacionService(session).listar(destinatario_id, size=100)
     return items
+
+
+async def test_un_reclamo_automatico_de_residuos_notifica_al_staff(
+    service: ReclamoService, session: AsyncSession
+) -> None:
+    # CU-INT-01: a saturated container is the claim the staff most needs to see,
+    # and it is opened by the system rather than by a citizen.
+    await manejar_contenedor_desbordado(evento_contenedor_desbordado(), service)
+
+    [notificacion] = await bandeja(session, "operador-1")
+    assert notificacion.tipo is TipoNotificacion.NUEVO_RECLAMO
 
 
 # --- State changes --------------------------------------------------------------

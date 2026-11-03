@@ -29,6 +29,11 @@ def _payload_creado() -> ReclamoCreado:
     )
 
 
+def test_el_objeto_afectado_es_opcional() -> None:
+    # Optional on purpose: it must not break consumers nor bump the event version.
+    assert _payload_creado().objeto_afectado is None
+
+
 def test_el_envelope_completa_los_campos_automaticos() -> None:
     envelope = EventEnvelope[ReclamoCreado](
         event_type="reclamos.reclamo.creado", data=_payload_creado()

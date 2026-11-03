@@ -91,6 +91,10 @@ async def listar_reclamos(
     ),
     page: Annotated[int, Query(ge=1)] = 1,
     size: Annotated[int, Query(ge=1, le=100)] = 20,
+    actividad_id: Annotated[
+        uuid.UUID | None,
+        Query(description="Solo los relacionados con esta actividad masiva (GET /actividades)"),
+    ] = None,
 ) -> Page[ReclamoListado]:
     filtro = FiltroReclamos(
         estado=estado,
@@ -103,6 +107,7 @@ async def listar_reclamos(
         desde=desde,
         hasta=hasta,
         orden=orden,
+        actividad_id=actividad_id,
     )
     items, total = await service.listar(filtro, page=page, size=size)
     return Page[ReclamoListado](
@@ -237,10 +242,11 @@ async def cambiar_estado(
 @router.patch(
     "/{reclamo_id}/clasificacion",
     response_model=ReclamoOut,
-    summary="Corregir categoria y/o prioridad de un reclamo (operador/admin)",
+    summary="Corregir la clasificacion de un reclamo (operador/admin)",
     description=(
-        "Para cuando el modelo o el ciudadano clasificaron mal. No cambia el "
-        "estado del reclamo; publica `reclamos.reclamo.clasificado` de nuevo."
+        "Corrige categoria, prioridad y/o objeto afectado, para cuando el modelo "
+        "o el ciudadano clasificaron mal. No cambia el estado del reclamo; "
+        "publica `reclamos.reclamo.clasificado` de nuevo."
     ),
 )
 async def reclasificar(

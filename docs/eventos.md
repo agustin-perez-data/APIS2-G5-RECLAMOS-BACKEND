@@ -15,6 +15,15 @@ pasado. Ej.: `reclamos.reclamo.estado-cambiado`.
 **Key del mensaje:** siempre el `id` del reclamo. Garantiza que todos los
 eventos del mismo reclamo caigan en la misma partición y conserven el orden.
 
+**Identidad:** hay **dos orígenes distintos** y conviene no confundirlos, porque
+sólo uno se puede cruzar contra el directorio del Grupo 2.
+
+| Campo | Qué es |
+| --- | --- |
+| `ciudadano_id` (`ciudadanoId` en el gateway) | Un **UUID que emite Reclamos**. El IdP del Grupo 2 autentica sólo personal municipal, así que un vecino no existe en su directorio: **este id no se resuelve contra ellos**. |
+| `cambiado_por`, `reclasificado_por`, `asignado_a` | El claim `sub` del token del Grupo 2 (ej. `U000042`). Estos sí se cruzan contra su directorio. |
+| `usuario_id`, `autor_id`, `destinatario_id` | **Mixtos**: puede ser cualquiera de los dos anteriores, o `"sistema"` cuando la acción la disparó un evento de otro módulo. |
+
 **Formato:** JSON UTF-8. Headers de Kafka: `event_type`, `event_version`,
 `source`, `content-type`, y `correlation_id` cuando existe.
 
@@ -51,14 +60,23 @@ También aceptamos el envelope al estilo **CloudEvents** (`id`, `type`, `time`,
 
 Un vecino (o un evento de otro módulo) registró un reclamo.
 
+`objeto_afectado` es el **espacio urbano sobre el que es el reclamo**, un eje
+independiente de `categoria`: la categoría dice *qué pasó* y éste dice *sobre
+qué*. Un auto sobre una bicisenda es `TRANSITO` y un pozo en esa misma bicisenda
+es `BACHES`, pero los dos son `CICLOVIA`, así que quien se ocupa de ciclovías se
+suscribe a un solo valor en vez de seguir todas las categorías. **Es opcional y
+puede venir en `null`**: lo elige el vecino al cargar el reclamo y no todos los
+reclamos afectan un espacio identificable.
+
 ```json
 {
   "event_type": "reclamos.reclamo.creado",
   "data": {
     "reclamo_id": "6f1c9a4e-3c2b-4a5d-9e11-2b7d5c8a1f30",
-    "ciudadano_id": "auth0|65f2c1...",
+    "ciudadano_id": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
     "titulo": "Luminaria apagada en la plaza",
     "categoria": "ALUMBRADO",
+    "objeto_afectado": "PLAZA_PARQUE",
     "prioridad": "MEDIA",
     "estado": "RECIBIDO",
     "barrio": "Centro",
@@ -72,8 +90,9 @@ Un vecino (o un evento de otro módulo) registró un reclamo.
 
 ### `reclamos.reclamo.clasificado` — v1.0
 
-Solo cuando la categoría la decidió el modelo. Sirve para medir la calidad de la
-clasificación y para que Analítica compare sugerencia vs. corrección manual.
+Sólo cuando la categoría la decidió **el modelo**. Sirve para medir la calidad del
+clasificador. Si quien corrige es un operador, el evento es
+`reclamos.reclamo.reclasificado`, no éste (ver ADR 0010).
 
 ```json
 {
@@ -81,10 +100,41 @@ clasificación y para que Analítica compare sugerencia vs. corrección manual.
   "data": {
     "reclamo_id": "6f1c9a4e-...",
     "categoria": "ALUMBRADO",
+    "objeto_afectado": "PLAZA_PARQUE",
     "prioridad": "MEDIA",
     "confianza": 0.8134,
     "modelo": "naive-bayes-corpus-v1",
     "evidencia": ["luminaria", "poste", "apagada"]
+  }
+}
+```
+
+### `reclamos.reclamo.reclasificado` — v1.0
+
+Un **operador** corrigió la clasificación. Lleva el par anterior/nuevo de las tres
+cosas que una reclasificación puede cambiar, porque quien consumió la clasificación
+vieja necesita saber qué deshacer: Residuos libera un contenedor cuando un reclamo
+deja de ser `TRANSITO`.
+
+```json
+{
+  "event_type": "reclamos.reclamo.reclasificado",
+  "data": {
+    "reclamo_id": "6f1c9a4e-...",
+    "ciudadano_id": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
+    "categoria_anterior": "RUIDOS",
+    "categoria_nueva": "TRANSITO",
+    "prioridad_anterior": "BAJA",
+    "prioridad_nueva": "ALTA",
+    "objeto_afectado_anterior": null,
+    "objeto_afectado_nuevo": "CICLOVIA",
+    "titulo": "Auto estacionado sobre la ciclovia",
+    "descripcion": "Hay un auto arriba de la bicisenda y no se puede pasar",
+    "barrio": "Palermo",
+    "latitud": -34.5955,
+    "longitud": -58.4281,
+    "reclasificado_por": "operador-1",
+    "reclasificado_at": "2026-10-22T20:31:04.120Z"
   }
 }
 ```
@@ -96,7 +146,7 @@ clasificación y para que Analítica compare sugerencia vs. corrección manual.
   "event_type": "reclamos.reclamo.estado-cambiado",
   "data": {
     "reclamo_id": "6f1c9a4e-...",
-    "ciudadano_id": "auth0|65f2c1...",
+    "ciudadano_id": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
     "estado_anterior": "ASIGNADO",
     "estado_nuevo": "EN_PROCESO",
     "motivo": "cuadrilla en camino",
@@ -121,8 +171,9 @@ Analítica y trae la métrica de gestión ya calculada.
   "event_type": "reclamos.reclamo.resuelto",
   "data": {
     "reclamo_id": "6f1c9a4e-...",
-    "ciudadano_id": "auth0|65f2c1...",
+    "ciudadano_id": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
     "categoria": "ALUMBRADO",
+    "objeto_afectado": "PLAZA_PARQUE",
     "resolucion": "Se reemplazo la luminaria",
     "horas_hasta_resolucion": 42.75,
     "resuelto_at": "2026-08-15T08:59:12.000Z"
@@ -137,7 +188,7 @@ Analítica y trae la métrica de gestión ya calculada.
   "event_type": "reclamos.reclamo.adherido",
   "data": {
     "reclamo_id": "6f1c9a4e-...",
-    "ciudadano_id": "auth0|77aa...",
+    "ciudadano_id": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
     "adhesiones_count": 10,
     "prioridad": "ALTA",
     "escalado": true
@@ -159,7 +210,7 @@ sistema (cuando un incidente de Emergencias sube la prioridad).
   "data": {
     "comentario_id": "3a9d0c1e-5b7f-4e2a-8c6d-1f0e9b8a7c65",
     "reclamo_id": "6f1c9a4e-...",
-    "ciudadano_id": "auth0|65f2c1...",
+    "ciudadano_id": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
     "autor_id": "operador-014",
     "autor_nombre": "Operador Municipal",
     "es_oficial": true,
@@ -271,6 +322,9 @@ contrato.
 - **Categoría:** `ALUMBRADO` · `BACHES` · `RESIDUOS` · `ARBOLADO` ·
   `AGUA_CLOACAS` · `TRANSITO` · `RUIDOS` · `ESPACIOS_PUBLICOS` · `SEGURIDAD` ·
   `OTROS`
+- **Objeto afectado:** `CICLOVIA` · `CALZADA` · `VEREDA` · `SENDA_PEATONAL` ·
+  `PLAZA_PARQUE` · `MOBILIARIO_URBANO` · `EDIFICIO_PUBLICO` · `OTRO`
+  (opcional: puede venir en `null`)
 - **Canal:** `APP` · `WEB` · `TELEFONO` · `PRESENCIAL` · `EVENTO`
 - **Origen de clasificación:** `CIUDADANO` · `MODELO` · `OPERADOR`
 
@@ -282,3 +336,248 @@ Todo request HTTP acepta y devuelve el header `X-Correlation-Id` (se genera uno
 si no viene). Ese id se propaga al `correlation_id` de los eventos y se bindea a
 todos los logs estructurados, así una operación se puede seguir de punta a punta
 aunque atraviese varios módulos.
+
+---
+
+## 6. Integración por el gateway de CityPass+ (CU-INT-01)
+
+> **Schemas Avro.** Estos tres tipos estan registrados en el catalogo del gateway del
+> Grupo 1, que valida cada evento contra ellos antes de aceptarlo. Los schemas viven en
+> [`avro/`](avro/) y hay un test que los compara contra lo que el codigo realmente manda,
+> asi que no se pueden desincronizar en silencio.
+
+
+Entre módulos **no se habla por Kafka**: el Grupo 1 expone un gateway HTTP y es
+por ahí que entran y salen los eventos del caso de uso integrado. Todo lo de las
+secciones 2 y 3 sigue siendo nuestro contrato interno; esta sección es lo que ven
+los otros equipos. El porqué está en el
+[ADR 0009](adr/0009-integracion-por-el-gateway.md).
+
+Diferencias con nuestro contrato interno, para que no sorprendan:
+
+- Los nombres son los del catálogo del gateway: `com.citypass.reclamos.ReclamoCreado`.
+- Los campos van en **camelCase**.
+- Las fechas van en **milisegundos desde epoch** (`long`), no en ISO. Es lo que
+  lee la capa silver de Analítica.
+- Salen **tres** de nuestros siete eventos. El resto no tiene consumidores fuera
+  del módulo.
+
+### Sobre del gateway
+
+El dispatcher agrega la metadata; nosotros mandamos sólo los campos de negocio.
+
+```json
+{
+  "metadata": {
+    "eventId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "eventType": "com.citypass.reclamos.ReclamoCreado",
+    "source": "reclamos",
+    "receivedAt": 1792345678901
+  },
+  "data": { }
+}
+```
+
+### `com.citypass.reclamos.ReclamoCreado`
+
+Se publica al dar de alta un reclamo, venga de un vecino o de un evento de otro
+módulo.
+
+```json
+{
+  "reclamoId": "b1d4e8f2-6a30-4c99-8e71-0f5a2d6c3b84",
+  "ciudadanoId": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
+  "canal": "APP",
+  "titulo": "Auto estacionado sobre la ciclovia",
+  "descripcion": "Hay un auto arriba de la bicisenda y no se puede pasar",
+  "categoria": "TRANSITO",
+  "prioridad": "ALTA",
+  "origenClasificacion": "CIUDADANO",
+  "confianzaClasificacion": null,
+  "direccion": "Av. Cordoba 4800",
+  "barrio": "Palermo",
+  "latitud": -34.5955,
+  "longitud": -58.4281,
+  "objetoAfectado": "CICLOVIA",
+  "afectaCirculacion": true,
+  "correlationId": "req-7c9e6679",
+  "createdAt": 1792345678901
+}
+```
+
+`objetoAfectado` responde *sobre qué* pasó, mientras `categoria` responde *qué* pasó:
+un auto sobre la bicisenda es `TRANSITO` + `CICLOVIA`, y un pozo en la misma bicisenda
+es `BACHES` + `CICLOVIA`. **Lo elige el vecino al dar de alta** —el clasificador no lo
+infiere— así que **viaja nulo cada vez que no lo completó**: cualquier consumidor que
+filtre por él tiene que contar con eso. Valores: `CICLOVIA`, `CALZADA`, `VEREDA`,
+`SENDA_PEATONAL`, `PLAZA_PARQUE`, `MOBILIARIO_URBANO`, `EDIFICIO_PUBLICO` y `OTRO`.
+
+`afectaCirculacion` es **verdadero para `TRANSITO`, `BACHES` y `ARBOLADO`**. Es
+el campo que usan Movilidad —para no recomendar estaciones cerca de un
+incidente— y Espacios Públicos —para avisar a los inscriptos de un evento
+cercano—. La misma regla se expone en nuestra API como `afecta_circulacion`, así
+que el frontend no necesita reimplementarla.
+
+El campo `objeto_afectado` que suma G5D-425 **no viaja por acá**: el tipo de
+evento del gateway está validado contra un esquema Avro registrado en el catálogo
+del Grupo 1, así que sumarlo hay que acordarlo con ellos. Por ahora vive sólo en
+el contrato interno.
+
+### `com.citypass.reclamos.ReclamoActualizado`
+
+Se publica en cada transición de estado. **La resolución viaja acá**, con
+`estadoNuevo = RESUELTO`: no hay un evento separado.
+
+```json
+{
+  "reclamoId": "b1d4e8f2-6a30-4c99-8e71-0f5a2d6c3b84",
+  "ciudadanoId": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
+  "estadoAnterior": "EN_PROCESO",
+  "estadoNuevo": "RESUELTO",
+  "motivo": "Se retiro el vehiculo",
+  "asignadoA": "cuadrilla-3",
+  "cambiadoPor": "operador-1",
+  "correlationId": "req-7c9e6679",
+  "updatedAt": 1792349999000
+}
+```
+
+### `com.citypass.reclamos.ReclamoReclasificado`
+
+Se publica cuando un operador corrige la clasificación. Es el evento que cierra el
+hueco que detectaron Emergencias y Residuos: una reclasificación no cambia el estado
+del reclamo, así que no genera un `ReclamoActualizado` y hasta ahora no salía nada.
+
+```json
+{
+  "reclamoId": "b1d4e8f2-6a30-4c99-8e71-0f5a2d6c3b84",
+  "ciudadanoId": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
+  "categoriaAnterior": "RUIDOS",
+  "categoriaNueva": "TRANSITO",
+  "prioridadAnterior": "BAJA",
+  "prioridadNueva": "ALTA",
+  "objetoAfectadoAnterior": null,
+  "objetoAfectadoNuevo": "CICLOVIA",
+  "afectaCirculacionAnterior": false,
+  "afectaCirculacionNueva": true,
+  "titulo": "Auto estacionado sobre la ciclovia",
+  "descripcion": "Hay un auto arriba de la bicisenda y no se puede pasar",
+  "barrio": "Palermo",
+  "latitud": -34.5955,
+  "longitud": -58.4281,
+  "reclasificadoPor": "operador-1",
+  "correlationId": "req-7c9e6679",
+  "reclasificadoAt": 1792349999000
+}
+```
+
+`afectaCirculacionAnterior` y `afectaCirculacionNueva` van calculadas de la categoría,
+igual que en `ReclamoCreado`, para que nadie tenga que reimplementar la regla sólo
+para saber si el reclamo pasó a importarle.
+
+**Este evento depende de que el Grupo 1 lo registre en el catálogo.** Hasta entonces
+el gateway lo rechaza, nosotros lo logueamos y seguimos: no rompe nada, pero tampoco
+llega.
+
+### Lo que recibimos por webhook
+
+`POST /api/v1/webhooks/citypass`. Se autentica con un secreto compartido, por
+cabecera `X-Webhook-Token` (preferido) o por `?token=...`. Las entregas son
+*at-least-once* y los tres handlers son idempotentes.
+
+| Tipo del gateway | Qué hacemos |
+| --- | --- |
+| `com.citypass.residuos.AlertaGenerada` | Si `tipoAlerta = SATURACION`, abre un reclamo de RESIDUOS. Las de incendio se ignoran. |
+| `com.citypass.emergencias.EmergenciaCreada` | Eleva la prioridad de los reclamos abiertos del barrio. No escala si la severidad es baja ni si `afectaCirculacion` es falso. |
+| `com.citypass.espacios.EventoComunitarioPublicado` | Con cupo ≥ 100, eleva a `MEDIA` los reclamos abiertos de la zona. Los `CANCELLED` se ignoran. |
+| `com.citypass.espacios.IntervencionFinalizada` | **Cierra el reclamo.** Con `resultado: RESUELTO` pasa a RESUELTO; con `RECHAZADO`, a RECHAZADO. Ver abajo. |
+| `com.citypass.espacios.ActividadCreada` | Squad 3. Guarda la actividad masiva; los reclamos que se carguen cerca mientras dura quedan relacionados con ella. Ver abajo. |
+
+#### `IntervencionFinalizada`, el que cierra el circuito
+
+Es el ultimo eslabon del caso de uso: el vecino reporta, nosotros derivamos,
+Espacios Publicos resuelve en la calle y nos avisa como termino.
+
+```json
+{
+  "reclamoId": "7c3a1f5e-9b2d-4e61-8a07-5d4c2b9e1f83",
+  "resultado": "RESUELTO",
+  "idAuto": "AB123CD",
+  "solicitadoAt": 1792346000000,
+  "resueltoAt": 1792349999000
+}
+```
+
+`resultado` es el campo que importa y acepta **`RESUELTO`** o **`RECHAZADO`**.
+No son lo mismo: Espacios manda el evento aunque no hayan intervenido - si no
+hacia falta una grua, por ejemplo - y en ese caso el reclamo no se resolvio, no
+se tomo. El vecino lee un texto distinto en cada caso, y mandar todo como
+resuelto seria decirle que su problema se soluciono cuando puede seguir ahi.
+
+El resto de los campos son del dominio de ellos: no los guardamos, viajan para
+que Analitica pueda medir cuanto tardo la intervencion.
+
+**Idempotencia:** si el reclamo ya esta en ese estado, o ya esta cerrado o
+rechazado, el evento no hace nada. Una reentrega del gateway es inofensiva.
+
+
+El barrio se compara **sin distinguir mayúsculas**, así que da igual si mandan
+`Palermo`, `PALERMO` o `palermo`.
+
+#### `ActividadCreada`, el caso del squad 3
+
+"Recolección inteligente después de un evento masivo". Lo publica Espacios
+Públicos al crear una actividad. Al recibirlo **no cambia ningún reclamo**:
+guardamos la actividad y, desde ahí, cada reclamo nuevo que se carga cerca
+mientras dura queda relacionado con ella. El porqué está en el
+[ADR 0013](adr/0013-reclamos-relacionados-con-actividades-masivas.md).
+
+```json
+{
+  "correlationId": "act-3f1c2a9e-0000-4000-8000-000000000001",
+  "actividadId": "3f1c2a9e-0000-4000-8000-000000000001",
+  "titulo": "Festival de Primavera",
+  "estado": "PROGRAMADA",
+  "capacidad": 5000,
+  "fechaHoraInicio": 1793545200000,
+  "fechaHoraFinalizacion": 1793563200000,
+  "ubicacion": { "lat": -34.6083, "lng": -58.3712 },
+  "direccion": "Av. Rivadavia 1",
+  "espacioNombre": "Plaza de Mayo",
+  "actorSub": null
+}
+```
+
+| Campo | Uso en Reclamos |
+| --- | --- |
+| `actividadId` | Clave de idempotencia: la misma actividad no se guarda dos veces |
+| `titulo` | Lo que ve el operador: "Relacionado con: Festival de Primavera" |
+| `estado` | Las canceladas se ignoran |
+| `capacidad` | Menos de **1.000** personas no es masiva y se ignora |
+| `fechaHoraInicio` | Desde cuándo se relacionan reclamos. Si no viene, desde que llega el evento |
+| `fechaHoraFinalizacion` | Obligatorio. Se relacionan reclamos hasta **6 h** después |
+| `ubicacion` | Centro de la zona. Sin coordenadas, la actividad se ignora |
+| `direccion`, `espacioNombre` | Se guardan para mostrarlos |
+
+También aceptamos los nombres del primer borrador, en inglés (`communityEventId`,
+`title`, `status`, `capacity`, `startDate`, `endDate`, `latitude`, `longitude`),
+con fechas en milisegundos o en ISO 8601.
+
+**Qué reclamos se relacionan:** los que se dan de alta con coordenadas, a
+**300 m** o menos del centro, entre el inicio y 6 h después del fin. Con dos
+actividades en rango gana la más cercana. Incluye los que abre Residuos por un
+contenedor desbordado. Se ven en el campo `actividad` del reclamo, en
+`GET /reclamos?actividad_id=` y en `GET /actividades`.
+
+**No publicamos nada en respuesta.** En el diagrama del squad, Reclamos solo
+recibe.
+
+### Respuestas del webhook
+
+| Código | Cuándo |
+| --- | --- |
+| `204` | Procesado, o de un tipo que no consumimos (se acepta y se ignora). |
+| `400` | Falta `metadata.eventId`, `metadata.eventType` o `data`. |
+| `401` | Secreto ausente o incorrecto. |
+| `429` | Se superó el límite de entregas por minuto. |
+| `500` | Falló el procesamiento. El dispatcher reintenta y después manda a su cola de muertos. |

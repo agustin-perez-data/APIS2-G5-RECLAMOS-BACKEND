@@ -107,9 +107,17 @@ el SSL y el pooler.
 
 ## Autenticación
 
-Los tokens los emite el módulo de **Login Federado (Grupo 2)**. Este servicio
-solo los valida: soporta HS256 con secreto compartido y RS256 contra el JWKS del
-emisor. Todos los endpoints excepto `/health*` exigen `Authorization: Bearer`.
+Los tokens del **personal municipal** los emite el módulo de Login Federado
+(Grupo 2) y este servicio solo los valida: soporta HS256 con secreto compartido
+y RS256 contra el JWKS del emisor.
+
+**Los ciudadanos no están en ese directorio.** El Grupo 2 autentica únicamente
+empleados, así que el registro y el login de los vecinos los resuelve este
+módulo, en `POST /api/v1/auth/ciudadanos/registro` y `.../login`, con un token
+propio del mismo formato (ver [ADR 0011](docs/adr/0011-autenticacion-de-ciudadanos.md)).
+Su identificador es un UUID, no el `U000042` del IdP.
+
+Todos los endpoints excepto `/health*` exigen `Authorization: Bearer`.
 
 | Rol | Permisos |
 | --- | --- |
@@ -169,6 +177,7 @@ Prefijo `/api/v1`.
 | `GET` | `/notificaciones/conteo` | autenticado | Solo el contador de no leídas, para la campana. |
 | `PATCH` | `/notificaciones/{id}/leer` | autenticado | Marca una como leída (idempotente). |
 | `POST` | `/notificaciones/leer-todas` | autenticado | Marca todas las propias como leídas. |
+| `GET` | `/actividades` | operador | Actividades masivas en curso, con cuántos reclamos lleva cada una ([ADR 0013](docs/adr/0013-reclamos-relacionados-con-actividades-masivas.md)). |
 
 Las notificaciones le avisan al dueño de un reclamo cada cambio de estado y cada
 comentario de otra persona. Se guardan en la misma transacción que el cambio, así
@@ -219,8 +228,12 @@ Toda transición fuera de este diagrama devuelve `409 transicion_invalida`.
 **Publicamos** (key = id del reclamo, para conservar el orden por agregado):
 
 `reclamos.reclamo.creado` · `reclamos.reclamo.clasificado` ·
-`reclamos.reclamo.estado-cambiado` · `reclamos.reclamo.resuelto` ·
-`reclamos.reclamo.adherido` · `reclamos.reclamo.comentario-creado`
+`reclamos.reclamo.reclasificado` · `reclamos.reclamo.estado-cambiado` ·
+`reclamos.reclamo.resuelto` · `reclamos.reclamo.adherido` ·
+`reclamos.reclamo.comentario-creado`
+
+`clasificado` es lo que decidió el modelo; `reclasificado`, la corrección de un
+operador, con el par anterior/nuevo (ver [ADR 0010](docs/adr/0010-propagacion-de-reclasificaciones.md)).
 
 **Consumimos:**
 
@@ -228,6 +241,17 @@ Toda transición fuera de este diagrama devuelve `409 transicion_invalida`.
 | --- | --- |
 | `residuos.contenedor.desbordado` | Alta automática de un reclamo de RESIDUOS. |
 | `emergencias.incidente.creado` | Sube la prioridad de los reclamos abiertos del barrio. |
+| `espacios.evento.publicado` | Un evento cultural con cupo ≥ 100 eleva a MEDIA los reclamos de la zona. |
+
+### Integración con los otros módulos (CU-INT-01)
+
+Entre módulos no se habla por Kafka sino por el **gateway HTTP del Grupo 1**
+(ver [ADR 0009](docs/adr/0009-integracion-por-el-gateway.md)). Con
+`GATEWAY_ENABLED=true`, `GatewayEventPublisher` traduce nuestros eventos a los
+nombres del catálogo del gateway (`com.citypass.reclamos.ReclamoCreado` y
+`ReclamoActualizado`) y las entregas entrantes llegan por webhook a
+`POST /api/v1/webhooks/citypass`, que ejecuta los mismos handlers que el worker.
+Kafka y Redpanda quedan para desarrollo local.
 
 Garantías: *at-least-once* con commit manual del offset, idempotencia por
 `evento_origen_id` (UNIQUE en base) y DLQ (`reclamos.dlq`) para los mensajes que
