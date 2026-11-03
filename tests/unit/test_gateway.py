@@ -13,6 +13,7 @@ from app.core.config import Settings
 from app.domain.enums import (
     CategoriaReclamo,
     EstadoReclamo,
+    MotivoPrioridad,
     ObjetoAfectado,
     PrioridadReclamo,
 )
@@ -74,6 +75,40 @@ def test_el_alta_lleva_el_objeto_afectado() -> None:
     _, datos = traducir(topics.RECLAMO_CREADO, sobre)
 
     assert datos["objetoAfectado"] == "CICLOVIA"
+
+
+def test_los_campos_de_la_alerta_climatica_viajan_aunque_este_vacia() -> None:
+    # Reserved before the feature exists: the schemas get registered in Group 1's
+    # catalogue once, so both events have to declare the fields from the start or
+    # adding them later means coordinating a second registration.
+    sobre_cambio = EventEnvelope(
+        event_type=topics.RECLAMO_ESTADO_CAMBIADO,
+        data=ReclamoEstadoCambiado(
+            reclamo_id=uuid.uuid4(),
+            ciudadano_id="vecino-1",
+            estado_anterior=EstadoReclamo.EN_PROCESO,
+            estado_nuevo=EstadoReclamo.RESUELTO,
+            cambiado_por="operador-1",
+            cambiado_at=CREADO_AT,
+        ),
+    )
+    _, creado = traducir(topics.RECLAMO_CREADO, sobre_creado())
+    _, actualizado = traducir(topics.RECLAMO_ESTADO_CAMBIADO, sobre_cambio)
+
+    for datos in (creado, actualizado):
+        assert datos["alertaId"] is None
+        assert datos["motivoPrioridad"] is None
+
+
+def test_el_alta_lleva_la_alerta_cuando_hay_una() -> None:
+    sobre = sobre_creado()
+    sobre.data.alerta_id = uuid.UUID("11111111-2222-3333-4444-555555555555")
+    sobre.data.motivo_prioridad = MotivoPrioridad.ALERTA
+
+    _, datos = traducir(topics.RECLAMO_CREADO, sobre)
+
+    assert datos["alertaId"] == "11111111-2222-3333-4444-555555555555"
+    assert datos["motivoPrioridad"] == "ALERTA"
 
 
 def test_el_alta_sin_objeto_afectado_lo_manda_nulo() -> None:

@@ -20,6 +20,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from app.domain.enums import (
     CategoriaReclamo,
     EstadoReclamo,
+    MotivoPrioridad,
     ObjetoAfectado,
     PrioridadReclamo,
     ResultadoIntervencion,
@@ -80,6 +81,11 @@ class ReclamoCreado(BaseModel):
     descripcion: str | None = None
     origen_clasificacion: str | None = None
     confianza_clasificacion: float | None = None
+    # Reserved for the weather alert mode (squad 3). They travel null until that
+    # feature exists: the schemas get registered in Group 1's catalogue once, and
+    # declaring both now is far cheaper than coordinating a second registration.
+    alerta_id: uuid.UUID | None = None
+    motivo_prioridad: MotivoPrioridad | None = None
 
 
 class ReclamoClasificado(BaseModel):
@@ -127,6 +133,11 @@ class ReclamoEstadoCambiado(BaseModel):
     asignado_a: str | None = None
     cambiado_por: str
     cambiado_at: datetime
+    # Reserved for the weather alert mode (squad 3). They travel null until that
+    # feature exists: the schemas get registered in Group 1's catalogue once, and
+    # declaring both now is far cheaper than coordinating a second registration.
+    alerta_id: uuid.UUID | None = None
+    motivo_prioridad: MotivoPrioridad | None = None
 
 
 class ReclamoResuelto(BaseModel):
