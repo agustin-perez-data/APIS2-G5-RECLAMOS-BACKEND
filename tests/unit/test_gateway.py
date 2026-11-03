@@ -13,7 +13,6 @@ from app.core.config import Settings
 from app.domain.enums import (
     CategoriaReclamo,
     EstadoReclamo,
-    MotivoPrioridad,
     ObjetoAfectado,
     PrioridadReclamo,
 )
@@ -97,18 +96,15 @@ def test_los_campos_de_la_alerta_climatica_viajan_aunque_este_vacia() -> None:
 
     for datos in (creado, actualizado):
         assert datos["alertaId"] is None
-        assert datos["motivoPrioridad"] is None
 
 
 def test_el_alta_lleva_la_alerta_cuando_hay_una() -> None:
     sobre = sobre_creado()
     sobre.data.alerta_id = uuid.UUID("11111111-2222-3333-4444-555555555555")
-    sobre.data.motivo_prioridad = MotivoPrioridad.ALERTA
 
     _, datos = traducir(topics.RECLAMO_CREADO, sobre)
 
     assert datos["alertaId"] == "11111111-2222-3333-4444-555555555555"
-    assert datos["motivoPrioridad"] == "ALERTA"
 
 
 def test_el_alta_sin_objeto_afectado_lo_manda_nulo() -> None:
