@@ -20,7 +20,6 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from app.domain.enums import (
     CategoriaReclamo,
     EstadoReclamo,
-    MotivoPrioridad,
     ObjetoAfectado,
     PrioridadReclamo,
     ResultadoIntervencion,
@@ -85,7 +84,6 @@ class ReclamoCreado(BaseModel):
     # feature exists: the schemas get registered in Group 1's catalogue once, and
     # declaring both now is far cheaper than coordinating a second registration.
     alerta_id: uuid.UUID | None = None
-    motivo_prioridad: MotivoPrioridad | None = None
 
 
 class ReclamoClasificado(BaseModel):
@@ -137,7 +135,6 @@ class ReclamoEstadoCambiado(BaseModel):
     # feature exists: the schemas get registered in Group 1's catalogue once, and
     # declaring both now is far cheaper than coordinating a second registration.
     alerta_id: uuid.UUID | None = None
-    motivo_prioridad: MotivoPrioridad | None = None
 
 
 class ReclamoResuelto(BaseModel):

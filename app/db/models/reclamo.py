@@ -8,16 +8,16 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime as SADateTime
 from sqlalchemy import Float, ForeignKey, Index, Integer, String, Text, Uuid
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from sqlalchemy.types import JSON
 
 from app.db.base import Base, TimestampMixin
 from app.db.types import enum_column
+from app.domain.barrios import normalizar_barrio
 from app.domain.enums import (
     CanalOrigen,
     CategoriaReclamo,
     EstadoReclamo,
-    MotivoPrioridad,
     ObjetoAfectado,
     OrigenClasificacion,
     PrioridadReclamo,
@@ -81,6 +81,10 @@ class Reclamo(Base, TimestampMixin):
     # --- Location ------------------------------------------------------------
     direccion: Mapped[str | None] = mapped_column(String(255), nullable=True)
     barrio: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    # `barrio` normalised (upper case, no accents). Written on every create and
+    # edit so the weather alert can filter on an indexed column instead of
+    # normalising every row on each query. See app/domain/barrios.py.
+    barrio_codigo: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     latitud: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitud: Mapped[float | None] = mapped_column(Float, nullable=True)
 
@@ -133,11 +137,19 @@ class Reclamo(Base, TimestampMixin):
     # purpose: the alert is Public Spaces' record, and an alert we never received
     # must not stop a claim from being filed.
     alerta_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
-    # Why the claim sits at its current priority. Analytics reads it to tell the
-    # alert-driven claims from the ones neighbours pushed up by joining in.
-    motivo_prioridad: Mapped[MotivoPrioridad | None] = mapped_column(
-        enum_column(MotivoPrioridad, "motivo_prioridad"), nullable=True
-    )
+
+    @validates("barrio")
+    def _normalizar_barrio(self, _clave: str, valor: str | None) -> str | None:
+        """Keep `barrio_codigo` in step with `barrio`, always.
+
+        Done here and not in the service so the two can never drift: whoever
+        sets the neighbourhood, however they got there, gets the code written
+        too. Normalising in the service would mean remembering it at every call
+        site, and the one that forgets is the one that silently drops a claim
+        out of an alert.
+        """
+        self.barrio_codigo = normalizar_barrio(valor)
+        return valor
 
     historial: Mapped[list[HistorialEstado]] = relationship(
         back_populates="reclamo",
