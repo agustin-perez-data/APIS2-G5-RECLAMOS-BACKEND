@@ -79,6 +79,8 @@ def traducir(topic: str, envelope: EventEnvelope) -> tuple[str, dict[str, Any]] 
             # ReclamoReclasificado, so leaving it out here was an asymmetry, not
             # a decision.
             "objetoAfectado": _valor(data.objeto_afectado),
+            "alertaId": str(data.alerta_id) if data.alerta_id else None,
+            "motivoPrioridad": _valor(data.motivo_prioridad),
             "afectaCirculacion": CategoriaReclamo(data.categoria)
             in CATEGORIAS_QUE_AFECTAN_CIRCULACION,
             "correlationId": envelope.correlation_id,
@@ -119,6 +121,8 @@ def traducir(topic: str, envelope: EventEnvelope) -> tuple[str, dict[str, Any]] 
             "motivo": data.motivo,
             "asignadoA": data.asignado_a,
             "cambiadoPor": data.cambiado_por,
+            "alertaId": str(data.alerta_id) if data.alerta_id else None,
+            "motivoPrioridad": _valor(data.motivo_prioridad),
             "correlationId": envelope.correlation_id,
             "updatedAt": _epoch_ms(data.cambiado_at),
         }

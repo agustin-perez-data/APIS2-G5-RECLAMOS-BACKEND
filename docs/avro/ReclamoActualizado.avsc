@@ -11,6 +11,8 @@
     { "name": "motivo", "type": ["null", "string"], "default": null },
     { "name": "asignadoA", "type": ["null", "string"], "default": null, "doc": "Area o cuadrilla responsable. Texto libre, no necesariamente un usuario." },
     { "name": "cambiadoPor", "type": "string", "doc": "Claim sub del token del Grupo 2 para el personal municipal, o 'sistema' si lo disparo un evento." },
+    { "name": "alertaId", "type": ["null", "string"], "default": null, "doc": "Alerta climatica que marco el reclamo, o null si no cae en ninguna." },
+    { "name": "motivoPrioridad", "type": ["null", "string"], "default": null, "doc": "Por que el reclamo tiene la prioridad que tiene: NORMAL, ADHESIONES o ALERTA." },
     { "name": "correlationId", "type": ["null", "string"], "default": null },
     { "name": "updatedAt", "type": "long", "doc": "Milisegundos desde epoch." }
   ]

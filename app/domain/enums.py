@@ -58,6 +58,20 @@ class ObjetoAfectado(StrEnum):
     OTRO = "OTRO"
 
 
+class MotivoPrioridad(StrEnum):
+    """Why a claim sits at the priority it has.
+
+    Analytics asked for it so it can tell apart the claims a weather alert moved
+    from the ones the neighbours pushed up by joining in, without a join against
+    our tables. The alert itself is the only one that needs explaining: a claim
+    nobody touched is NORMAL.
+    """
+
+    NORMAL = "NORMAL"
+    ADHESIONES = "ADHESIONES"
+    ALERTA = "ALERTA"
+
+
 class ResultadoIntervencion(StrEnum):
     """How Public Spaces closed the job in the street (CU-INT-01).
 
