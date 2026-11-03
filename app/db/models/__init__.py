@@ -5,6 +5,8 @@ from app.db.models.actividad import ActividadMasiva
 from app.db.models.adhesion import Adhesion
 from app.db.models.ciudadano import Ciudadano
 from app.db.models.comentario import Comentario
+from app.db.models.evento_climatico import EventoClimatico
+from app.db.models.evento_procesado import EventoProcesado
 from app.db.models.historial import HistorialEstado
 from app.db.models.notificacion import Notificacion
 from app.db.models.reclamo import Reclamo
@@ -15,6 +17,8 @@ __all__ = [
     "Base",
     "Ciudadano",
     "Comentario",
+    "EventoClimatico",
+    "EventoProcesado",
     "HistorialEstado",
     "Notificacion",
     "Reclamo",
