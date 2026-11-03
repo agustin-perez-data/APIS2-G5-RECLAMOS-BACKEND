@@ -28,6 +28,8 @@ ESPACIOS_EVENTO_PUBLICADO = "espacios.evento.publicado"
 ESPACIOS_INTERVENCION_FINALIZADA = "espacios.intervencion.finalizada"
 # Squad 3 (ADR 0013): a mass activity whose area relates the claims filed there.
 ESPACIOS_ACTIVIDAD_CREADA = "espacios.actividad.creada"
+ESPACIOS_CLIMA_CONFIRMADA = "espacios.clima.confirmada"
+ESPACIOS_CLIMA_FINALIZADA = "espacios.clima.finalizada"
 
 # --- CityPass+ gateway event types (CU-INT-01) -------------------------------
 # What arrives by webhook, mapped to the internal topic whose handler runs it.
@@ -37,6 +39,8 @@ GATEWAY_A_TOPIC: dict[str, str] = {
     "com.citypass.espacios.EventoComunitarioPublicado": ESPACIOS_EVENTO_PUBLICADO,
     "com.citypass.espacios.IntervencionFinalizada": ESPACIOS_INTERVENCION_FINALIZADA,
     "com.citypass.espacios.ActividadCreada": ESPACIOS_ACTIVIDAD_CREADA,
+    "com.citypass.espacios.CriticidadClimaticaConfirmada": ESPACIOS_CLIMA_CONFIRMADA,
+    "com.citypass.espacios.CriticidadClimaticaFinalizada": ESPACIOS_CLIMA_FINALIZADA,
 }
 
 PUBLICADOS: tuple[str, ...] = (

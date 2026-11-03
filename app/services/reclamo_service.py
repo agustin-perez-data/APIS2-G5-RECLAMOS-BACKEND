@@ -62,6 +62,7 @@ from app.repositories.reclamo_repository import FiltroReclamos, ReclamoRepositor
 from app.schemas.reclamo import CambioEstado, ReclamoCrear, ReclasificacionPedido
 from app.services.actividad_service import ActividadService
 from app.services.clasificador import Clasificador, get_clasificador
+from app.services.clima_service import ClimaService
 from app.services.notificacion_service import NotificacionService
 
 log = get_logger(__name__)
@@ -115,6 +116,7 @@ class ReclamoService:
         self.tickets = tickets or get_sistema_tickets()
         self.notificaciones = NotificacionService(session)
         self.actividades = ActividadService(session, self.cfg)
+        self.clima = ClimaService(session)
 
     # --- Intake --------------------------------------------------------------
     async def crear(
