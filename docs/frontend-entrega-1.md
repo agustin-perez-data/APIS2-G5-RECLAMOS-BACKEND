@@ -65,10 +65,26 @@ Authorization: Bearer <access_token>
 Sin ese header la API responde **401**. Sugerencia: un interceptor de fetch/axios
 que lo agregue solo, y que ante un 401 mande de vuelta al login.
 
-> **Importante para la Entrega 2:** este flujo es exactamente el que va a usar el
-> login definitivo. Cuando LDAP esté listo, lo único que cambia del lado del
-> front es **la URL del login**. El manejo del token, el header y los roles
-> quedan igual. No hardcodees los usuarios en el front: pedilos siempre a la API.
+> **Importante para la Entrega 2 — esto cambió.** Cuando se escribió esta guía
+> dábamos por hecho que el Login Federado del Grupo 2 iba a autenticar también a
+> los vecinos, y que lo único que les cambiaba era la URL del login. **No es
+> así**: su IdP autentica únicamente personal municipal, y nos lo aclararon por
+> escrito el 25/10.
+>
+> Qué implica para el front:
+>
+> - **Personal municipal** (operador, admin): sí van al Login Federado. Ahí vale
+>   lo de siempre, cambia la URL y nada más.
+> - **Vecinos**: se registran y entran contra *este* backend, en
+>   `POST /api/v1/auth/ciudadanos/registro` y `.../login`. Hace falta **una
+>   pantalla de registro**, que antes no estaba prevista. El registro pide
+>   correo, contraseña (mínimo 10 caracteres) y nombre, y **devuelve el token
+>   directo**, así que no hay que loguear después de registrarse.
+>
+> La buena noticia: la respuesta tiene exactamente la misma forma
+> (`access_token`, `token_type`, `expires_in`, `usuario`), así que el manejo del
+> token, el header y los roles quedan igual. No hardcodees los usuarios en el
+> front: pedilos siempre a la API. Ver [ADR 0011](adr/0011-autenticacion-de-ciudadanos.md).
 
 ---
 
@@ -108,6 +124,10 @@ Todos bajo `/api/v1`, todos requieren `Authorization` salvo los de login.
 | `POST` | `/reclamos/{id}/adhesiones` | ciudadano | "A mí también me pasa" |
 | `POST` | `/reclamos/clasificacion` | autenticado | Sugerencia del modelo (§4) |
 | `GET` | `/reclamos/estadisticas` | **admin** | Métricas agregadas |
+| `GET` | `/notificaciones` | autenticado | Mis notificaciones (§4 ter) |
+| `GET` | `/notificaciones/conteo` | autenticado | No leídas, para la campana |
+| `PATCH` | `/notificaciones/{id}/leer` | autenticado | Marca una como leída |
+| `POST` | `/notificaciones/leer-todas` | autenticado | Marca todas como leídas |
 
 ### Alta de reclamo
 
@@ -161,9 +181,12 @@ Cada item del listado es liviano, pensado para tabla y para mapa:
   "latitud": -34.6037,
   "longitud": -58.3816,
   "adhesiones_count": 3,
-  "created_at": "2026-08-20T14:22:31.500Z"
+  "created_at": "2026-08-20T14:22:31.500Z",
+  "es_propio": false
 }
 ```
+
+`es_propio` se calcula con el usuario autenticado que consulta el listado. El frontend puede reutilizar la página cargada en Redux para identificar reclamos propios. Si el listado está paginado, ese subconjunto no representa todos los reclamos del usuario: para una vista completa debe consultar con `ciudadano_id` y respetar la paginación. La caché debe limpiarse al cambiar de sesión.
 
 ---
 
@@ -259,6 +282,50 @@ barrio, coordenadas y fecha.)
 
 Para el operador, en el detalle de un reclamo: `GET /reclamos/{id}/similares`
 devuelve sus posibles duplicados, con el mismo formato.
+
+---
+
+## 4 ter. Notificaciones (campana)
+
+El backend le avisa al **dueño** de un reclamo cada cambio de estado y cada
+comentario de otra persona. Guarda el estado de lectura: el contador es el mismo
+en todos los dispositivos. La campana **no** tiene que calcular nada a partir del
+historial ni de `localStorage`.
+
+```http
+GET /api/v1/notificaciones?page=1&size=20&unread_only=false
+```
+
+```json
+{
+  "items": [
+    {
+      "id": "0b7e4f7a-8a57-4d5e-a0f4-3c1a6f0d9b21",
+      "tipo": "ESTADO",
+      "reclamo_id": "6f1c9a4e-3c2b-4a5d-9e11-2b7d5c8a1f30",
+      "titulo": "Tu reclamo pasó a En revisión",
+      "mensaje": "\"Luminaria apagada en la plaza\" pasó de Recibido a En revisión.",
+      "estado_nuevo": "EN_REVISION",
+      "comentario_id": null,
+      "created_at": "2026-09-24T08:59:12Z",
+      "leida": false,
+      "leida_at": null
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "size": 20,
+  "unread_count": 1
+}
+```
+
+- `tipo`: `ESTADO` (trae `estado_nuevo`) o `COMENTARIO` (trae `comentario_id`).
+- Para la campana, polling cada 15 a 30 s a `GET /notificaciones/conteo`, que
+  devuelve solo `{"unread_count": 1}`.
+- Al abrir una: `PATCH /notificaciones/{id}/leer` y navegar a
+  `/reclamos/{reclamo_id}`. "Marcar todas": `POST /notificaciones/leer-todas`.
+- Una notificación de otro usuario responde `404`
+  (`code: "notificacion_no_encontrada"`).
 
 ---
 

@@ -23,6 +23,9 @@ os.environ.update(
         "JWT_SECRET": "secreto-de-test",
         "JWT_ISSUER": "citypass-auth",
         "JWT_AUDIENCE": "citypass",
+        # Disable rate limiting so fast POST bursts in the test suite do not
+        # trip 429s. The limiter behaviour is tested separately.
+        "RATE_LIMIT_ENABLED": "false",
         # Explicit, so a JIRA_ENABLED=true left in a developer's .env can never
         # make the suite open real tickets.
         "JIRA_ENABLED": "false",

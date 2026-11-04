@@ -34,7 +34,8 @@ class HistorialEstado(Base):
     )
     motivo: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Who made the change: the JWT `sub`, or "sistema" when an event did it.
+    # Who made the change. Mixed on purpose: the citizen id on intake, the
+    # IdP's `sub` on staff transitions, and "sistema" when an event did it.
     usuario_id: Mapped[str] = mapped_column(String(128), nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(

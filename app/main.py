@@ -16,6 +16,7 @@ from app.api.v1 import health
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
+from app.core.rate_limit import limiter
 from app.db.session import cerrar_engine
 from app.events.producer import crear_publisher
 
@@ -67,6 +68,10 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json",
 )
+
+# SlowAPI requires the limiter to be stored in app.state so its decorators
+# can resolve it at request time.
+app.state.limiter = limiter
 
 app.add_middleware(
     CORSMiddleware,

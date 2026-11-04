@@ -16,7 +16,12 @@ from app.core.config import settings
 from app.domain.enums import CanalOrigen, CategoriaReclamo, EstadoReclamo, PrioridadReclamo
 from app.events import topics
 from app.events.consumer import EventConsumer
-from app.events.handlers import manejar_contenedor_desbordado, manejar_incidente_creado
+from app.events.handlers import (
+    manejar_contenedor_desbordado,
+    manejar_evento_cultural,
+    manejar_incidente_creado,
+    manejar_intervencion_finalizada,
+)
 from app.events.producer import InMemoryEventPublisher
 from app.repositories.reclamo_repository import FiltroReclamos
 from app.schemas.reclamo import ReclamoCrear
@@ -162,6 +167,189 @@ async def test_incidente_sin_barrio_no_hace_nada(service: ReclamoService) -> Non
 
 
 # --- Consumer ----------------------------------------------------------------
+def evento_cultural(**data) -> dict:
+    payload = {
+        "evento_id": "EV-10",
+        "titulo": "Feria de la plaza",
+        "zona": "Centro",
+        "inicio": datetime.now(UTC).isoformat(),
+        "cupo_maximo": 300,
+        "estado": "ACTIVE",
+    }
+    payload.update(data)
+    return {
+        "event_id": str(uuid.uuid4()),
+        "event_type": topics.ESPACIOS_EVENTO_PUBLICADO,
+        "occurred_at": datetime.now(UTC).isoformat(),
+        "source": "espacios",
+        "data": payload,
+    }
+
+
+async def _reclamo_en(service: ReclamoService, barrio: str) -> uuid.UUID:
+    reclamo = await service.crear(
+        ReclamoCrear(
+            titulo="Ruidos molestos del bar",
+            descripcion="Musica a todo volumen todos los fines de semana hasta tarde",
+            categoria=CategoriaReclamo.RUIDOS,
+            prioridad=PrioridadReclamo.BAJA,
+            barrio=barrio,
+        ),
+        CIUDADANO_ID,
+    )
+    return reclamo.id
+
+
+async def test_una_emergencia_de_prioridad_baja_no_escala(service: ReclamoService) -> None:
+    # Emergencies now reports priority in Spanish. Without "baja" in the map it
+    # fell back to ALTA, so a minor emergency raised the whole neighbourhood.
+    reclamo_id = await _reclamo_en(service, "Centro")
+
+    await manejar_incidente_creado(evento_incidente(severidad="baja"), service)
+
+    assert (await service.obtener(reclamo_id)).prioridad is PrioridadReclamo.BAJA
+
+
+async def test_una_emergencia_que_no_corta_la_circulacion_no_escala(
+    service: ReclamoService,
+) -> None:
+    # A medical emergency concerns one person, not the area's claims.
+    reclamo_id = await _reclamo_en(service, "Centro")
+
+    await manejar_incidente_creado(
+        evento_incidente(tipo="medica", afectaCirculacion=False), service
+    )
+
+    assert (await service.obtener(reclamo_id)).prioridad is PrioridadReclamo.BAJA
+
+
+async def test_el_barrio_se_compara_sin_distinguir_mayusculas(service: ReclamoService) -> None:
+    # Other modules send the area however they store it; an exact comparison
+    # silently escalated nothing.
+    reclamo_id = await _reclamo_en(service, "Centro")
+
+    await manejar_incidente_creado(evento_incidente(barrio="CENTRO"), service)
+
+    assert (await service.obtener(reclamo_id)).prioridad is PrioridadReclamo.CRITICA
+
+
+async def test_un_evento_cultural_cancelado_no_escala(service: ReclamoService) -> None:
+    reclamo_id = await _reclamo_en(service, "Centro")
+
+    await manejar_evento_cultural(evento_cultural(estado="CANCELLED"), service)
+
+    assert (await service.obtener(reclamo_id)).prioridad is PrioridadReclamo.BAJA
+
+
+async def test_un_evento_cultural_masivo_escala_los_reclamos_de_la_zona(
+    service: ReclamoService,
+) -> None:
+    reclamo_id = await _reclamo_en(service, "Centro")
+
+    await manejar_evento_cultural(evento_cultural(), service)
+
+    assert (await service.obtener(reclamo_id)).prioridad is PrioridadReclamo.MEDIA
+
+
+# --- Espacios Publicos finishing the job in the street -------------------------
+def evento_intervencion(reclamo_id, **data) -> dict:
+    payload = {
+        "reclamoId": str(reclamo_id),
+        "resultado": "RESUELTO",
+        "idAuto": "AB123CD",
+        "solicitadoAt": 1792346000000,
+        "resueltoAt": 1792349999000,
+    }
+    payload.update(data)
+    return {
+        "event_id": str(uuid.uuid4()),
+        "event_type": topics.ESPACIOS_INTERVENCION_FINALIZADA,
+        "occurred_at": datetime.now(UTC).isoformat(),
+        "source": "espacios",
+        "data": payload,
+    }
+
+
+async def test_una_intervencion_resuelta_cierra_un_reclamo_recien_creado(
+    service: ReclamoService,
+) -> None:
+    # The claim never went through our own ASIGNADO/EN_PROCESO: Public Spaces
+    # did the work, so it jumps straight to RESUELTO.
+    reclamo_id = await _reclamo_en(service, "Palermo")
+
+    await manejar_intervencion_finalizada(evento_intervencion(reclamo_id), service)
+
+    actualizado = await service.obtener(reclamo_id)
+    assert actualizado.estado is EstadoReclamo.RESUELTO
+    assert actualizado.resuelto_at is not None
+    # The citizen has to read something, not an empty field.
+    assert actualizado.resolucion
+
+
+async def test_una_intervencion_rechazada_manda_el_reclamo_a_rechazado(
+    service: ReclamoService,
+) -> None:
+    # "No hacia falta grua" is not the same as "se resolvio": if nobody did
+    # anything, telling the neighbour it was solved would be a lie.
+    reclamo_id = await _reclamo_en(service, "Palermo")
+
+    await manejar_intervencion_finalizada(
+        evento_intervencion(reclamo_id, resultado="RECHAZADO"), service
+    )
+
+    actualizado = await service.obtener(reclamo_id)
+    assert actualizado.estado is EstadoReclamo.RECHAZADO
+    assert actualizado.resuelto_at is None
+
+
+async def test_la_intervencion_resuelta_publica_el_evento_de_resolucion(
+    service: ReclamoService, publisher: InMemoryEventPublisher
+) -> None:
+    reclamo_id = await _reclamo_en(service, "Palermo")
+
+    await manejar_intervencion_finalizada(evento_intervencion(reclamo_id), service)
+
+    [resuelto] = publisher.eventos_de(topics.RECLAMO_RESUELTO)
+    assert resuelto.data.reclamo_id == reclamo_id
+    assert resuelto.data.horas_hasta_resolucion >= 0
+
+
+async def test_la_misma_intervencion_reentregada_no_duplica_nada(
+    service: ReclamoService, publisher: InMemoryEventPublisher
+) -> None:
+    # The gateway delivers at-least-once.
+    reclamo_id = await _reclamo_en(service, "Palermo")
+    evento = evento_intervencion(reclamo_id)
+
+    await manejar_intervencion_finalizada(evento, service)
+    await manejar_intervencion_finalizada(evento, service)
+
+    assert len(publisher.eventos_de(topics.RECLAMO_RESUELTO)) == 1
+
+
+async def test_una_intervencion_sobre_un_reclamo_cerrado_no_lo_toca(
+    service: ReclamoService, usuario_operador
+) -> None:
+    from app.schemas.reclamo import CambioEstado
+
+    reclamo_id = await _reclamo_en(service, "Palermo")
+    await service.cambiar_estado(
+        reclamo_id, CambioEstado(estado=EstadoReclamo.RECHAZADO), usuario_operador
+    )
+
+    await manejar_intervencion_finalizada(evento_intervencion(reclamo_id), service)
+
+    assert (await service.obtener(reclamo_id)).estado is EstadoReclamo.RECHAZADO
+
+
+async def test_una_intervencion_sobre_un_reclamo_inexistente_no_falla(
+    service: ReclamoService,
+) -> None:
+    # A claim of another module, or one we deleted: ignoring it beats a 500
+    # that makes the gateway retry forever.
+    await manejar_intervencion_finalizada(evento_intervencion(uuid.uuid4()), service)
+
+
 async def test_el_consumer_ignora_topics_sin_handler(
     publisher: InMemoryEventPublisher,
 ) -> None:

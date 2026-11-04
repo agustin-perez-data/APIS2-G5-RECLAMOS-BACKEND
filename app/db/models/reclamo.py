@@ -7,21 +7,24 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime as SADateTime
-from sqlalchemy import Float, Index, Integer, String, Text, Uuid
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Float, ForeignKey, Index, Integer, String, Text, Uuid
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from sqlalchemy.types import JSON
 
 from app.db.base import Base, TimestampMixin
 from app.db.types import enum_column
+from app.domain.barrios import normalizar_barrio
 from app.domain.enums import (
     CanalOrigen,
     CategoriaReclamo,
     EstadoReclamo,
+    ObjetoAfectado,
     OrigenClasificacion,
     PrioridadReclamo,
 )
 
 if TYPE_CHECKING:
+    from app.db.models.actividad import ActividadMasiva
     from app.db.models.adhesion import Adhesion
     from app.db.models.comentario import Comentario
     from app.db.models.historial import HistorialEstado
@@ -39,7 +42,10 @@ class Reclamo(Base, TimestampMixin):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
 
     # --- Who filed it and how ------------------------------------------------
-    # `sub` claim of the JWT issued by the identity module (Group 2).
+    # Issued by this module, not by Group 2: their IdP only authenticates
+    # municipal staff, so a neighbour has no `sub` there. Staff fields such as
+    # `asignado_a` do carry the IdP's `sub`. Also holds "sistema" for claims
+    # opened by another module's event.
     ciudadano_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     canal: Mapped[CanalOrigen] = mapped_column(
         enum_column(CanalOrigen, "canal_origen"), default=CanalOrigen.APP, nullable=False
@@ -66,10 +72,19 @@ class Reclamo(Base, TimestampMixin):
     )
     # Classifier confidence in [0, 1] when the model picked the category.
     confianza_clasificacion: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # What the claim is about, orthogonal to the category. Nullable: not every
+    # claim affects an identifiable space, and the citizen may leave it out.
+    objeto_afectado: Mapped[ObjetoAfectado | None] = mapped_column(
+        enum_column(ObjetoAfectado, "objeto_afectado"), nullable=True, index=True
+    )
 
     # --- Location ------------------------------------------------------------
     direccion: Mapped[str | None] = mapped_column(String(255), nullable=True)
     barrio: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    # `barrio` normalised (upper case, no accents). Written on every create and
+    # edit so the weather alert can filter on an indexed column instead of
+    # normalising every row on each query. See app/domain/barrios.py.
+    barrio_codigo: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     latitud: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitud: Mapped[float | None] = mapped_column(Float, nullable=True)
 
@@ -106,6 +121,35 @@ class Reclamo(Base, TimestampMixin):
     ticket_externo: Mapped[str | None] = mapped_column(
         String(64), nullable=True, unique=True, index=True
     )
+
+    # --- Mass activity (squad 3, ADR 0013) -----------------------------------
+    # Set at filing time when the claim lands near a mass activity while it
+    # lasts. SET NULL: losing the activity must never take the claim with it.
+    actividad_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("actividades_masivas.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Many-to-one and joined: every claim response can show the activity's
+    # title without an extra query per row.
+    actividad: Mapped[ActividadMasiva | None] = relationship(lazy="joined")
+
+    # --- Weather alert (squad 3, ADR 0014) -----------------------------------
+    # Set when the claim falls inside an active alert's area. No foreign key on
+    # purpose: the alert is Public Spaces' record, and an alert we never received
+    # must not stop a claim from being filed.
+    alerta_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
+
+    @validates("barrio")
+    def _normalizar_barrio(self, _clave: str, valor: str | None) -> str | None:
+        """Keep `barrio_codigo` in step with `barrio`, always.
+
+        Done here and not in the service so the two can never drift: whoever
+        sets the neighbourhood, however they got there, gets the code written
+        too. Normalising in the service would mean remembering it at every call
+        site, and the one that forgets is the one that silently drops a claim
+        out of an alert.
+        """
+        self.barrio_codigo = normalizar_barrio(valor)
+        return valor
 
     historial: Mapped[list[HistorialEstado]] = relationship(
         back_populates="reclamo",

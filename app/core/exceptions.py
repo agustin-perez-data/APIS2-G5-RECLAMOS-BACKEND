@@ -50,7 +50,29 @@ class ReclamoCerrado(DomainError):
     code = "reclamo_cerrado"
 
 
+class NotificacionNoEncontrada(DomainError):
+    # Also raised for someone else's notification: a 403 would confirm it exists.
+    status_code = 404
+    title = "Notificacion no encontrada"
+    code = "notificacion_no_encontrada"
+
+
 class PermisoDenegado(DomainError):
     status_code = 403
     title = "No tiene permisos sobre este recurso"
     code = "permiso_denegado"
+
+
+class EmailYaRegistrado(DomainError):
+    status_code = 409
+    title = "Ese email ya tiene una cuenta"
+    code = "email_ya_registrado"
+
+
+class CredencialesInvalidas(DomainError):
+    # Deliberately the same answer for a password that does not match, an email
+    # that was never registered and a disabled account: telling them apart
+    # turns the login into a directory of who is registered.
+    status_code = 401
+    title = "Email o contrasena incorrectos"
+    code = "credenciales_invalidas"

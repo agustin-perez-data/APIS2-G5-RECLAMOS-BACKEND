@@ -8,6 +8,7 @@ operation is actually complete.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -39,11 +40,110 @@ class FiltroReclamos:
     hasta: datetime | None = None
     orden: str = "recientes"
     estados: list[EstadoReclamo] = field(default_factory=list)
+    actividad_id: uuid.UUID | None = None
 
 
 class ReclamoRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    # --- Weather alert (ADR 0014) --------------------------------------------
+    async def abiertos_en_barrios(
+        self, codigos: Sequence[str], *, limite: int, desplazamiento: int
+    ) -> list[Reclamo]:
+        """Open claims whose normalised neighbourhood is one of these.
+
+        Paginated by the caller instead of capped here: an alert can cover many
+        neighbourhoods, and a hardcoded page would silently leave claims out --
+        which is exactly what `escalar_por_incidente` does with its 100.
+        """
+        if not codigos:
+            return []
+        resultado = await self.session.execute(
+            select(Reclamo)
+            .where(
+                Reclamo.barrio_codigo.in_(list(codigos)),
+                Reclamo.estado.notin_(list(ESTADOS_FINALES)),
+            )
+            .order_by(Reclamo.created_at)
+            .limit(limite)
+            .offset(desplazamiento)
+        )
+        return list(resultado.scalars().all())
+
+    async def abiertos_en_caja(
+        self,
+        caja: tuple[float, float, float, float],
+        *,
+        limite: int,
+        desplazamiento: int,
+    ) -> list[Reclamo]:
+        """Open claims with coordinates inside a bounding box.
+
+        Only the prefilter: the box contains the circle but is bigger than it,
+        so the caller still measures the exact distance. Doing it this way keeps
+        the database out of trigonometry and needs no GIS extension.
+        """
+        lat_min, lat_max, lon_min, lon_max = caja
+        resultado = await self.session.execute(
+            select(Reclamo)
+            .where(
+                Reclamo.latitud.is_not(None),
+                Reclamo.longitud.is_not(None),
+                Reclamo.latitud.between(lat_min, lat_max),
+                Reclamo.longitud.between(lon_min, lon_max),
+                Reclamo.estado.notin_(list(ESTADOS_FINALES)),
+            )
+            .order_by(Reclamo.created_at)
+            .limit(limite)
+            .offset(desplazamiento)
+        )
+        return list(resultado.scalars().all())
+
+    async def abiertos_con_ubicacion(self, *, limite: int, desplazamiento: int) -> list[Reclamo]:
+        """Every open claim that can be located at all. Used by CRITICA."""
+        resultado = await self.session.execute(
+            select(Reclamo)
+            .where(
+                Reclamo.estado.notin_(list(ESTADOS_FINALES)),
+                or_(
+                    Reclamo.barrio_codigo.is_not(None),
+                    and_(Reclamo.latitud.is_not(None), Reclamo.longitud.is_not(None)),
+                ),
+            )
+            .order_by(Reclamo.created_at)
+            .limit(limite)
+            .offset(desplazamiento)
+        )
+        return list(resultado.scalars().all())
+
+    async def marcados_con_alerta(self, alerta_id: uuid.UUID) -> list[Reclamo]:
+        """Every claim carrying this alert, whatever its state.
+
+        Closed ones come back too: the summary reports how many the alert
+        touched in total, not only the ones still open at the end.
+        """
+        resultado = await self.session.execute(
+            select(Reclamo).where(Reclamo.alerta_id == alerta_id).order_by(Reclamo.created_at)
+        )
+        return list(resultado.scalars().all())
+
+    async def contar_sin_ubicacion(self) -> int:
+        """Open claims that cannot be placed anywhere: no neighbourhood, no coordinates.
+
+        Counted apart and reported to Analytics: it is the measure of how much
+        the free-text neighbourhood is costing us.
+        """
+        resultado = await self.session.execute(
+            select(func.count())
+            .select_from(Reclamo)
+            .where(
+                Reclamo.estado.notin_(list(ESTADOS_FINALES)),
+                Reclamo.barrio_codigo.is_(None),
+                or_(Reclamo.latitud.is_(None), Reclamo.longitud.is_(None)),
+            )
+        )
+        return int(resultado.scalar_one())
 
     # --- Writes --------------------------------------------------------------
     async def agregar(self, reclamo: Reclamo) -> Reclamo:
@@ -181,7 +281,9 @@ class ReclamoRepository:
         if filtro.asignado_a:
             stmt = stmt.where(Reclamo.asignado_a == filtro.asignado_a)
         if filtro.barrio:
-            stmt = stmt.where(Reclamo.barrio == filtro.barrio)
+            # Case-insensitive on purpose: other modules send the area however
+            # they store it, and an exact match silently escalated nothing.
+            stmt = stmt.where(func.lower(Reclamo.barrio) == filtro.barrio.strip().lower())
         if filtro.texto:
             patron = f"%{filtro.texto.lower()}%"
             stmt = stmt.where(
@@ -194,6 +296,8 @@ class ReclamoRepository:
             stmt = stmt.where(Reclamo.created_at >= filtro.desde)
         if filtro.hasta:
             stmt = stmt.where(Reclamo.created_at <= filtro.hasta)
+        if filtro.actividad_id is not None:
+            stmt = stmt.where(Reclamo.actividad_id == filtro.actividad_id)
         return stmt
 
     async def listar(

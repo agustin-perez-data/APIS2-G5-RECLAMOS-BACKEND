@@ -39,6 +39,65 @@ class CategoriaReclamo(StrEnum):
     OTROS = "OTROS"
 
 
+class ObjetoAfectado(StrEnum):
+    """Urban space or asset the claim is about.
+
+    Orthogonal to `CategoriaReclamo`: the category says what happened, this says
+    what it happened to. A car blocking a bike lane and a pothole on one are
+    TRANSITO and BACHES respectively, but both are CICLOVIA, which is what lets
+    the mobility module subscribe once instead of tracking every category.
+    """
+
+    CICLOVIA = "CICLOVIA"
+    CALZADA = "CALZADA"
+    VEREDA = "VEREDA"
+    SENDA_PEATONAL = "SENDA_PEATONAL"
+    PLAZA_PARQUE = "PLAZA_PARQUE"
+    MOBILIARIO_URBANO = "MOBILIARIO_URBANO"
+    EDIFICIO_PUBLICO = "EDIFICIO_PUBLICO"
+    OTRO = "OTRO"
+
+
+class NivelCriticidad(StrEnum):
+    """How severe the weather alert is, as Public Spaces declares it.
+
+    Taken from the enum registered in their event type, verified against the bus
+    catalogue on 2026-11-03. They declared it as an Avro `enum`, so these four
+    are the only values that can ever arrive: adding one would break their own
+    schema.
+    """
+
+    BAJA = "BAJA"
+    MEDIA = "MEDIA"
+    ALTA = "ALTA"
+    CRITICA = "CRITICA"
+
+
+class EstadoEventoClimatico(StrEnum):
+    """Where a weather alert is in its own lifecycle.
+
+    CONFIRMADA is what arrives with the event; ACTIVA starts at `vigencia_desde`
+    and is evaluated when a claim is filed, not by a scheduler; FINALIZADA is
+    terminal and comes from Public Spaces.
+    """
+
+    CONFIRMADA = "CONFIRMADA"
+    ACTIVA = "ACTIVA"
+    FINALIZADA = "FINALIZADA"
+
+
+class ResultadoIntervencion(StrEnum):
+    """How Public Spaces closed the job in the street (CU-INT-01).
+
+    "No hacia falta grua" is not the same as "se resolvio": if nobody did
+    anything, telling the neighbour it was solved would be a lie, so the two
+    outcomes land on different states.
+    """
+
+    RESUELTO = "RESUELTO"
+    RECHAZADO = "RECHAZADO"
+
+
 class OrigenClasificacion(StrEnum):
     """Who decided the claim's category and priority."""
 
@@ -56,6 +115,18 @@ class CanalOrigen(StrEnum):
     PRESENCIAL = "PRESENCIAL"
     EVENTO = "EVENTO"  # opened automatically by another module's event
 
+
+class TipoNotificacion(StrEnum):
+    """What happened to the claim that the owner is being told about."""
+
+    ESTADO = "ESTADO"
+    COMENTARIO = "COMENTARIO"
+    NUEVO_RECLAMO = "NUEVO_RECLAMO"
+
+
+# Author of what the module does on its own: claims opened by another module's
+# event, auto-closes, official comments on incidents.
+USUARIO_SISTEMA = "sistema"
 
 # States that accept no further changes.
 ESTADOS_FINALES: frozenset[EstadoReclamo] = frozenset(
@@ -94,3 +165,15 @@ def puede_transicionar(actual: EstadoReclamo, nuevo: EstadoReclamo) -> bool:
 def escalar(actual: PrioridadReclamo, minima: PrioridadReclamo) -> PrioridadReclamo:
     """Return the higher of `actual` and `minima`; never lowers a priority."""
     return actual if ORDEN_PRIORIDAD[actual] >= ORDEN_PRIORIDAD[minima] else minima
+
+
+# Categories that cut or slow down circulation (CU-INT-01). A claim in one of
+# them is published with `afectaCirculacion = true`, which is what Mobility
+# and Public Spaces use to treat it as an incident on the route.
+CATEGORIAS_QUE_AFECTAN_CIRCULACION: frozenset[CategoriaReclamo] = frozenset(
+    {
+        CategoriaReclamo.TRANSITO,
+        CategoriaReclamo.BACHES,
+        CategoriaReclamo.ARBOLADO,
+    }
+)

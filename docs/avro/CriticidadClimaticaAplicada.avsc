@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "CriticidadClimaticaAplicada",
+  "namespace": "com.citypass.reclamos",
+  "doc": "Reclamos aplico una alerta climatica de Espacios Publicos. Solo conteos: ningun dato personal del vecino.",
+  "fields": [
+    { "name": "alertaId", "type": "string", "doc": "El alertaId que mando Espacios. Correlaciona todo el ciclo de la alerta." },
+    { "name": "nivelCriticidad", "type": "string", "doc": "BAJA, MEDIA, ALTA o CRITICA, tal como lo declaro Espacios." },
+    { "name": "estado", "type": "string", "doc": "APLICADA si el proceso termino, FALLIDA si se corto antes." },
+    { "name": "accionesAplicadas", "type": { "type": "array", "items": "string" }, "doc": "Que se hizo: AVISO_CIUDADANOS, MARCA_RECLAMOS, AJUSTE_PRIORIDAD." },
+    { "name": "reclamosMarcados", "type": "int", "doc": "Reclamos abiertos que quedaron bajo la alerta." },
+    { "name": "reclamosSinUbicacion", "type": "int", "doc": "Reclamos abiertos que no se pudieron ubicar: sin barrio normalizable y sin coordenadas. Va aparte para que Analitica mida la calidad del dato." },
+    { "name": "avisosEnviados", "type": "int", "doc": "Avisos efectivamente generados al vecino." },
+    { "name": "detalleError", "type": ["null", "string"], "default": null, "doc": "Solo cuando estado es FALLIDA." },
+    { "name": "correlationId", "type": ["null", "string"], "default": null }
+  ]
+}

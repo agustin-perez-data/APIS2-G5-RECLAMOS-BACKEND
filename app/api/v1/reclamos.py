@@ -10,10 +10,11 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Query, Request, status
 
 from app.api.deps import AdminDep, ServiceDep, StaffDep, UsuarioDep
 from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.domain.enums import CategoriaReclamo, EstadoReclamo, PrioridadReclamo
 from app.repositories.reclamo_repository import ORDENES_PERMITIDOS, FiltroReclamos
 from app.schemas.common import Page
@@ -30,6 +31,7 @@ from app.schemas.reclamo import (
     ReclamoBandeja,
     ReclamoCrear,
     ReclamoDetalle,
+    ReclamoListado,
     ReclamoOut,
     ReclamoResumen,
     ReclamoSimilar,
@@ -63,16 +65,17 @@ def _a_similar(parecido: ReclamoParecido) -> ReclamoSimilar:
         "automatico. Publica el evento `reclamos.reclamo.creado`."
     ),
 )
+@limiter.limit(settings.rate_limit_creacion)
 async def crear_reclamo(
-    datos: ReclamoCrear, usuario: UsuarioDep, service: ServiceDep
+    request: Request, datos: ReclamoCrear, usuario: UsuarioDep, service: ServiceDep
 ) -> ReclamoOut:
     reclamo = await service.crear(datos, ciudadano_id=usuario.id)
     return ReclamoOut.model_validate(reclamo)
 
 
-@router.get("", response_model=Page[ReclamoResumen], summary="Listar reclamos")
+@router.get("", response_model=Page[ReclamoListado], summary="Listar reclamos")
 async def listar_reclamos(
-    _usuario: UsuarioDep,
+    usuario: UsuarioDep,
     service: ServiceDep,
     estado: EstadoReclamo | None = None,
     categoria: CategoriaReclamo | None = None,
@@ -88,7 +91,11 @@ async def listar_reclamos(
     ),
     page: Annotated[int, Query(ge=1)] = 1,
     size: Annotated[int, Query(ge=1, le=100)] = 20,
-) -> Page[ReclamoResumen]:
+    actividad_id: Annotated[
+        uuid.UUID | None,
+        Query(description="Solo los relacionados con esta actividad masiva (GET /actividades)"),
+    ] = None,
+) -> Page[ReclamoListado]:
     filtro = FiltroReclamos(
         estado=estado,
         categoria=categoria,
@@ -100,10 +107,17 @@ async def listar_reclamos(
         desde=desde,
         hasta=hasta,
         orden=orden,
+        actividad_id=actividad_id,
     )
     items, total = await service.listar(filtro, page=page, size=size)
-    return Page[ReclamoResumen](
-        items=[ReclamoResumen.model_validate(item) for item in items],
+    return Page[ReclamoListado](
+        items=[
+            ReclamoListado(
+                **ReclamoResumen.model_validate(item).model_dump(),
+                es_propio=item.ciudadano_id == usuario.id,
+            )
+            for item in items
+        ],
         total=total,
         page=page,
         size=size,
@@ -228,10 +242,11 @@ async def cambiar_estado(
 @router.patch(
     "/{reclamo_id}/clasificacion",
     response_model=ReclamoOut,
-    summary="Corregir categoria y/o prioridad de un reclamo (operador/admin)",
+    summary="Corregir la clasificacion de un reclamo (operador/admin)",
     description=(
-        "Para cuando el modelo o el ciudadano clasificaron mal. No cambia el "
-        "estado del reclamo; publica `reclamos.reclamo.clasificado` de nuevo."
+        "Corrige categoria, prioridad y/o objeto afectado, para cuando el modelo "
+        "o el ciudadano clasificaron mal. No cambia el estado del reclamo; "
+        "publica `reclamos.reclamo.clasificado` de nuevo."
     ),
 )
 async def reclasificar(
@@ -247,7 +262,9 @@ async def reclasificar(
     status_code=status.HTTP_201_CREATED,
     summary="Comentar un reclamo",
 )
+@limiter.limit(settings.rate_limit_comentarios)
 async def comentar(
+    request: Request,
     reclamo_id: uuid.UUID,
     datos: ComentarioCrear,
     usuario: UsuarioDep,
@@ -310,7 +327,10 @@ async def similares_de(
         "escala de prioridad automaticamente."
     ),
 )
-async def adherir(reclamo_id: uuid.UUID, usuario: UsuarioDep, service: ServiceDep) -> AdhesionOut:
+@limiter.limit(settings.rate_limit_adhesiones)
+async def adherir(
+    request: Request, reclamo_id: uuid.UUID, usuario: UsuarioDep, service: ServiceDep
+) -> AdhesionOut:
     reclamo = await service.adherir(reclamo_id, usuario.id)
     return AdhesionOut(
         reclamo_id=reclamo.id,
