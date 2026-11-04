@@ -78,7 +78,7 @@ jobs:
     needs: lint-and-test
     if: github.actor != 'dependabot[bot]'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Download coverage report
