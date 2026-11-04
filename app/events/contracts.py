@@ -209,6 +209,43 @@ class IncidenteCreado(BaseModel):
     )
 
 
+class CriticidadClimaticaAplicada(BaseModel):
+    """`com.citypass.reclamos.CriticidadClimaticaAplicada` (ADR 0014).
+
+    What this module did with an alert, in counts only. Public Spaces uses it to
+    confirm the alert landed; Analytics uses it to size the event.
+
+    No personal data on purpose: how many claims were marked says everything
+    these two need, and who filed them says nothing extra to them.
+    """
+
+    alerta_id: uuid.UUID
+    nivel_criticidad: NivelCriticidad
+    # APLICADA when the whole run finished, FALLIDA when it broke partway.
+    estado: str = "APLICADA"
+    acciones_aplicadas: list[str] = Field(default_factory=list)
+    reclamos_marcados: int = 0
+    # Open claims that could not be placed in any area: no neighbourhood code
+    # and no coordinates. It is the measure of what the free-text field costs.
+    reclamos_sin_ubicacion: int = 0
+    avisos_enviados: int = 0
+    detalle_error: str | None = None
+
+
+class CriticidadClimaticaLevantada(BaseModel):
+    """`com.citypass.reclamos.CriticidadClimaticaLevantada` (ADR 0014)."""
+
+    alerta_id: uuid.UUID
+    levantada_en: datetime
+    reclamos_abiertos_al_confirmar: int = 0
+    # The number Analytics consumes: how many claims the alert generated.
+    reclamos_creados_durante: int = 0
+    subidos_de_prioridad: int = 0
+    duplicados_detectados: int = 0
+    abiertos_al_finalizar: int = 0
+    sin_ubicacion: int = 0
+
+
 class UbicacionClimatica(BaseModel):
     model_config = ConfigDict(extra="allow")
 

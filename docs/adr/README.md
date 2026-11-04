@@ -18,6 +18,7 @@ el contexto, las opciones que se evaluaron y por qué se descartaron.
 | [0011](0011-autenticacion-de-ciudadanos.md) | Autenticación de ciudadanos en el propio módulo | Aceptada |
 | [0012](0012-cierre-por-intervencion-externa.md) | Cierre de un reclamo por intervención de otro módulo | Aceptada |
 | [0013](0013-reclamos-relacionados-con-actividades-masivas.md) | Reclamos relacionados con actividades masivas (squad 3) | Aceptada |
+| [0014](0014-modo-evento-climatico.md) | Modo evento climatico (squad 3) | Aceptada |
 
 ## Cómo agregar uno
 

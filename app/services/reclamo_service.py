@@ -133,6 +133,15 @@ class ResumenCierre:
     abiertos_al_finalizar: int
     duplicados_detectados: int
     avisos_enviados: int
+    # Claims filed while the alert was live, told apart by when they were
+    # created: the ones already open when it was confirmed came before it.
+    creados_durante: int
+    # How many of the marked claims belong to the categories this level raises.
+    # Not "how many actually moved": a claim already at CRITICA was eligible and
+    # did not move, and counting it as moved would be a lie the schema's `doc`
+    # would have to carry. Named for what it measures.
+    subidos_de_prioridad: int
+    sin_ubicacion: int
 
 
 def _contar_duplicados(reclamos: Sequence[Reclamo]) -> int:
@@ -1045,6 +1054,12 @@ class ReclamoService:
             await self._confirmar_escalada(afectados)
 
         duplicados = _contar_duplicados(abiertos)
+        politica = _politica_de(alerta.nivel, self.cfg)
+        sensibles = politica.categorias or frozenset()
+        desde = _con_zona(alerta.vigencia_desde)
+        creados_durante = sum(1 for r in marcados if _con_zona(r.created_at) >= desde)
+        elegibles = sum(1 for r in marcados if r.categoria in sensibles)
+        sin_ubicacion = await self.repo.contar_sin_ubicacion()
         log.info(
             "reclamos.alerta_levantada",
             alerta_id=str(alerta.alerta_id),
@@ -1057,6 +1072,9 @@ class ReclamoService:
             abiertos_al_finalizar=len(abiertos),
             duplicados_detectados=duplicados,
             avisos_enviados=len(afectados),
+            creados_durante=creados_durante,
+            subidos_de_prioridad=elegibles,
+            sin_ubicacion=sin_ubicacion,
         )
 
     async def _candidatos_de_alerta(
