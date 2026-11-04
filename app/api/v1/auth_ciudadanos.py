@@ -5,9 +5,7 @@ claims get their account here (see ADR 0011).
 
 These two routes are the only ones besides `/health`, the development login and
 the gateway webhook that carry no identity dependency: nobody can present a
-token before having one. What protects them is the rate limit, the generic
-answer that makes a wrong password indistinguishable from an unknown email, and
-the fact that no response ever echoes the stored hash.
+token before having one.
 """
 
 from __future__ import annotations
@@ -73,10 +71,9 @@ async def registrar(request: Request, datos: RegistroCiudadano, servicio: Servic
     summary="Iniciar sesion como vecino",
     description=(
         "Devuelve un JWT con el mismo formato que el del personal municipal, "
-        "pero emitido por este modulo. Las credenciales incorrectas y un correo "
-        "no registrado devuelven exactamente la misma respuesta."
+        "pero emitido por este modulo para el vecino registrado."
     ),
-    responses={401: {"description": "Email o contrasena incorrectos"}},
+    responses={401: {"description": "Email no registrado o cuenta inactiva"}},
 )
 @limiter.limit(settings.rate_limit_login)
 async def login(request: Request, datos: LoginCiudadano, servicio: ServicioDep) -> TokenOut:
