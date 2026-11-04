@@ -117,6 +117,17 @@ class ReclamoRepository:
         )
         return list(resultado.scalars().all())
 
+    async def marcados_con_alerta(self, alerta_id: uuid.UUID) -> list[Reclamo]:
+        """Every claim carrying this alert, whatever its state.
+
+        Closed ones come back too: the summary reports how many the alert
+        touched in total, not only the ones still open at the end.
+        """
+        resultado = await self.session.execute(
+            select(Reclamo).where(Reclamo.alerta_id == alerta_id).order_by(Reclamo.created_at)
+        )
+        return list(resultado.scalars().all())
+
     async def contar_sin_ubicacion(self) -> int:
         """Open claims that cannot be placed anywhere: no neighbourhood, no coordinates.
 
