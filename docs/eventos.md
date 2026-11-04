@@ -492,6 +492,8 @@ cabecera `X-Webhook-Token` (preferido) o por `?token=...`. Las entregas son
 | `com.citypass.espacios.EventoComunitarioPublicado` | Con cupo ≥ 100, eleva a `MEDIA` los reclamos abiertos de la zona. Los `CANCELLED` se ignoran. |
 | `com.citypass.espacios.IntervencionFinalizada` | **Cierra el reclamo.** Con `resultado: RESUELTO` pasa a RESUELTO; con `RECHAZADO`, a RECHAZADO. Ver abajo. |
 | `com.citypass.espacios.ActividadCreada` | Squad 3. Guarda la actividad masiva; los reclamos que se carguen cerca mientras dura quedan relacionados con ella. Ver abajo. |
+| `com.citypass.espacios.CriticidadClimaticaConfirmada` | Squad 3. Marca los reclamos abiertos del área, avisa al vecino y sube la prioridad de las categorías que el clima empeora. Ver [ADR 0014](adr/0014-modo-evento-climatico.md). |
+| `com.citypass.espacios.CriticidadClimaticaFinalizada` | Squad 3. Avisa que terminó, restaura el umbral de adhesiones y cuenta los duplicados **sin cerrarlos**. |
 
 #### `IntervencionFinalizada`, el que cierra el circuito
 

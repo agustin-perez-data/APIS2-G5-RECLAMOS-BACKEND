@@ -20,7 +20,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from app.domain.enums import (
     CategoriaReclamo,
     EstadoReclamo,
-    MotivoPrioridad,
+    NivelCriticidad,
     ObjetoAfectado,
     PrioridadReclamo,
     ResultadoIntervencion,
@@ -85,7 +85,6 @@ class ReclamoCreado(BaseModel):
     # feature exists: the schemas get registered in Group 1's catalogue once, and
     # declaring both now is far cheaper than coordinating a second registration.
     alerta_id: uuid.UUID | None = None
-    motivo_prioridad: MotivoPrioridad | None = None
 
 
 class ReclamoClasificado(BaseModel):
@@ -137,7 +136,6 @@ class ReclamoEstadoCambiado(BaseModel):
     # feature exists: the schemas get registered in Group 1's catalogue once, and
     # declaring both now is far cheaper than coordinating a second registration.
     alerta_id: uuid.UUID | None = None
-    motivo_prioridad: MotivoPrioridad | None = None
 
 
 class ReclamoResuelto(BaseModel):
@@ -208,6 +206,99 @@ class IncidenteCreado(BaseModel):
     latitud: float | None = Field(default=None, validation_alias=AliasChoices("latitud", "lat"))
     longitud: float | None = Field(
         default=None, validation_alias=AliasChoices("longitud", "lng", "lon")
+    )
+
+
+class CriticidadClimaticaAplicada(BaseModel):
+    """`com.citypass.reclamos.CriticidadClimaticaAplicada` (ADR 0014).
+
+    What this module did with an alert, in counts only. Public Spaces uses it to
+    confirm the alert landed; Analytics uses it to size the event.
+
+    No personal data on purpose: how many claims were marked says everything
+    these two need, and who filed them says nothing extra to them.
+    """
+
+    alerta_id: uuid.UUID
+    nivel_criticidad: NivelCriticidad
+    # APLICADA when the whole run finished, FALLIDA when it broke partway.
+    estado: str = "APLICADA"
+    acciones_aplicadas: list[str] = Field(default_factory=list)
+    reclamos_marcados: int = 0
+    # Open claims that could not be placed in any area: no neighbourhood code
+    # and no coordinates. It is the measure of what the free-text field costs.
+    reclamos_sin_ubicacion: int = 0
+    avisos_enviados: int = 0
+    detalle_error: str | None = None
+
+
+class CriticidadClimaticaLevantada(BaseModel):
+    """`com.citypass.reclamos.CriticidadClimaticaLevantada` (ADR 0014)."""
+
+    alerta_id: uuid.UUID
+    levantada_en: datetime
+    reclamos_abiertos_al_confirmar: int = 0
+    # The number Analytics consumes: how many claims the alert generated.
+    reclamos_creados_durante: int = 0
+    subidos_de_prioridad: int = 0
+    duplicados_detectados: int = 0
+    abiertos_al_finalizar: int = 0
+    sin_ubicacion: int = 0
+
+
+class UbicacionClimatica(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    latitud: float
+    longitud: float
+
+
+class CriticidadClimaticaConfirmada(BaseModel):
+    """`com.citypass.espacios.CriticidadClimaticaConfirmada` (squad 3, ADR 0014).
+
+    Public Spaces declaring bad weather over part of the city. Fields taken from
+    the schema they have registered in the bus catalogue, read on 2026-11-03,
+    not from the design document: `barrios` is in the schema even though the
+    document said it was not, and it is what makes the primary cross possible.
+
+    `barrios` carries a default of `[]` in their schema, so it can arrive empty:
+    that is the case the geographic fallback exists for.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    alerta_id: uuid.UUID = Field(validation_alias=AliasChoices("alerta_id", "alertaId"))
+    nivel_criticidad: NivelCriticidad = Field(
+        validation_alias=AliasChoices("nivel_criticidad", "nivelCriticidad")
+    )
+    fenomeno: str
+    barrios: list[str] = Field(default_factory=list)
+    ubicaciones: list[UbicacionClimatica] = Field(default_factory=list)
+    # Epoch millis in their schema (`logicalType: timestamp-millis`).
+    vigencia_desde: int = Field(validation_alias=AliasChoices("vigencia_desde", "vigenciaDesde"))
+    vigencia_hasta: int = Field(validation_alias=AliasChoices("vigencia_hasta", "vigenciaHasta"))
+    actor_sub: str | None = Field(
+        default=None, validation_alias=AliasChoices("actor_sub", "actorSub")
+    )
+    temperatura_min_c: float | None = Field(
+        default=None, validation_alias=AliasChoices("temperatura_min_c", "temperaturaMinC")
+    )
+    temperatura_max_c: float | None = Field(
+        default=None, validation_alias=AliasChoices("temperatura_max_c", "temperaturaMaxC")
+    )
+
+
+class CriticidadClimaticaFinalizada(BaseModel):
+    """`com.citypass.espacios.CriticidadClimaticaFinalizada` (squad 3, ADR 0014)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    alerta_id: uuid.UUID = Field(validation_alias=AliasChoices("alerta_id", "alertaId"))
+    finalizada_en: int | None = Field(
+        default=None, validation_alias=AliasChoices("finalizada_en", "finalizadaEn")
+    )
+    actor_sub: str | None = Field(
+        default=None, validation_alias=AliasChoices("actor_sub", "actorSub")
     )
 
 

@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "CriticidadClimaticaLevantada",
+  "namespace": "com.citypass.reclamos",
+  "doc": "Termino una alerta climatica y Reclamos retomo la gestion normal. Solo conteos, sin datos personales.",
+  "fields": [
+    { "name": "alertaId", "type": "string" },
+    { "name": "levantadaEn", "type": "long", "doc": "Milisegundos desde epoch." },
+    { "name": "reclamosAbiertosAlConfirmar", "type": "int" },
+    { "name": "reclamosCreadosDurante", "type": "int", "doc": "El numero que consume Analitica: cuantos reclamos genero la alerta." },
+    { "name": "subidosDePrioridad", "type": "int", "doc": "Reclamos marcados que pertenecen a las categorias que este nivel eleva (ARBOLADO, AGUA_CLOACAS, ALUMBRADO). No es cuantos cambiaron de prioridad: uno que ya estaba en CRITICA era elegible y no se movio." },
+    { "name": "duplicadosDetectados", "type": "int", "doc": "Se detectan y se cuentan, NO se cierran: cerrar el reclamo de un vecino sin que nadie lo mire no es decision de este modulo." },
+    { "name": "abiertosAlFinalizar", "type": "int" },
+    { "name": "sinUbicacion", "type": "int" },
+    { "name": "correlationId", "type": ["null", "string"], "default": null }
+  ]
+}

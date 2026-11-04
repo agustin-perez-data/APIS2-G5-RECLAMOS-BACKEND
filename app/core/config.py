@@ -163,6 +163,39 @@ class Settings(BaseSettings):
     similares_puntaje_minimo: float = 0.20
     similares_maximo: int = 5
 
+    # --- Weather alert (squad 3, ADR 0014) -------------------------------------
+    # The cross is primary by neighbourhood: Public Spaces works out which ones
+    # are affected and sends them. These radii are only the fallback for when
+    # that list arrives empty, and they are a convention of ours, not weather:
+    # the alert gives points, not an area.
+    #
+    # CABA is roughly 200 km2, so a 10 km radius would already cover the whole
+    # city and make ALTA and CRITICA the same thing. 6 km keeps four steps.
+    alerta_radio_km_baja: float = 2.0
+    alerta_radio_km_media: float = 5.0
+    alerta_radio_km_alta: float = 6.0
+    # CRITICA has no radius: every open claim that can be located is marked.
+
+    # Endorsements needed to bump a claim that is under an active alert. Lower
+    # than the global 10 because during an alert the same problem gets reported
+    # by many neighbours at once, and waiting for ten is waiting too long.
+    # Applies ONLY to claims marked with an active alert, never to the global.
+    alerta_adhesiones_alta: int = 5
+    alerta_adhesiones_critica: int = 3
+
+    # Categories whose claims get worse with bad weather: a fallen tree, a
+    # flooded drain or a dark street are a different problem under a storm.
+    alerta_categorias_sensibles: list[str] = [
+        "ARBOLADO",
+        "AGUA_CLOACAS",
+        "ALUMBRADO",
+    ]
+
+    # Read in batches so an alert over a large area does not load every claim at
+    # once -- and, more importantly, does not silently stop at a page like
+    # `escalar_por_incidente` did with its hardcoded 100.
+    alerta_lote_reclamos: int = 200
+
     # --- Mass activities (squad 3, ADR 0013) -----------------------------------
     # A Public Spaces activity this large is a mass event: claims filed near it
     # while it lasts, and for a while after it ends, are related to it. Same cut,

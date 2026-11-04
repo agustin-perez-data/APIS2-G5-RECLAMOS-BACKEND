@@ -30,6 +30,8 @@ from app.core.logging import get_logger
 from app.domain.enums import CATEGORIAS_QUE_AFECTAN_CIRCULACION, CategoriaReclamo
 from app.events import topics
 from app.events.contracts import (
+    CriticidadClimaticaAplicada,
+    CriticidadClimaticaLevantada,
     EventEnvelope,
     ReclamoCreado,
     ReclamoEstadoCambiado,
@@ -80,7 +82,6 @@ def traducir(topic: str, envelope: EventEnvelope) -> tuple[str, dict[str, Any]] 
             # a decision.
             "objetoAfectado": _valor(data.objeto_afectado),
             "alertaId": str(data.alerta_id) if data.alerta_id else None,
-            "motivoPrioridad": _valor(data.motivo_prioridad),
             "afectaCirculacion": CategoriaReclamo(data.categoria)
             in CATEGORIAS_QUE_AFECTAN_CIRCULACION,
             "correlationId": envelope.correlation_id,
@@ -122,9 +123,34 @@ def traducir(topic: str, envelope: EventEnvelope) -> tuple[str, dict[str, Any]] 
             "asignadoA": data.asignado_a,
             "cambiadoPor": data.cambiado_por,
             "alertaId": str(data.alerta_id) if data.alerta_id else None,
-            "motivoPrioridad": _valor(data.motivo_prioridad),
             "correlationId": envelope.correlation_id,
             "updatedAt": _epoch_ms(data.cambiado_at),
+        }
+
+    if topic == topics.CLIMA_APLICADA and isinstance(data, CriticidadClimaticaAplicada):
+        return "CriticidadClimaticaAplicada", {
+            "alertaId": str(data.alerta_id),
+            "nivelCriticidad": _valor(data.nivel_criticidad),
+            "estado": data.estado,
+            "accionesAplicadas": list(data.acciones_aplicadas),
+            "reclamosMarcados": data.reclamos_marcados,
+            "reclamosSinUbicacion": data.reclamos_sin_ubicacion,
+            "avisosEnviados": data.avisos_enviados,
+            "detalleError": data.detalle_error,
+            "correlationId": envelope.correlation_id,
+        }
+
+    if topic == topics.CLIMA_LEVANTADA and isinstance(data, CriticidadClimaticaLevantada):
+        return "CriticidadClimaticaLevantada", {
+            "alertaId": str(data.alerta_id),
+            "levantadaEn": _epoch_ms(data.levantada_en),
+            "reclamosAbiertosAlConfirmar": data.reclamos_abiertos_al_confirmar,
+            "reclamosCreadosDurante": data.reclamos_creados_durante,
+            "subidosDePrioridad": data.subidos_de_prioridad,
+            "duplicadosDetectados": data.duplicados_detectados,
+            "abiertosAlFinalizar": data.abiertos_al_finalizar,
+            "sinUbicacion": data.sin_ubicacion,
+            "correlationId": envelope.correlation_id,
         }
 
     return None

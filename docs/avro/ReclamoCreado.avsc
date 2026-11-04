@@ -19,7 +19,6 @@
     { "name": "longitud", "type": ["null", "double"], "default": null },
     { "name": "objetoAfectado", "type": ["null", "string"], "default": null, "doc": "Espacio urbano afectado: CICLOVIA, CALZADA, VEREDA, SENDA_PEATONAL, PLAZA_PARQUE, MOBILIARIO_URBANO, EDIFICIO_PUBLICO u OTRO. Lo elige el vecino al dar de alta, no lo infiere el clasificador, asi que viaja nulo cuando no lo completo." },
     { "name": "alertaId", "type": ["null", "string"], "default": null, "doc": "Alerta climatica que marco el reclamo, o null si no cae en ninguna." },
-    { "name": "motivoPrioridad", "type": ["null", "string"], "default": null, "doc": "Por que el reclamo tiene la prioridad que tiene: NORMAL, ADHESIONES o ALERTA." },
     { "name": "afectaCirculacion", "type": "boolean", "doc": "Verdadero para TRANSITO, BACHES y ARBOLADO. Viaja calculado para que cada consumidor no reimplemente la regla." },
     { "name": "correlationId", "type": ["null", "string"], "default": null, "doc": "Permite seguir una misma interaccion a traves de varios modulos." },
     { "name": "createdAt", "type": "long", "doc": "Milisegundos desde epoch." }

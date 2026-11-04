@@ -44,6 +44,11 @@ class EventoClimatico(Base, TimestampMixin):
     # not ours, and we only pass it through to the citizen-facing message.
     fenomeno: Mapped[str] = mapped_column(String(40), nullable=False)
 
+    # The affected neighbourhoods, already normalised, as Public Spaces sent
+    # them. This is the primary cross against `reclamos.barrio_codigo`; the
+    # coordinates below are only the fallback when this arrives empty.
+    barrios: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+
     # The points they consulted, as `[{"latitud": ..., "longitud": ...}]`. Not
     # normalised into rows: nothing queries them individually, they are read
     # whole to work out the affected area.
