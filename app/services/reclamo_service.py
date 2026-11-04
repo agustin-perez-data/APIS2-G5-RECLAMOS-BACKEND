@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 import uuid
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -31,14 +32,16 @@ from app.core.exceptions import (
 )
 from app.core.logging import get_logger
 from app.core.security import CurrentUser
-from app.db.models import Adhesion, Comentario, HistorialEstado, Reclamo
+from app.db.models import Adhesion, Comentario, EventoClimatico, HistorialEstado, Reclamo
 from app.domain import geo
+from app.domain.barrios import normalizar_barrio
 from app.domain.enums import (
     ESTADOS_FINALES,
     USUARIO_SISTEMA,
     CanalOrigen,
     CategoriaReclamo,
     EstadoReclamo,
+    NivelCriticidad,
     OrigenClasificacion,
     PrioridadReclamo,
     ResultadoIntervencion,
@@ -97,6 +100,66 @@ class ReclamoParecido:
     # cannot endorse their own claim, nor anyone endorse twice.
     es_propio: bool
     ya_adherido: bool
+
+
+@dataclass(frozen=True, slots=True)
+class PoliticaAlerta:
+    """What a severity level does to the claims it covers (ADR 0014)."""
+
+    prioridad_minima: PrioridadReclamo
+    # Categories the weather makes worse. `None` means every category.
+    categorias: frozenset[CategoriaReclamo] | None
+    # Endorsements needed to bump a claim under this alert, or `None` to keep
+    # the global threshold.
+    adhesiones: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class ResumenAlerta:
+    """Counts the summary event carries. No personal data, only numbers."""
+
+    marcados: int
+    avisos_enviados: int
+    sin_ubicacion: int
+    por_barrio: bool
+
+
+def _sensibles(cfg: Settings) -> frozenset[CategoriaReclamo]:
+    return frozenset(CategoriaReclamo(c) for c in cfg.alerta_categorias_sensibles)
+
+
+def _politica_de(nivel: NivelCriticidad, cfg: Settings) -> PoliticaAlerta:
+    """BAJA and MEDIA only mark and tell; ALTA and CRITICA also move priority.
+
+    MEDIA differs from BAJA in what the citizen is shown when filing, not in
+    what happens to the claims already open, so both look the same here.
+    """
+    if nivel is NivelCriticidad.CRITICA:
+        return PoliticaAlerta(
+            prioridad_minima=PrioridadReclamo.CRITICA,
+            categorias=_sensibles(cfg),
+            adhesiones=cfg.alerta_adhesiones_critica,
+        )
+    if nivel is NivelCriticidad.ALTA:
+        return PoliticaAlerta(
+            prioridad_minima=PrioridadReclamo.ALTA,
+            categorias=_sensibles(cfg),
+            adhesiones=cfg.alerta_adhesiones_alta,
+        )
+    # BAJA and MEDIA: the claim is marked and the neighbour told, nothing else.
+    # `categorias=frozenset()` means no category qualifies for a bump.
+    return PoliticaAlerta(
+        prioridad_minima=PrioridadReclamo.BAJA, categorias=frozenset(), adhesiones=None
+    )
+
+
+def _radio_metros(nivel: NivelCriticidad, cfg: Settings) -> float:
+    radios = {
+        NivelCriticidad.BAJA: cfg.alerta_radio_km_baja,
+        NivelCriticidad.MEDIA: cfg.alerta_radio_km_media,
+        NivelCriticidad.ALTA: cfg.alerta_radio_km_alta,
+    }
+    return radios.get(nivel, cfg.alerta_radio_km_alta) * 1000
 
 
 class ReclamoService:
@@ -734,12 +797,48 @@ class ReclamoService:
             FiltroReclamos(barrio=barrio, estados=abiertos), page=1, size=100
         )
 
+        afectados = await self._aplicar_escalada(
+            candidatos, motivo=motivo, prioridad_minima=prioridad_minima
+        )
+        if not afectados:
+            return []
+
+        await self._confirmar_escalada(afectados)
+        log.info("reclamos.escalados_por_incidente", barrio=barrio, cantidad=len(afectados))
+        return [reclamo for reclamo, _ in afectados]
+
+    async def _aplicar_escalada(
+        self,
+        candidatos: Sequence[Reclamo],
+        *,
+        motivo: str,
+        prioridad_minima: PrioridadReclamo,
+        alerta_id: uuid.UUID | None = None,
+        solo_categorias: Collection[CategoriaReclamo] | None = None,
+    ) -> list[tuple[Reclamo, Comentario]]:
+        """Raise priority, leave an official comment and notify. Shared body.
+
+        Used by the Emergencies incident and by the weather alert: both do the
+        same thing to a set of claims and differ only in how that set is chosen.
+        Nothing is committed here -- see `_confirmar_escalada`.
+
+        `solo_categorias` limits the priority bump to the categories the weather
+        makes worse. Claims outside it still get marked with the alert and still
+        get told, because the neighbour deserves to know either way.
+        """
         afectados: list[tuple[Reclamo, Comentario]] = []
         for reclamo in candidatos:
-            nueva = escalar(reclamo.prioridad, prioridad_minima)
-            if nueva is reclamo.prioridad:
+            if alerta_id is not None:
+                reclamo.alerta_id = alerta_id
+
+            sube = solo_categorias is None or reclamo.categoria in solo_categorias
+            nueva = escalar(reclamo.prioridad, prioridad_minima) if sube else reclamo.prioridad
+            # A claim already at or above the floor keeps its priority, but when
+            # it belongs to an alert it is still marked and still notified.
+            if nueva is reclamo.prioridad and alerta_id is None:
                 continue
             reclamo.prioridad = nueva
+
             comentario = await self.repo.agregar_comentario(
                 Comentario(
                     reclamo_id=reclamo.id,
@@ -751,15 +850,118 @@ class ReclamoService:
             )
             await self.notificaciones.por_comentario(reclamo, comentario)
             afectados.append((reclamo, comentario))
+        return afectados
 
-        if not afectados:
-            return []
+    # --- Weather alert (ADR 0014) --------------------------------------------
+    AVISO_ALERTA = (
+        "Tu reclamo sigue registrado. Por la alerta climatica en tu zona la "
+        "gestion puede demorarse. Te avisamos cuando termine."
+    )
+    AVISO_FIN_ALERTA = "Termino la alerta climatica en tu zona. Retomamos la gestion de tu reclamo."
 
+    async def escalar_por_alerta_climatica(self, alerta: EventoClimatico) -> ResumenAlerta:
+        """Mark the open claims in the alert's area and raise their priority.
+
+        The area is primary by neighbourhood: Public Spaces works out which ones
+        are affected and sends them. Only when that list is empty does this fall
+        back to a radius around the points they consulted, and that radius is a
+        convention of ours -- the alert gives points, not an area.
+
+        Reads in batches: an alert can cover the whole city, and stopping at a
+        page would leave claims out without anyone noticing.
+        """
+        politica = _politica_de(alerta.nivel, self.cfg)
+        marcados: list[Reclamo] = []
+        desplazamiento = 0
+
+        while True:
+            lote = await self._candidatos_de_alerta(alerta, desplazamiento=desplazamiento)
+            if not lote:
+                break
+            afectados = await self._aplicar_escalada(
+                lote,
+                motivo=self.AVISO_ALERTA,
+                prioridad_minima=politica.prioridad_minima,
+                alerta_id=alerta.alerta_id,
+                solo_categorias=politica.categorias,
+            )
+            if afectados:
+                await self._confirmar_escalada(afectados)
+                marcados.extend(reclamo for reclamo, _ in afectados)
+            desplazamiento += self.cfg.alerta_lote_reclamos
+
+        sin_ubicacion = await self.repo.contar_sin_ubicacion()
+        log.info(
+            "reclamos.escalados_por_alerta",
+            alerta_id=str(alerta.alerta_id),
+            nivel=alerta.nivel.value,
+            marcados=len(marcados),
+            sin_ubicacion=sin_ubicacion,
+            por_barrio=bool(alerta.barrios),
+        )
+        return ResumenAlerta(
+            marcados=len(marcados),
+            avisos_enviados=len(marcados),
+            sin_ubicacion=sin_ubicacion,
+            por_barrio=bool(alerta.barrios),
+        )
+
+    async def _candidatos_de_alerta(
+        self, alerta: EventoClimatico, *, desplazamiento: int
+    ) -> list[Reclamo]:
+        """One batch of the claims the alert covers."""
+        lote = self.cfg.alerta_lote_reclamos
+
+        if alerta.barrios:
+            # Normalised again on read, even though ClimaService already stores
+            # them as codes. It costs nothing on a short list and removes a
+            # tacit assumption: an alert stored by any other path would fail
+            # this cross silently, with no error and no claim marked.
+            codigos = [c for b in alerta.barrios if (c := normalizar_barrio(b))]
+            return await self.repo.abiertos_en_barrios(
+                codigos, limite=lote, desplazamiento=desplazamiento
+            )
+
+        # No neighbourhoods: fall back to geography.
+        if alerta.nivel is NivelCriticidad.CRITICA:
+            return await self.repo.abiertos_con_ubicacion(
+                limite=lote, desplazamiento=desplazamiento
+            )
+
+        radio_metros = _radio_metros(alerta.nivel, self.cfg)
+        dentro: list[Reclamo] = []
+        for punto in alerta.ubicaciones:
+            lat, lon = punto.get("latitud"), punto.get("longitud")
+            if lat is None or lon is None:
+                continue
+            caja = geo.caja_alrededor(lat, lon, radio_metros)
+            candidatos = await self.repo.abiertos_en_caja(
+                caja, limite=lote, desplazamiento=desplazamiento
+            )
+            # The box contains the circle but is larger: measure the real
+            # distance so a claim in the corner does not sneak in.
+            dentro.extend(
+                reclamo
+                for reclamo in candidatos
+                if reclamo.latitud is not None
+                and reclamo.longitud is not None
+                and geo.distancia_metros(lat, lon, reclamo.latitud, reclamo.longitud)
+                <= radio_metros
+            )
+
+        vistos: set[uuid.UUID] = set()
+        unicos: list[Reclamo] = []
+        for reclamo in dentro:
+            if reclamo.id not in vistos:
+                vistos.add(reclamo.id)
+                unicos.append(reclamo)
+        return unicos
+
+    async def _confirmar_escalada(self, afectados: list[tuple[Reclamo, Comentario]]) -> None:
+        """Commit once, then publish. Events go out after the commit (ADR 0004)."""
         await self.session.commit()
         for reclamo, comentario in afectados:
             await self._publicar_comentario(reclamo, comentario)
-        log.info("reclamos.escalados_por_incidente", barrio=barrio, cantidad=len(afectados))
-        return [reclamo for reclamo, _ in afectados]
 
     async def cerrar_resueltos_vencidos(self) -> list[Reclamo]:
         """Auto-close claims sitting in RESUELTO past the response window (US-17).
