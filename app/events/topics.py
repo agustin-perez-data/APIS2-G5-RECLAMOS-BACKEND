@@ -28,6 +28,8 @@ ESPACIOS_EVENTO_PUBLICADO = "espacios.evento.publicado"
 ESPACIOS_INTERVENCION_FINALIZADA = "espacios.intervencion.finalizada"
 # Squad 3 (ADR 0013): a mass activity whose area relates the claims filed there.
 ESPACIOS_ACTIVIDAD_CREADA = "espacios.actividad.creada"
+CLIMA_APLICADA = "reclamos.clima.aplicada"
+CLIMA_LEVANTADA = "reclamos.clima.levantada"
 ESPACIOS_CLIMA_CONFIRMADA = "espacios.clima.confirmada"
 ESPACIOS_CLIMA_FINALIZADA = "espacios.clima.finalizada"
 
@@ -51,6 +53,8 @@ PUBLICADOS: tuple[str, ...] = (
     RECLAMO_RESUELTO,
     RECLAMO_ADHERIDO,
     RECLAMO_COMENTARIO_CREADO,
+    CLIMA_APLICADA,
+    CLIMA_LEVANTADA,
 )
 
 CONSUMIDOS: tuple[str, ...] = (

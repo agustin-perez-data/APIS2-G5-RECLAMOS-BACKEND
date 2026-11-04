@@ -9,16 +9,19 @@ same validations and publishes the same events as one filed from the app.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from app.core.logging import get_logger
-from app.domain.enums import CategoriaReclamo, PrioridadReclamo
+from app.domain.enums import CategoriaReclamo, NivelCriticidad, PrioridadReclamo
 from app.events import topics
 from app.events.contracts import (
     ActividadCreada,
     ContenedorDesbordado,
+    CriticidadClimaticaAplicada,
     CriticidadClimaticaConfirmada,
     CriticidadClimaticaFinalizada,
+    CriticidadClimaticaLevantada,
     EventoCulturalPublicado,
     IncidenteCreado,
     IntervencionFinalizada,
@@ -210,6 +213,14 @@ async def manejar_actividad_creada(raw: dict[str, Any], service: ReclamoService)
     )
 
 
+def _acciones_de(nivel: NivelCriticidad) -> list[str]:
+    """What the level actually did, for the summary event."""
+    acciones = ["MARCA_RECLAMOS", "AVISO_CIUDADANOS"]
+    if nivel in (NivelCriticidad.ALTA, NivelCriticidad.CRITICA):
+        acciones.append("AJUSTE_PRIORIDAD")
+    return acciones
+
+
 async def _descartar_si_repetido(raw: dict, service: ReclamoService, tipo: str) -> bool:
     """True when this event id was already handled and there is nothing to do.
 
@@ -264,6 +275,21 @@ async def manejar_criticidad_confirmada(raw: dict[str, Any], service: ReclamoSer
         por_barrio=resumen.por_barrio,
     )
 
+    # Published after the commit (ADR 0004). Public Spaces uses it to confirm
+    # the alert landed, Analytics to size the event.
+    await service.publisher.publish(
+        topics.CLIMA_APLICADA,
+        CriticidadClimaticaAplicada(
+            alerta_id=alerta.alerta_id,
+            nivel_criticidad=alerta.nivel,
+            acciones_aplicadas=_acciones_de(alerta.nivel),
+            reclamos_marcados=resumen.marcados,
+            reclamos_sin_ubicacion=resumen.sin_ubicacion,
+            avisos_enviados=resumen.avisos_enviados,
+        ),
+        key=str(alerta.alerta_id),
+    )
+
 
 async def manejar_criticidad_finalizada(raw: dict[str, Any], service: ReclamoService) -> None:
     """`com.citypass.espacios.CriticidadClimaticaFinalizada` -> close the alert."""
@@ -289,6 +315,23 @@ async def manejar_criticidad_finalizada(raw: dict[str, Any], service: ReclamoSer
         marcados=resumen.marcados,
         abiertos=resumen.abiertos_al_finalizar,
         duplicados=resumen.duplicados_detectados,
+    )
+
+    await service.publisher.publish(
+        topics.CLIMA_LEVANTADA,
+        CriticidadClimaticaLevantada(
+            alerta_id=alerta.alerta_id,
+            levantada_en=datetime.now(UTC),
+            reclamos_abiertos_al_confirmar=resumen.marcados,
+            # Claims filed while the alert was live: the ones it carries minus
+            # the ones that were already open when it was confirmed.
+            reclamos_creados_durante=resumen.creados_durante,
+            subidos_de_prioridad=resumen.subidos_de_prioridad,
+            duplicados_detectados=resumen.duplicados_detectados,
+            abiertos_al_finalizar=resumen.abiertos_al_finalizar,
+            sin_ubicacion=resumen.sin_ubicacion,
+        ),
+        key=str(alerta.alerta_id),
     )
 
 

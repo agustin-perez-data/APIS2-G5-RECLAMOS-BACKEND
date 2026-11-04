@@ -234,3 +234,37 @@ async def test_el_reclamo_conserva_la_alerta_despues_de_cerrarla(session, publis
     await session.refresh(reclamo)
     # It is history: Analytics tells the alert-driven claims apart by this.
     assert reclamo.alerta_id == alerta.alerta_id
+
+
+# --- Outbound events -------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_al_cerrar_se_publica_el_resumen_sin_datos_personales(session, publisher) -> None:
+    from app.events import topics
+
+    alerta = _alerta()
+    reclamo = _reclamo(alerta_id=alerta.alerta_id)
+    session.add_all([alerta, reclamo])
+    await session.commit()
+
+    from app.events.handlers import manejar_criticidad_finalizada
+
+    await manejar_criticidad_finalizada(
+        {
+            "event_id": str(uuid.uuid4()),
+            "event_type": topics.ESPACIOS_CLIMA_FINALIZADA,
+            "occurred_at": datetime.now(UTC).isoformat(),
+            "data": {"alertaId": str(alerta.alerta_id)},
+        },
+        ReclamoService(session, publisher),
+    )
+
+    publicados = [e for e in publisher.publicados if e[0] == topics.CLIMA_LEVANTADA]
+    assert len(publicados) == 1
+    payload = publicados[0][2].data.model_dump()
+    assert payload["abiertos_al_finalizar"] == 1
+    # Counts only: nothing that identifies a neighbour.
+    crudo = str(payload)
+    assert reclamo.ciudadano_id not in crudo
+    assert reclamo.titulo not in crudo
