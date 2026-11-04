@@ -92,17 +92,19 @@ async def test_creacion_reclamo_tiene_rate_limit(
     assert respuesta_429.status_code == 429
     assert respuesta_429.json()["code"] == "rate_limit"
     assert "Retry-After" in respuesta_429.headers
+    assert respuesta_429.headers["content-type"].startswith("application/problem+json")
 
 
 @pytest.mark.asyncio
 async def test_limite_de_login_de_vecinos_bloquea_fuerza_bruta(client: AsyncClient) -> None:
     # Same ceiling as the staff login: settings.rate_limit_login is "10/minute".
     url = "/api/v1/auth/ciudadanos/login"
-    payload = {"email": "vecina@ejemplo.com", "password": "no-es-la-clave"}
+    payload = {"email": "vecina@ejemplo.com"}
 
     for _ in range(10):
         respuesta = await client.post(url, json=payload)
         assert respuesta.status_code != 429
+        assert respuesta.status_code == 401
 
     bloqueado = await client.post(url, json=payload)
     assert bloqueado.status_code == 429
@@ -111,7 +113,7 @@ async def test_limite_de_login_de_vecinos_bloquea_fuerza_bruta(client: AsyncClie
 
 @pytest.mark.asyncio
 async def test_el_registro_tiene_un_limite_mas_estricto(client: AsyncClient) -> None:
-    # Tighter on purpose: a registration costs CPU (hashing) and creates rows.
+    # Tighter on purpose: a registration creates rows.
     # settings.rate_limit_registro is "5/hour".
     url = "/api/v1/auth/ciudadanos/registro"
 
@@ -120,17 +122,16 @@ async def test_el_registro_tiene_un_limite_mas_estricto(client: AsyncClient) -> 
             url,
             json={
                 "email": f"vecina{i}@ejemplo.com",
-                "password": "una-clave-larga",
                 "nombre": "Vecina de prueba",
             },
         )
         assert respuesta.status_code != 429
+        assert respuesta.status_code == 201
 
     bloqueado = await client.post(
         url,
         json={
             "email": "una-mas@ejemplo.com",
-            "password": "una-clave-larga",
             "nombre": "Vecina de prueba",
         },
     )
