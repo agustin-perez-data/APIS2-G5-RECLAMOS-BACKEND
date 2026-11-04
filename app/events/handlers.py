@@ -254,6 +254,16 @@ async def manejar_criticidad_confirmada(raw: dict[str, Any], service: ReclamoSer
         ubicaciones=len(alerta.ubicaciones),
     )
 
+    # Stage 1: mark the claims already open in the area and tell their owners.
+    resumen = await service.escalar_por_alerta_climatica(alerta)
+    log.info(
+        "handler.clima.reclamos_marcados",
+        alerta_id=str(alerta.alerta_id),
+        marcados=resumen.marcados,
+        sin_ubicacion=resumen.sin_ubicacion,
+        por_barrio=resumen.por_barrio,
+    )
+
 
 async def manejar_criticidad_finalizada(raw: dict[str, Any], service: ReclamoService) -> None:
     """`com.citypass.espacios.CriticidadClimaticaFinalizada` -> close the alert."""
