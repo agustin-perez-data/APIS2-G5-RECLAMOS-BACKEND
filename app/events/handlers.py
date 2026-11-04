@@ -280,7 +280,16 @@ async def manejar_criticidad_finalizada(raw: dict[str, Any], service: ReclamoSer
         return
 
     await service.session.commit()
-    log.info("handler.clima.alerta_finalizada", alerta_id=str(alerta.alerta_id))
+
+    # Stage 3: tell the neighbours the alert is over and count what it left.
+    resumen = await service.cerrar_alerta_climatica(alerta)
+    log.info(
+        "handler.clima.alerta_finalizada",
+        alerta_id=str(alerta.alerta_id),
+        marcados=resumen.marcados,
+        abiertos=resumen.abiertos_al_finalizar,
+        duplicados=resumen.duplicados_detectados,
+    )
 
 
 HANDLERS: dict[str, Handler] = {

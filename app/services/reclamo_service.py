@@ -34,12 +34,13 @@ from app.core.logging import get_logger
 from app.core.security import CurrentUser
 from app.db.models import Adhesion, Comentario, EventoClimatico, HistorialEstado, Reclamo
 from app.domain import geo
-from app.domain.barrios import normalizar_barrio
+from app.domain.barrios import barrio_afectado, normalizar_barrio
 from app.domain.enums import (
     ESTADOS_FINALES,
     USUARIO_SISTEMA,
     CanalOrigen,
     CategoriaReclamo,
+    EstadoEventoClimatico,
     EstadoReclamo,
     NivelCriticidad,
     OrigenClasificacion,
@@ -122,6 +123,42 @@ class ResumenAlerta:
     avisos_enviados: int
     sin_ubicacion: int
     por_barrio: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ResumenCierre:
+    """Counts for the summary event published when an alert is lifted."""
+
+    marcados: int
+    abiertos_al_finalizar: int
+    duplicados_detectados: int
+    avisos_enviados: int
+
+
+def _contar_duplicados(reclamos: Sequence[Reclamo]) -> int:
+    """Claims that look like another one of the same area and category.
+
+    Counted, not closed, and deliberately crude: same neighbourhood code and
+    same category. A real duplicate check is `buscar_similares` (ADR 0007),
+    which weighs text and distance; this is a number for Analytics, and dressing
+    it up as more than that would invite someone to act on it.
+    """
+    vistos: set[tuple[str, str]] = set()
+    duplicados = 0
+    for reclamo in reclamos:
+        if reclamo.barrio_codigo is None:
+            continue
+        clave = (reclamo.barrio_codigo, reclamo.categoria.value)
+        if clave in vistos:
+            duplicados += 1
+        else:
+            vistos.add(clave)
+    return duplicados
+
+
+def _con_zona(momento: datetime) -> datetime:
+    """SQLite returns naive datetimes, PostgreSQL aware ones. Stored values are UTC."""
+    return momento if momento.tzinfo is not None else momento.replace(tzinfo=UTC)
 
 
 def _sensibles(cfg: Settings) -> frozenset[CategoriaReclamo]:
@@ -236,6 +273,9 @@ class ReclamoService:
             actividad=actividad,
         )
         await self.repo.agregar(reclamo)
+        # Stage 2: a claim filed while an alert is live joins it and, if its
+        # category is one the weather makes worse, is raised on the spot.
+        await self.marcar_bajo_alerta(reclamo)
         await self.repo.agregar_historial(
             HistorialEstado(
                 reclamo_id=reclamo.id,
@@ -578,9 +618,12 @@ class ReclamoService:
         reclamo.adhesiones_count += 1
 
         # Participation rule: once enough neighbours report the same problem,
-        # the claim moves up in priority on its own.
+        # the claim moves up in priority on its own. Under an active weather
+        # alert the bar is lower, because the same problem gets reported by many
+        # neighbours at once and waiting for ten is waiting too long.
+        umbral = await self._umbral_de_adhesiones(reclamo)
         escalado = False
-        if reclamo.adhesiones_count >= self.cfg.adhesiones_para_escalar:
+        if reclamo.adhesiones_count >= umbral:
             nueva = escalar(reclamo.prioridad, PrioridadReclamo.ALTA)
             escalado = nueva is not reclamo.prioridad
             reclamo.prioridad = nueva
@@ -815,6 +858,7 @@ class ReclamoService:
         prioridad_minima: PrioridadReclamo,
         alerta_id: uuid.UUID | None = None,
         solo_categorias: Collection[CategoriaReclamo] | None = None,
+        avisar_siempre: bool = False,
     ) -> list[tuple[Reclamo, Comentario]]:
         """Raise priority, leave an official comment and notify. Shared body.
 
@@ -825,6 +869,10 @@ class ReclamoService:
         `solo_categorias` limits the priority bump to the categories the weather
         makes worse. Claims outside it still get marked with the alert and still
         get told, because the neighbour deserves to know either way.
+
+        `avisar_siempre` is for the message that carries no priority change at
+        all -- the alert being lifted. Without it nobody would be told it ended,
+        because no priority moves and every claim would be skipped.
         """
         afectados: list[tuple[Reclamo, Comentario]] = []
         for reclamo in candidatos:
@@ -834,8 +882,9 @@ class ReclamoService:
             sube = solo_categorias is None or reclamo.categoria in solo_categorias
             nueva = escalar(reclamo.prioridad, prioridad_minima) if sube else reclamo.prioridad
             # A claim already at or above the floor keeps its priority, but when
-            # it belongs to an alert it is still marked and still notified.
-            if nueva is reclamo.prioridad and alerta_id is None:
+            # it belongs to an alert, or the message is the point, it is still
+            # marked and still notified.
+            if nueva is reclamo.prioridad and alerta_id is None and not avisar_siempre:
                 continue
             reclamo.prioridad = nueva
 
@@ -851,6 +900,73 @@ class ReclamoService:
             await self.notificaciones.por_comentario(reclamo, comentario)
             afectados.append((reclamo, comentario))
         return afectados
+
+    async def alerta_que_cubre(self, reclamo: Reclamo) -> EventoClimatico | None:
+        """The live alert this claim falls under, if any.
+
+        Evaluated when the claim is filed rather than by a scheduler: there is
+        no job flipping alerts to active, so "is it in force right now" is
+        answered at the only moment it matters.
+
+        An alert that was confirmed but whose window has not opened yet does not
+        count: Public Spaces can announce a storm for tonight, and a claim filed
+        this morning is not under it.
+        """
+        ahora = datetime.now(UTC)
+        for alerta in await self.clima.repo.activas():
+            if _con_zona(alerta.vigencia_desde) > ahora:
+                continue
+            if alerta.barrios:
+                if barrio_afectado(reclamo.barrio, alerta.barrios):
+                    return alerta
+                continue
+            if reclamo.latitud is None or reclamo.longitud is None:
+                continue
+            radio = _radio_metros(alerta.nivel, self.cfg)
+            for punto in alerta.ubicaciones:
+                lat, lon = punto.get("latitud"), punto.get("longitud")
+                if lat is None or lon is None:
+                    continue
+                if geo.distancia_metros(lat, lon, reclamo.latitud, reclamo.longitud) <= radio:
+                    return alerta
+        return None
+
+    async def marcar_bajo_alerta(self, reclamo: Reclamo) -> EventoClimatico | None:
+        """Stage 2: a claim filed while an alert is live joins it.
+
+        Returns the alert so the caller can tell the citizen in the very
+        response to the filing, instead of only in a later notification.
+        """
+        alerta = await self.alerta_que_cubre(reclamo)
+        if alerta is None:
+            return None
+
+        reclamo.alerta_id = alerta.alerta_id
+        politica = _politica_de(alerta.nivel, self.cfg)
+        if politica.categorias and reclamo.categoria in politica.categorias:
+            reclamo.prioridad = escalar(reclamo.prioridad, politica.prioridad_minima)
+        return alerta
+
+    async def _umbral_de_adhesiones(self, reclamo: Reclamo) -> int:
+        """Endorsements this claim needs to escalate, right now.
+
+        The reduced threshold applies **only to a claim marked with an alert
+        that is still live**, never to the global setting: lowering the global
+        one would change the rule for the whole city, including the
+        neighbourhoods where nothing is happening.
+
+        A claim keeps its `alerta_id` after the alert ends -- it is history, and
+        Analytics reads it -- so the alert's state is what decides, not the mark.
+        """
+        if reclamo.alerta_id is None:
+            return self.cfg.adhesiones_para_escalar
+
+        alerta = await self.clima.repo.obtener(reclamo.alerta_id)
+        if alerta is None or alerta.estado is EstadoEventoClimatico.FINALIZADA:
+            return self.cfg.adhesiones_para_escalar
+
+        politica = _politica_de(alerta.nivel, self.cfg)
+        return politica.adhesiones or self.cfg.adhesiones_para_escalar
 
     # --- Weather alert (ADR 0014) --------------------------------------------
     AVISO_ALERTA = (
@@ -904,6 +1020,43 @@ class ReclamoService:
             avisos_enviados=len(marcados),
             sin_ubicacion=sin_ubicacion,
             por_barrio=bool(alerta.barrios),
+        )
+
+    async def cerrar_alerta_climatica(self, alerta: EventoClimatico) -> ResumenCierre:
+        """Stage 3: the alert ended. Tell the neighbours and count what happened.
+
+        Duplicates are **detected and counted, never closed**: closing a
+        neighbour's claim because it looks like another one, with nobody
+        looking, is not a call this module gets to make.
+
+        The `alerta_id` stays on the claims. It is history, and it is what lets
+        Analytics tell the claims an alert moved from the rest.
+        """
+        marcados = await self.repo.marcados_con_alerta(alerta.alerta_id)
+        abiertos = [r for r in marcados if r.estado not in ESTADOS_FINALES]
+
+        afectados = await self._aplicar_escalada(
+            abiertos,
+            motivo=self.AVISO_FIN_ALERTA,
+            prioridad_minima=PrioridadReclamo.BAJA,
+            avisar_siempre=True,
+        )
+        if afectados:
+            await self._confirmar_escalada(afectados)
+
+        duplicados = _contar_duplicados(abiertos)
+        log.info(
+            "reclamos.alerta_levantada",
+            alerta_id=str(alerta.alerta_id),
+            marcados=len(marcados),
+            abiertos=len(abiertos),
+            duplicados=duplicados,
+        )
+        return ResumenCierre(
+            marcados=len(marcados),
+            abiertos_al_finalizar=len(abiertos),
+            duplicados_detectados=duplicados,
+            avisos_enviados=len(afectados),
         )
 
     async def _candidatos_de_alerta(
