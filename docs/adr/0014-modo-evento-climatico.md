@@ -110,6 +110,12 @@ avisa al vecino, pero no cambia de prioridad.
 se descartó porque habría sido un campo que por diseño siempre viaja nulo en un
 contrato que leen otros seis módulos. `alertaId` se mantiene.
 
+**No se pausan los comentarios ciudadanos en CRITICA.** El diseño original lo
+pedía para cuidar la carga durante el pico. **Decidido en contra el 2026-11-04**,
+con el squad: con el volumen real del módulo no hay carga que cuidar, y
+silenciarle una función al vecino justo durante una emergencia es peor que el
+problema que evitaría. No es un pendiente: es una decisión tomada.
+
 **Los duplicados se detectan y se cuentan, no se cierran.** El contador es
 deliberadamente tosco —mismo barrio y categoría— porque es un número para
 Analítica; el chequeo de verdad es `buscar_similares` (ADR 0007).
@@ -132,12 +138,25 @@ confirmada cuya ventana todavía no abrió no cuenta.
   **pero no tipeos**: "Plaermo" nunca va a cruzar con "PALERMO", y no hay
   corrección difusa a propósito, porque un match equivocado es peor que un
   reclamo afuera — nadie se enteraría.
-- **Hay barrios que no son de CABA.** Medido sobre los datos reales el
-  2026-11-03: de 26 reclamos con barrio, 4 dicen `Dock Sud`, `Lomas de Zamora` o
-  `Centro`. Los dos primeros son de otra jurisdicción y el tercero no existe como
-  barrio oficial. **Ese 15% no va a cruzar jamás**, por más perfecta que sea la
-  normalización, y el fallback geográfico no lo cubre porque ahí la lista viene
-  llena. La salida sería resolver el barrio desde las coordenadas.
+- **Hay reclamos cuyo barrio no cruza, y conviene separar dos casos.** Medido
+  sobre los datos reales el 2026-11-03: de 26 reclamos con barrio, 4 no cruzan
+  con una alerta de CABA.
+  - **Dos son de otra jurisdicción** (`Dock Sud`, `Lomas de Zamora`). **No es un
+    defecto: es correcto que no crucen.** Una alerta de CABA no los alcanza, y
+    resolver el barrio desde las coordenadas tampoco los recuperaría.
+  - **Dos dicen `Centro`**, que no existe como barrio oficial. Ese es el único
+    caso real, y queda como **límite conocido**: son 2 de 26.
+
+  Se evaluó resolver el barrio desde las coordenadas del reclamo y **se
+  descartó**: es trabajo grande para recuperar dos filas, y no arregla el caso
+  de los barrios de provincia, que es la mitad del número.
+
+  Una tabla de alias a mano taparía `Centro` barato, pero **`Centro` no mapea a
+  un barrio sino a una zona**: abarca San Nicolás, Monserrat y parte de Retiro.
+  Elegir uno sería meter un dato inventado en el cruce, así que tampoco se hizo.
+
+  **El arreglo de fondo es un catálogo de barrios en el formulario**, para que el
+  vecino elija en vez de escribir. Queda anotado para después de la entrega.
 - **El fallback por radio aproxima un área desde un punto.** Los radios (2, 5 y
   6 km) son convención nuestra y están en configuración. ALTA es 6 km y no 10
   porque un círculo de 10 km ya cubre los 200 km² de CABA y dejaría ALTA y
@@ -145,9 +164,7 @@ confirmada cuya ventana todavía no abrió no cuenta.
 - **`subidosDePrioridad` cuenta los reclamos elegibles**, no los que realmente
   se movieron: uno que ya estaba en CRITICA era elegible y no cambió. Está
   documentado así en el schema para que nadie lo lea como otra cosa.
-- **Sin pausa de comentarios en CRITICA.** El diseño original la pedía; no se
-  implementó porque apagarle una función al vecino durante una emergencia
-  necesita más discusión que una línea de configuración.
+
 - **El reclamo sin barrio ni coordenadas no entra en ninguna alerta.** Se cuenta
   aparte y viaja en los eventos de resumen: es la medida de cuánto cuesta el
   campo de texto libre.
