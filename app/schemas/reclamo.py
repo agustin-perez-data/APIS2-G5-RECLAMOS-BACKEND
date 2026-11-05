@@ -12,6 +12,7 @@ from app.domain.enums import (
     CanalOrigen,
     CategoriaReclamo,
     EstadoReclamo,
+    NivelCriticidad,
     ObjetoAfectado,
     OrigenClasificacion,
     PrioridadReclamo,
@@ -135,14 +136,35 @@ class ComentarioOut(BaseModel):
     created_at: datetime
 
 
-class AfectaCirculacionMixin(BaseModel):
-    """Exposes the CU-INT-01 rule so consumers do not reimplement it.
+class CamposDerivadosMixin(BaseModel):
+    """Fields every claim response carries that are worked out, never stored.
 
-    The frontend used to derive this from the category on its own, which meant
-    the set lived in two places and could drift. Computed, never stored.
+    Renamed from `CamposDerivadosMixin` when the weather alert was added: it
+    now carries two different derivations and the old name only described one.
+
+    `afecta_circulacion` comes from the category and is computed here, so the
+    rule lives in one place instead of being reimplemented by each consumer --
+    the frontend used to derive it on its own and the set could drift.
+
+    The alert fields come from the claim's own properties (see
+    `app/db/models/reclamo.py`), which read the relationship loaded with
+    `selectin`. Declared as plain fields and not `computed_field` on purpose:
+    the logic belongs with the model that has the data, and `from_attributes`
+    picks the properties up by itself.
     """
 
     categoria: CategoriaReclamo
+
+    bajo_alerta_climatica: bool = Field(
+        default=False,
+        description="Si el reclamo esta bajo una alerta climatica todavia vigente",
+    )
+    alerta_nivel: NivelCriticidad | None = Field(
+        default=None,
+        description=(
+            "Nivel de esa alerta: BAJA, MEDIA, ALTA o CRITICA. Nulo si no hay alerta vigente"
+        ),
+    )
 
     @computed_field(description="Si el reclamo corta o entorpece la circulacion")
     @property
@@ -150,7 +172,7 @@ class AfectaCirculacionMixin(BaseModel):
         return self.categoria in CATEGORIAS_QUE_AFECTAN_CIRCULACION
 
 
-class ReclamoResumen(AfectaCirculacionMixin):
+class ReclamoResumen(CamposDerivadosMixin):
     """Lightweight projection for lists and map views."""
 
     model_config = ConfigDict(from_attributes=True)
@@ -188,7 +210,7 @@ class ReclamoSimilar(ReclamoResumen):
     ya_adherido: bool = Field(description="El usuario ya se sumo a este reclamo")
 
 
-class ReclamoOut(AfectaCirculacionMixin):
+class ReclamoOut(CamposDerivadosMixin):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -227,7 +249,7 @@ class ReclamoDetalle(ReclamoOut):
     comentarios: list[ComentarioOut] = Field(default_factory=list)
 
 
-class ReclamoBandeja(AfectaCirculacionMixin):
+class ReclamoBandeja(CamposDerivadosMixin):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
