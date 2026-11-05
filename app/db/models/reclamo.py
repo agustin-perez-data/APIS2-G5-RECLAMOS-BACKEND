@@ -17,7 +17,9 @@ from app.domain.barrios import normalizar_barrio
 from app.domain.enums import (
     CanalOrigen,
     CategoriaReclamo,
+    EstadoEventoClimatico,
     EstadoReclamo,
+    NivelCriticidad,
     ObjetoAfectado,
     OrigenClasificacion,
     PrioridadReclamo,
@@ -27,6 +29,7 @@ if TYPE_CHECKING:
     from app.db.models.actividad import ActividadMasiva
     from app.db.models.adhesion import Adhesion
     from app.db.models.comentario import Comentario
+    from app.db.models.evento_climatico import EventoClimatico
     from app.db.models.historial import HistorialEstado
 
 
@@ -137,6 +140,34 @@ class Reclamo(Base, TimestampMixin):
     # purpose: the alert is Public Spaces' record, and an alert we never received
     # must not stop a claim from being filed.
     alerta_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
+    # Read-only relationship **without a foreign key**, on purpose: the alert is
+    # Public Spaces' record (ADR 0014), and an alert we never received must not
+    # stop a claim from being filed. SQLAlchemy needs the join spelled out
+    # because there is no constraint to infer it from.
+    #
+    # `selectin` loads every claim's alert in one extra query per request
+    # instead of one per row, which is what keeps the listings from going N+1.
+    alerta: Mapped[EventoClimatico | None] = relationship(
+        primaryjoin="foreign(Reclamo.alerta_id) == EventoClimatico.alerta_id",
+        viewonly=True,
+        lazy="selectin",
+    )
+
+    @property
+    def bajo_alerta_climatica(self) -> bool:
+        """Whether the claim is under an alert that is still in force.
+
+        A claim keeps its `alerta_id` after the alert ends -- it is history, and
+        Analytics reads it -- so what decides is the alert's state, not the mark.
+        """
+        if self.alerta is None:
+            return False
+        return self.alerta.estado is not EstadoEventoClimatico.FINALIZADA
+
+    @property
+    def alerta_nivel(self) -> NivelCriticidad | None:
+        """Severity of the alert in force, or `None` when there is none."""
+        return self.alerta.nivel if self.bajo_alerta_climatica and self.alerta else None
 
     @validates("barrio")
     def _normalizar_barrio(self, _clave: str, valor: str | None) -> str | None:
