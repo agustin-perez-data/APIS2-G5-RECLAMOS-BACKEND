@@ -29,7 +29,6 @@ class Ciudadano(Base, TimestampMixin):
     # the way in, which is cheaper than a functional index that SQLite (used by
     # the test suite) would not support anyway.
     email: Mapped[str] = mapped_column(String(254), nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     nombre: Mapped[str] = mapped_column(String(120), nullable=False)
 
     # Soft delete: claims keep pointing at an id that still resolves.

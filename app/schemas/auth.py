@@ -8,7 +8,7 @@ the real issuer.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class LoginPedido(BaseModel):
@@ -38,12 +38,15 @@ class RegistroCiudadano(BaseModel):
     """What a neighbour sends to open an account."""
 
     email: EmailStr = Field(description="Correo del vecino; tambien es su usuario")
-    # No composition rules: NIST 800-63B advises against them, length is what
-    # matters. The ceiling bounds the cost of hashing an attacker's input.
-    password: str = Field(min_length=10, max_length=128, description="Minimo 10 caracteres")
     nombre: str = Field(min_length=2, max_length=120, description="Nombre para mostrar")
+
+    @field_validator("nombre", mode="before")
+    @classmethod
+    def _limpiar_nombre(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
 
 class LoginCiudadano(BaseModel):
     email: EmailStr = Field(description="Correo con el que se registro")
-    password: str = Field(max_length=128)

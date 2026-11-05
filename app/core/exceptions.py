@@ -69,10 +69,19 @@ class EmailYaRegistrado(DomainError):
     code = "email_ya_registrado"
 
 
+class EmailNoRegistrado(DomainError):
+    status_code = 401
+    title = "El email no tiene una cuenta registrada"
+    code = "email_no_registrado"
+
+
+class CuentaInactiva(DomainError):
+    status_code = 401
+    title = "La cuenta esta inactiva"
+    code = "cuenta_inactiva"
+
+
 class CredencialesInvalidas(DomainError):
-    # Deliberately the same answer for a password that does not match, an email
-    # that was never registered and a disabled account: telling them apart
-    # turns the login into a directory of who is registered.
     status_code = 401
     title = "Email o contrasena incorrectos"
     code = "credenciales_invalidas"

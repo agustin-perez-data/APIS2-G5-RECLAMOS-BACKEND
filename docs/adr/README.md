@@ -15,10 +15,11 @@ el contexto, las opciones que se evaluaron y por qué se descartaron.
 | [0008](0008-notificaciones-internas.md) | Notificaciones internas escritas en la misma transacción | Aceptada |
 | [0009](0009-integracion-por-el-gateway.md) | Integración con los otros módulos por el gateway de CityPass+ | Aceptada |
 | [0010](0010-propagacion-de-reclasificaciones.md) | Propagar las reclasificaciones con un evento propio | Aceptada |
-| [0011](0011-autenticacion-de-ciudadanos.md) | Autenticación de ciudadanos en el propio módulo | Aceptada |
+| [0011](0011-autenticacion-de-ciudadanos.md) | Autenticación de ciudadanos en el propio módulo | Parcialmente reemplazada por 0015 (contraseñas) |
 | [0012](0012-cierre-por-intervencion-externa.md) | Cierre de un reclamo por intervención de otro módulo | Aceptada |
 | [0013](0013-reclamos-relacionados-con-actividades-masivas.md) | Reclamos relacionados con actividades masivas (squad 3) | Aceptada |
 | [0014](0014-modo-evento-climatico.md) | Modo evento climatico (squad 3) | Aceptada |
+| [0015](0015-autenticacion-ciudadana-sin-contrasena.md) | Autenticación ciudadana solo con email | Aceptada |
 
 ## Cómo agregar uno
 
