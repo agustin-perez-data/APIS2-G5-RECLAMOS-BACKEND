@@ -240,6 +240,31 @@ class IncidenteCreado(BaseModel):
         return completado
 
 
+class IncidenteActualizado(BaseModel):
+    """`com.citypass.emergencias.EmergenciaActualizada` (ADR 0017).
+
+    Emergencies moving an incident along, and -- when the new state is a final
+    one -- closing it. It is what tells us an incident stopped cutting the
+    street, so claims filed after that are no longer caused by it.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    incidente_id: str = Field(
+        validation_alias=AliasChoices("incidente_id", "incidenteId", "emergenciaId", "id")
+    )
+    estado_nuevo: str | None = Field(
+        default=None, validation_alias=AliasChoices("estado_nuevo", "estadoNuevo", "estado")
+    )
+    estado_anterior: str | None = Field(
+        default=None, validation_alias=AliasChoices("estado_anterior", "estadoAnterior")
+    )
+    # ISO 8601 in their schema, unlike the epoch millis of the other events.
+    resuelto_at: datetime | None = Field(
+        default=None, validation_alias=AliasChoices("resuelto_at", "resueltoAt")
+    )
+
+
 class CriticidadClimaticaAplicada(BaseModel):
     """`com.citypass.reclamos.CriticidadClimaticaAplicada` (ADR 0014).
 

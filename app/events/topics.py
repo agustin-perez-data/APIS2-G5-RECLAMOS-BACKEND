@@ -23,6 +23,7 @@ DLQ = "reclamos.dlq"
 # --- Consumed from other modules ---------------------------------------------
 RESIDUOS_CONTENEDOR_DESBORDADO = "residuos.contenedor.desbordado"
 EMERGENCIAS_INCIDENTE_CREADO = "emergencias.incidente.creado"
+EMERGENCIAS_INCIDENTE_ACTUALIZADO = "emergencias.incidente.actualizado"
 ESPACIOS_RESERVA_CREADA = "espacios.reserva.creada"
 ESPACIOS_EVENTO_PUBLICADO = "espacios.evento.publicado"
 ESPACIOS_INTERVENCION_FINALIZADA = "espacios.intervencion.finalizada"
@@ -38,6 +39,7 @@ ESPACIOS_CLIMA_FINALIZADA = "espacios.clima.finalizada"
 GATEWAY_A_TOPIC: dict[str, str] = {
     "com.citypass.residuos.AlertaGenerada": RESIDUOS_CONTENEDOR_DESBORDADO,
     "com.citypass.emergencias.EmergenciaCreada": EMERGENCIAS_INCIDENTE_CREADO,
+    "com.citypass.emergencias.EmergenciaActualizada": EMERGENCIAS_INCIDENTE_ACTUALIZADO,
     "com.citypass.espacios.EventoComunitarioPublicado": ESPACIOS_EVENTO_PUBLICADO,
     "com.citypass.espacios.IntervencionFinalizada": ESPACIOS_INTERVENCION_FINALIZADA,
     "com.citypass.espacios.ActividadCreada": ESPACIOS_ACTIVIDAD_CREADA,

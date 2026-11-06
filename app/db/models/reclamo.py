@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from app.db.models.comentario import Comentario
     from app.db.models.evento_climatico import EventoClimatico
     from app.db.models.historial import HistorialEstado
+    from app.db.models.incidente import IncidenteVial
 
 
 class Reclamo(Base, TimestampMixin):
@@ -134,6 +135,17 @@ class Reclamo(Base, TimestampMixin):
     # Many-to-one and joined: every claim response can show the activity's
     # title without an extra query per row.
     actividad: Mapped[ActividadMasiva | None] = relationship(lazy="joined")
+
+    # --- Road incident (ADR 0017) --------------------------------------------
+    # Set at filing time when the claim lands near an Emergencies incident that
+    # cuts circulation while it is open. SET NULL, like the activity: losing the
+    # incident must never take the claim with it.
+    incidente_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("incidentes_viales.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Joined for the same reason as the activity: the claim's cause is published
+    # right after creation and read from here, so one query is cheaper than two.
+    incidente: Mapped[IncidenteVial | None] = relationship(lazy="joined")
 
     # --- Weather alert (squad 3, ADR 0014) -----------------------------------
     # Set when the claim falls inside an active alert's area. No foreign key on
