@@ -392,6 +392,7 @@ módulo.
   "descripcion": "Hay un auto arriba de la bicisenda y no se puede pasar",
   "categoria": "TRANSITO",
   "prioridad": "ALTA",
+  "estado": "RECIBIDO",
   "origenClasificacion": "CIUDADANO",
   "confianzaClasificacion": null,
   "direccion": "Av. Cordoba 4800",
@@ -412,11 +413,41 @@ infiere— así que **viaja nulo cada vez que no lo completó**: cualquier consu
 filtre por él tiene que contar con eso. Valores: `CICLOVIA`, `CALZADA`, `VEREDA`,
 `SENDA_PEATONAL`, `PLAZA_PARQUE`, `MOBILIARIO_URBANO`, `EDIFICIO_PUBLICO` y `OTRO`.
 
+`estado` en el alta vale `RECIBIDO`, o **`EN_REVISION` cuando el clasificador no
+alcanzó la confianza mínima** y el reclamo quedó esperando revisión humana. No es
+una constante: si se cuentan reclamos por estado, los `EN_REVISION` todavía no
+tienen categoría confirmada y pueden cambiarla.
+
 `afectaCirculacion` es **verdadero para `TRANSITO`, `BACHES` y `ARBOLADO`**. Es
 el campo que usan Movilidad —para no recomendar estaciones cerca de un
 incidente— y Espacios Públicos —para avisar a los inscriptos de un evento
 cercano—. La misma regla se expone en nuestra API como `afecta_circulacion`, así
 que el frontend no necesita reimplementarla.
+
+`causaId`, `causaTipo` y `actividadId` son para el tablero de Analítica (ADR 0016) y
+van al final del schema, con `null` por defecto:
+
+| Campo | Cuándo viene |
+| --- | --- |
+| `causaTipo` / `causaId` | Qué originó el reclamo. Hoy sale `EVENTO_PUBLICO` con el `actividadId` de Espacios cuando el reclamo quedó relacionado con una actividad masiva (ADR 0013). `null` en el flujo normal. |
+| `actividadId` | El `actividadId` de `ActividadCreada` de la actividad masiva relacionada, o `null`. |
+
+Un reclamo tiene **una sola causa**: si cae en una alerta climática y cerca de un
+festival, gana la alerta. Por eso la actividad viaja también en `actividadId`, y
+los reclamos relacionados con un evento masivo se cuentan por ese campo, no por
+`causaTipo`.
+
+```json
+{
+  "reclamoId": "…",
+  "categoria": "RESIDUOS",
+  "latitud": -34.5980,
+  "longitud": -58.3988,
+  "causaId": "demo-festival-1",
+  "causaTipo": "EVENTO_PUBLICO",
+  "actividadId": "demo-festival-1"
+}
+```
 
 El campo `objeto_afectado` que suma G5D-425 **no viaja por acá**: el tipo de
 evento del gateway está validado contra un esquema Avro registrado en el catálogo

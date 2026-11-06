@@ -98,6 +98,20 @@ class ResultadoIntervencion(StrEnum):
     RECHAZADO = "RECHAZADO"
 
 
+class CausaTipo(StrEnum):
+    """What originated a claim, as Analytics counts it on its dashboard (ADR 0016).
+
+    The vocabulary is Analytics' contract, shared by the five modules; each team
+    decides with its own rule when to fill it. Reclamos fills EVENTO_PUBLICO
+    (squad 3) and EVENTO_CLIMATICO (weather alert mode).
+    """
+
+    EVENTO_CLIMATICO = "EVENTO_CLIMATICO"
+    INCIDENTE_VIAL = "INCIDENTE_VIAL"
+    EVENTO_PUBLICO = "EVENTO_PUBLICO"
+    RESERVA = "RESERVA"
+
+
 class OrigenClasificacion(StrEnum):
     """Who decided the claim's category and priority."""
 

@@ -205,6 +205,12 @@ class Settings(BaseSettings):
     actividad_masiva_radio_metros: int = 300
     actividad_masiva_horas_despues: int = 6
 
+    # An Emergencies incident with coordinates but no neighbourhood still has to
+    # reach the claims around it. 1 km, between the 300 m of an activity -- which
+    # is a point in the street -- and the kilometres of a weather alert, which
+    # covers a region: a fire or a collapse disrupts its blocks, not its city.
+    incidente_radio_metros: int = 1000
+
     @field_validator("database_url")
     @classmethod
     def _force_async_driver(cls, value: str) -> str:
