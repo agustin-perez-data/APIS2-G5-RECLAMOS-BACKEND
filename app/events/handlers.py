@@ -23,6 +23,7 @@ from app.events.contracts import (
     CriticidadClimaticaFinalizada,
     CriticidadClimaticaLevantada,
     EventoCulturalPublicado,
+    IncidenteActualizado,
     IncidenteCreado,
     IntervencionFinalizada,
     parse_envelope,
@@ -111,6 +112,21 @@ async def manejar_incidente_creado(raw: dict[str, Any], service: ReclamoService)
     if severidad in _SEVERIDADES_QUE_NO_ESCALAN:
         return
 
+    # ADR 0017: keep the incident so the claims filed next to it from now on can
+    # point at it. Only the ones that cut circulation and carry a position are
+    # stored; the service decides and is idempotent on redelivery.
+    incidente = await service.incidentes.registrar(
+        datos,
+        recibido_at=evento.occurred_at,
+        correlation_id=evento.correlation_id,
+    )
+    if incidente is not None:
+        log.info(
+            "handler.incidente_creado.registrado",
+            id=str(incidente.id),
+            incidente_id=datos.incidente_id,
+        )
+
     prioridad_minima = _SEVERIDAD_A_PRIORIDAD.get(severidad, PrioridadReclamo.ALTA)
     afectados = await service.escalar_por_incidente(
         barrio=datos.barrio,
@@ -191,6 +207,37 @@ async def manejar_intervencion_finalizada(raw: dict[str, Any], service: ReclamoS
         reclamo_id=str(reclamo.id),
         resultado=datos.resultado.value,
         estado=reclamo.estado.value,
+    )
+
+
+async def manejar_incidente_actualizado(raw: dict[str, Any], service: ReclamoService) -> None:
+    """`emergencias.incidente.actualizado` -> close the incident when it ends.
+
+    Only the closing matters to us: while an incident is open, a claim filed
+    next to it is caused by it (ADR 0017), and that has to stop when the street
+    is cleared. The intermediate states are Emergencies' business.
+
+    A state we do not recognise as final leaves the incident open on purpose --
+    closing on a word we are unsure about would silently stop relating claims
+    that are still caused by a street that is still cut. The configured
+    `incidente_vigencia_horas` closes it anyway if the event never arrives.
+    """
+    evento = parse_envelope(raw, IncidenteActualizado)
+    datos = evento.data
+
+    incidente = await service.incidentes.cerrar(
+        datos.incidente_id,
+        estado_nuevo=datos.estado_nuevo,
+        cerrado_at=datos.resuelto_at,
+    )
+    if incidente is None:
+        return
+
+    log.info(
+        "handler.incidente_actualizado.cerrado",
+        id=str(incidente.id),
+        incidente_id=datos.incidente_id,
+        estado=datos.estado_nuevo,
     )
 
 
@@ -343,6 +390,7 @@ async def manejar_criticidad_finalizada(raw: dict[str, Any], service: ReclamoSer
 HANDLERS: dict[str, Handler] = {
     topics.RESIDUOS_CONTENEDOR_DESBORDADO: manejar_contenedor_desbordado,
     topics.EMERGENCIAS_INCIDENTE_CREADO: manejar_incidente_creado,
+    topics.EMERGENCIAS_INCIDENTE_ACTUALIZADO: manejar_incidente_actualizado,
     topics.ESPACIOS_EVENTO_PUBLICADO: manejar_evento_cultural,
     topics.ESPACIOS_INTERVENCION_FINALIZADA: manejar_intervencion_finalizada,
     topics.ESPACIOS_CLIMA_CONFIRMADA: manejar_criticidad_confirmada,

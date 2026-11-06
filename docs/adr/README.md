@@ -21,6 +21,7 @@ el contexto, las opciones que se evaluaron y por qué se descartaron.
 | [0014](0014-modo-evento-climatico.md) | Modo evento climatico (squad 3) | Aceptada |
 | [0015](0015-autenticacion-ciudadana-sin-contrasena.md) | Autenticación ciudadana solo con email | Aceptada |
 | [0016](0016-causa-del-reclamo-para-analitica.md) | Causa del reclamo en `ReclamoCreado` para Analítica | Aceptada |
+| [0017](0017-incidentes-viales-como-causa.md) | Incidentes viales de Emergencias como causa de un reclamo | Aceptada |
 
 ## Cómo agregar uno
 
