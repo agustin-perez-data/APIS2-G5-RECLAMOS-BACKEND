@@ -159,11 +159,71 @@ async def test_un_incidente_no_toca_los_reclamos_cerrados(
     assert (await service.obtener(reclamo.id)).prioridad is PrioridadReclamo.BAJA
 
 
-async def test_incidente_sin_barrio_no_hace_nada(service: ReclamoService) -> None:
+async def test_incidente_sin_barrio_ni_coordenadas_no_hace_nada(service: ReclamoService) -> None:
     await manejar_incidente_creado(evento_incidente(barrio=None), service)
 
     _, total = await service.listar(FiltroReclamos())
     assert total == 0
+
+
+async def test_un_incidente_sin_barrio_escala_por_coordenadas(service: ReclamoService) -> None:
+    # The schema Emergencies registered keeps `barrio` inside `ubicacion` and
+    # may leave it empty. Reading only the loose field would escalate nothing
+    # and log a success, so the radius is what has to reach those claims.
+    cerca = await service.crear(
+        ReclamoCrear(
+            titulo="Ruidos molestos del bar",
+            descripcion="Musica a todo volumen todos los fines de semana hasta tarde",
+            categoria=CategoriaReclamo.RUIDOS,
+            prioridad=PrioridadReclamo.BAJA,
+            barrio="Dock Sud",  # not a CABA neighbourhood: never matches by name
+            latitud=-34.6037,
+            longitud=-58.3816,
+        ),
+        CIUDADANO_ID,
+    )
+    lejos = await service.crear(
+        ReclamoCrear(
+            titulo="Ruidos molestos del taller",
+            descripcion="Trabajan con amoladora de madrugada y no se puede dormir",
+            categoria=CategoriaReclamo.RUIDOS,
+            prioridad=PrioridadReclamo.BAJA,
+            latitud=-34.6700,  # ~7 km away, well outside the radius
+            longitud=-58.4500,
+        ),
+        CIUDADANO_ID,
+    )
+
+    # The incident arrives exactly as their catalogue schema shapes it.
+    evento = evento_incidente(barrio=None)
+    evento["data"]["ubicacion"] = {"latitud": "-34.6037", "longitud": "-58.3816"}
+
+    await manejar_incidente_creado(evento, service)
+
+    assert (await service.obtener(cerca.id)).prioridad is PrioridadReclamo.CRITICA
+    assert (await service.obtener(lejos.id)).prioridad is PrioridadReclamo.BAJA
+
+
+async def test_con_barrio_manda_el_barrio_y_no_el_radio(service: ReclamoService) -> None:
+    # The neighbourhood stays the primary cross: it is cheaper and it reaches
+    # claims with no coordinates at all, which are many.
+    sin_coordenadas = await service.crear(
+        ReclamoCrear(
+            titulo="Ruidos molestos del bar",
+            descripcion="Musica a todo volumen todos los fines de semana hasta tarde",
+            categoria=CategoriaReclamo.RUIDOS,
+            prioridad=PrioridadReclamo.BAJA,
+            barrio="Centro",
+        ),
+        CIUDADANO_ID,
+    )
+
+    evento = evento_incidente()
+    evento["data"]["ubicacion"] = {"latitud": "-34.9", "longitud": "-58.9"}
+
+    await manejar_incidente_creado(evento, service)
+
+    assert (await service.obtener(sin_coordenadas.id)).prioridad is PrioridadReclamo.CRITICA
 
 
 # --- Consumer ----------------------------------------------------------------

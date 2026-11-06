@@ -851,20 +851,25 @@ class ReclamoService:
         barrio: str | None,
         motivo: str,
         prioridad_minima: PrioridadReclamo = PrioridadReclamo.ALTA,
+        latitud: float | None = None,
+        longitud: float | None = None,
     ) -> list[Reclamo]:
         """Raise the priority of every open claim in a given area.
 
         Triggered when Emergencies reports an incident: if there is a fire or a
         collapse in the neighbourhood, open claims from that area get attended
         to sooner.
-        """
-        if not barrio:
-            return []
 
-        abiertos = [e for e in EstadoReclamo if e not in ESTADOS_FINALES]
-        candidatos, _ = await self.repo.listar(
-            FiltroReclamos(barrio=barrio, estados=abiertos), page=1, size=100
-        )
+        The area is the neighbourhood when there is one, and a radius around the
+        incident when there is not -- the same ladder the weather alert already
+        walks. Our `barrio` is free text written by the neighbour, so it misses
+        twice: an incident may arrive with coordinates only, and a claim filed
+        as "Dock Sud" or "Centro" never matches any neighbourhood we query by.
+        Falling back to geography reaches both.
+        """
+        candidatos = await self._candidatos_del_incidente(barrio, latitud, longitud)
+        if not candidatos:
+            return []
 
         afectados = await self._aplicar_escalada(
             candidatos, motivo=motivo, prioridad_minima=prioridad_minima
@@ -873,8 +878,40 @@ class ReclamoService:
             return []
 
         await self._confirmar_escalada(afectados)
-        log.info("reclamos.escalados_por_incidente", barrio=barrio, cantidad=len(afectados))
+        log.info(
+            "reclamos.escalados_por_incidente",
+            barrio=barrio,
+            por_coordenadas=not barrio,
+            cantidad=len(afectados),
+        )
         return [reclamo for reclamo, _ in afectados]
+
+    async def _candidatos_del_incidente(
+        self, barrio: str | None, latitud: float | None, longitud: float | None
+    ) -> list[Reclamo]:
+        """Open claims of the incident's area: by neighbourhood, else by radius."""
+        abiertos = [e for e in EstadoReclamo if e not in ESTADOS_FINALES]
+        if barrio:
+            candidatos, _ = await self.repo.listar(
+                FiltroReclamos(barrio=barrio, estados=abiertos), page=1, size=100
+            )
+            return list(candidatos)
+
+        if latitud is None or longitud is None:
+            return []
+
+        radio = float(self.cfg.incidente_radio_metros)
+        caja = geo.caja_alrededor(latitud, longitud, radio)
+        # The box contains the circle but is larger, so the exact distance is
+        # measured here -- same two steps as the weather alert, and for the same
+        # reason: it keeps the trigonometry out of the database.
+        return [
+            reclamo
+            for reclamo in await self.repo.abiertos_en_caja(caja, limite=100, desplazamiento=0)
+            if reclamo.latitud is not None
+            and reclamo.longitud is not None
+            and geo.distancia_metros(latitud, longitud, reclamo.latitud, reclamo.longitud) <= radio
+        ]
 
     async def _aplicar_escalada(
         self,
