@@ -115,6 +115,11 @@ async def manejar_incidente_creado(raw: dict[str, Any], service: ReclamoService)
     afectados = await service.escalar_por_incidente(
         barrio=datos.barrio,
         prioridad_minima=prioridad_minima,
+        # Used only when the incident arrives without a neighbourhood, which the
+        # schema they registered allows: there, `barrio` lives inside `ubicacion`
+        # and may simply not be filled.
+        latitud=datos.latitud,
+        longitud=datos.longitud,
         motivo=(
             f"Prioridad elevada automaticamente por un incidente de Emergencias "
             f"({datos.tipo or 'sin tipo'}, incidente {datos.incidente_id}) en la zona."
