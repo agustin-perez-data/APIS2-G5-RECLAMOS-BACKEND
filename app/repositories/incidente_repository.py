@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import IncidenteVial
@@ -39,6 +39,15 @@ class IncidenteRepository:
     ) -> list[IncidenteVial]:
         """Incidents already started and not closed, inside the box.
 
+        **Closed means `fin` set, with no comparison against the clock.** The
+        first version asked for `fin >= momento` as well, which left a
+        just-closed incident open for the width of the timestamp: close it and
+        file a claim in the same instant and the claim still came out caused by
+        it. In production that window is sub-millisecond and harmless, but the
+        rule it encodes is wrong -- Emergencies closes an incident when the
+        street is already clear, never in the future -- and it made the test
+        for exactly this non-deterministic.
+
         `inicio_desde` is the safety net: an incident whose closing event never
         arrived stops being open on its own. Only the cheap filters run here;
         the exact distance is measured in the service over this short list.
@@ -47,7 +56,7 @@ class IncidenteRepository:
         stmt = select(IncidenteVial).where(
             IncidenteVial.inicio <= momento,
             IncidenteVial.inicio >= inicio_desde,
-            or_(IncidenteVial.fin.is_(None), IncidenteVial.fin >= momento),
+            IncidenteVial.fin.is_(None),
             IncidenteVial.latitud.between(lat_min, lat_max),
             IncidenteVial.longitud.between(lon_min, lon_max),
         )
