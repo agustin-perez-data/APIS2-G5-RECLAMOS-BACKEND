@@ -15,12 +15,12 @@ jobs:
     name: Build & deploy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build image (chequeo rápido de que el Dockerfile compila)
         run: docker build -t citypass-reclamos:${{ github.sha }} .
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -44,10 +44,57 @@ jobs:
           fi
           alembic upgrade head
 
-      - name: Instalar Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Deploy en Railway
-        run: railway up --service 43e5f259-63e6-4d96-a863-35f7542d6425 --ci
+      - name: Deploy en Render
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+        run: |
+          if [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "::error::Falta la variable RENDER_SERVICE_ID (Settings > Secrets and variables > Actions > Variables)"
+            exit 1
+          fi
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "::error::Falta el secret RENDER_API_KEY (Settings > Secrets and variables > Actions)"
+            exit 1
+          fi
+
+          # Dispara el deploy (Render ya construye desde el Dockerfile del repo).
+          DEPLOY_ID=$(curl -fsS -X POST \
+            "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys" \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            -H "Content-Type: application/json" \
+            | python3 -c "import sys, json; print(json.load(sys.stdin)['id'])")
+
+          echo "Deploy disparado: $DEPLOY_ID"
+
+          # Espera a que termine, hasta 8 minutos.
+          for i in $(seq 1 48); do
+            STATUS=$(curl -fsS \
+              "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys/${DEPLOY_ID}" \
+              -H "Authorization: Bearer ${RENDER_API_KEY}" \
+              | python3 -c "import sys, json; print(json.load(sys.stdin)['status'])")
+
+            echo "Estado del deploy: $STATUS"
+
+            if [ "$STATUS" = "live" ]; then
+              exit 0
+            fi
+            if [ "$STATUS" = "build_failed" ] || [ "$STATUS" = "update_failed" ] || [ "$STATUS" = "canceled" ]; then
+              echo "::error::El deploy en Render terminó en estado $STATUS"
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "::error::El deploy en Render no terminó en 8 minutos"
+          exit 1
+
+      - name: Smoke test
+        env:
+          API_URL: ${{ vars.API_URL }}
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS "$API_URL/health/ready"; then exit 0; fi
+            sleep 10
+          done
+          echo "::error::El deploy no respondio /health/ready en 5 minutos"
+          exit 1
