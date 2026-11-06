@@ -14,13 +14,8 @@ jobs:
     name: Lint + tests
     runs-on: ubuntu-latest
     steps:
- dependabot/github_actions/actions/setup-python-7
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
-
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
- main
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -59,13 +54,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
- dependabot/github_actions/actions/setup-python-7
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
-
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
- main
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
