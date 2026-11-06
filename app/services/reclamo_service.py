@@ -68,6 +68,7 @@ from app.schemas.reclamo import CambioEstado, ReclamoCrear, ReclasificacionPedid
 from app.services.actividad_service import ActividadService
 from app.services.clasificador import Clasificador, get_clasificador
 from app.services.clima_service import ClimaService
+from app.services.incidente_service import IncidenteService
 from app.services.notificacion_service import NotificacionService
 
 log = get_logger(__name__)
@@ -226,6 +227,7 @@ class ReclamoService:
         self.tickets = tickets or get_sistema_tickets()
         self.notificaciones = NotificacionService(session)
         self.actividades = ActividadService(session, self.cfg)
+        self.incidentes = IncidenteService(session, self.cfg)
         self.clima = ClimaService(session)
 
     # --- Intake --------------------------------------------------------------
@@ -259,8 +261,13 @@ class ReclamoService:
         # Squad 3 (ADR 0013): a claim filed near a mass activity while it lasts
         # is related to it. Without coordinates there is no way to tell.
         actividad = None
+        incidente = None
         if datos.latitud is not None and datos.longitud is not None:
             actividad = await self.actividades.en_curso_cerca(datos.latitud, datos.longitud)
+            # ADR 0017: a claim filed a few metres from an open road incident is
+            # caused by it. Tighter radius than the escalation: raising a
+            # priority is reversible, declaring a cause is what Analytics counts.
+            incidente = await self.incidentes.abierto_cerca(datos.latitud, datos.longitud)
 
         reclamo = Reclamo(
             ciudadano_id=ciudadano_id,
@@ -281,6 +288,7 @@ class ReclamoService:
             correlation_id=correlation_id,
             evento_origen_id=evento_origen_id,
             actividad=actividad,
+            incidente=incidente,
         )
         await self.repo.agregar(reclamo)
         # Stage 2: a claim filed while an alert is live joins it and, if its
@@ -366,12 +374,36 @@ class ReclamoService:
         await self.session.commit()
         log.info("reclamo.ticket_abierto", reclamo_id=str(reclamo.id), ticket=clave)
 
+    @staticmethod
+    def _causa_de(reclamo: Reclamo) -> tuple[str | None, CausaTipo | None]:
+        """The claim's external cause at filing time, most explanatory first.
+
+        A claim can be under a weather alert **and** next to a mass activity at
+        the same time, and ADR 0016 lets only one cause travel. The alert wins:
+        it explains *why* the claim exists -- the storm brought the branch down
+        -- while the activity explains only *where* it happened.
+
+        Nothing is lost by that choice. `alertaId` and `actividadId` travel in
+        the event on their own, so Analytics can still count a claim on both
+        sides whatever the cause ends up saying.
+
+        The road incident sits between the two: it explains *why* like the
+        alert does, but it is one cut street rather than a storm over the
+        neighbourhood, so the alert still wins when both apply. `RESERVA`
+        belongs here the day Public Spaces puts a location on its event.
+        """
+        if reclamo.alerta_id is not None:
+            return str(reclamo.alerta_id), CausaTipo.EVENTO_CLIMATICO
+        if reclamo.incidente is not None:
+            return reclamo.incidente.incidente_origen_id, CausaTipo.INCIDENTE_VIAL
+        if reclamo.actividad is not None:
+            return reclamo.actividad.actividad_origen_id, CausaTipo.EVENTO_PUBLICO
+        return None, None
+
     async def _publicar_creado(self, reclamo: Reclamo) -> None:
-        # Squad 3 (ADR 0016): the mass activity is the claim's cause for
-        # Analytics. A weather alert outranks it once that case fills its own
-        # cause: the alert explains why the claim exists, the activity only where.
         actividad = reclamo.actividad
         origen_actividad = actividad.actividad_origen_id if actividad is not None else None
+        causa_id, causa_tipo = self._causa_de(reclamo)
         await self.publisher.publish(
             topics.RECLAMO_CREADO,
             ReclamoCreado(
@@ -395,8 +427,11 @@ class ReclamoService:
                 # alert is already there by the time we publish. Analytics
                 # cross-references claims against alerts from this event alone.
                 alerta_id=reclamo.alerta_id,
-                causa_id=origen_actividad,
-                causa_tipo=CausaTipo.EVENTO_PUBLICO if actividad is not None else None,
+                causa_id=causa_id,
+                causa_tipo=causa_tipo,
+                # Always the activity, whatever the cause says: a claim under an
+                # alert near a festival still belongs to the festival, and this
+                # is what keeps it countable on that side (ADR 0016).
                 actividad_origen_id=origen_actividad,
             ),
             # Keyed by claim id, which guarantees ordering per aggregate.

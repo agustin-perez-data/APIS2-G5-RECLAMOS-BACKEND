@@ -210,6 +210,15 @@ class Settings(BaseSettings):
     # is a point in the street -- and the kilometres of a weather alert, which
     # covers a region: a fire or a collapse disrupts its blocks, not its city.
     incidente_radio_metros: int = 1000
+    # How close a claim must be filed to an open incident to be *caused* by it
+    # (ADR 0017). Much tighter than the escalation radius above: raising the
+    # priority of a nearby claim is cheap and reversible, declaring a cause is a
+    # statement Analytics counts.
+    incidente_causa_radio_metros: int = 300
+    # Safety net for an incident whose closing event never arrives. Emergencies
+    # does publish `EmergenciaActualizada`, so this is not the primary mechanism
+    # -- it only keeps a lost event from leaving a street "blocked" forever.
+    incidente_vigencia_horas: int = 24
 
     @field_validator("database_url")
     @classmethod

@@ -429,7 +429,7 @@ van al final del schema, con `null` por defecto:
 
 | Campo | Cuándo viene |
 | --- | --- |
-| `causaTipo` / `causaId` | Qué originó el reclamo. Hoy sale `EVENTO_PUBLICO` con el `actividadId` de Espacios cuando el reclamo quedó relacionado con una actividad masiva (ADR 0013). `null` en el flujo normal. |
+| `causaTipo` / `causaId` | Qué originó el reclamo, en este orden de precedencia: **`EVENTO_CLIMATICO`** con el `alertaId` de Espacios (alerta vigente al dar de alta, ADR 0014), **`INCIDENTE_VIAL`** con el `emergenciaId` de Emergencias (incidente abierto a 300 m o menos, ADR 0017), y **`EVENTO_PUBLICO`** con el `actividadId` de Espacios (actividad masiva, ADR 0013). `null` en el flujo normal. |
 | `actividadId` | El `actividadId` de `ActividadCreada` de la actividad masiva relacionada, o `null`. |
 
 Un reclamo tiene **una sola causa**: si cae en una alerta climática y cerca de un
