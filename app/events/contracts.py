@@ -19,6 +19,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.enums import (
     CategoriaReclamo,
+    CausaTipo,
     EstadoReclamo,
     NivelCriticidad,
     ObjetoAfectado,
@@ -85,6 +86,13 @@ class ReclamoCreado(BaseModel):
     # feature exists: the schemas get registered in Group 1's catalogue once, and
     # declaring both now is far cheaper than coordinating a second registration.
     alerta_id: uuid.UUID | None = None
+    # What originated the claim, for Analytics (ADR 0016); null = normal flow.
+    # The activity also travels on its own: a claim has a single cause and a
+    # weather alert outranks the activity, so the cause alone would hide it.
+    # It is Public Spaces' id, the one Analytics joins with ActividadCreada.
+    causa_id: str | None = None
+    causa_tipo: CausaTipo | None = None
+    actividad_origen_id: str | None = None
 
 
 class ReclamoClasificado(BaseModel):
