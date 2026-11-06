@@ -10,6 +10,9 @@ from httpx import AsyncClient
 from pydantic import ValidationError
 
 from app.core.config import settings
+from app.events import topics
+from app.events.gateway import traducir
+from app.events.producer import InMemoryEventPublisher
 
 URL_WEBHOOK = "/api/v1/webhooks/citypass"
 TOKEN = "secreto-webhook"
@@ -295,6 +298,43 @@ async def test_un_reclamo_automatico_de_residuos_tambien_se_relaciona(
     )
     [reclamo] = listado.json()["items"]
     assert reclamo["actividad"]["titulo"] == "Festival de Primavera"
+
+
+# --- What Analytics receives (ADR 0016) ---------------------------------------
+def creado_en_el_bus(publisher: InMemoryEventPublisher) -> dict:
+    """The ReclamoCreado fields exactly as the gateway gets them."""
+    [creado] = publisher.eventos_de(topics.RECLAMO_CREADO)
+    _, datos = traducir(topics.RECLAMO_CREADO, creado)
+    return datos
+
+
+async def test_el_reclamo_relacionado_sale_con_la_actividad_como_causa(
+    client: AsyncClient, auth, token_ciudadano, publisher: InMemoryEventPublisher
+) -> None:
+    evento = actividad_creada()
+    await publicar(client, evento)
+
+    await cargar_reclamo(client, auth, token_ciudadano, reclamo_en(A_200_METROS))
+
+    datos = creado_en_el_bus(publisher)
+    # Public Spaces' id, not ours: it is what Analytics joins with ActividadCreada.
+    actividad_id = evento["data"]["actividadId"]
+    assert datos["causaTipo"] == "EVENTO_PUBLICO"
+    assert datos["causaId"] == actividad_id
+    assert datos["actividadId"] == actividad_id
+
+
+async def test_un_reclamo_sin_actividad_sale_sin_causa(
+    client: AsyncClient, auth, token_ciudadano, publisher: InMemoryEventPublisher
+) -> None:
+    await publicar(client, actividad_creada())
+
+    await cargar_reclamo(client, auth, token_ciudadano, reclamo_en(A_500_METROS))
+
+    datos = creado_en_el_bus(publisher)
+    assert datos["causaId"] is None
+    assert datos["causaTipo"] is None
+    assert datos["actividadId"] is None
 
 
 # --- What the operator sees ---------------------------------------------------

@@ -40,6 +40,7 @@ from app.domain.enums import (
     USUARIO_SISTEMA,
     CanalOrigen,
     CategoriaReclamo,
+    CausaTipo,
     EstadoEventoClimatico,
     EstadoReclamo,
     NivelCriticidad,
@@ -366,6 +367,11 @@ class ReclamoService:
         log.info("reclamo.ticket_abierto", reclamo_id=str(reclamo.id), ticket=clave)
 
     async def _publicar_creado(self, reclamo: Reclamo) -> None:
+        # Squad 3 (ADR 0016): the mass activity is the claim's cause for
+        # Analytics. A weather alert outranks it once that case fills its own
+        # cause: the alert explains why the claim exists, the activity only where.
+        actividad = reclamo.actividad
+        origen_actividad = actividad.actividad_origen_id if actividad is not None else None
         await self.publisher.publish(
             topics.RECLAMO_CREADO,
             ReclamoCreado(
@@ -385,6 +391,9 @@ class ReclamoService:
                 descripcion=reclamo.descripcion,
                 origen_clasificacion=reclamo.origen_clasificacion,
                 confianza_clasificacion=reclamo.confianza_clasificacion,
+                causa_id=origen_actividad,
+                causa_tipo=CausaTipo.EVENTO_PUBLICO if actividad is not None else None,
+                actividad_origen_id=origen_actividad,
             ),
             # Keyed by claim id, which guarantees ordering per aggregate.
             key=str(reclamo.id),

@@ -86,6 +86,11 @@ def traducir(topic: str, envelope: EventEnvelope) -> tuple[str, dict[str, Any]] 
             in CATEGORIAS_QUE_AFECTAN_CIRCULACION,
             "correlationId": envelope.correlation_id,
             "createdAt": _epoch_ms(data.creado_at),
+            # Analytics' dashboard (ADR 0016). Appended last with a null
+            # default, so the schema stays compatible with the previous one.
+            "causaId": data.causa_id,
+            "causaTipo": _valor(data.causa_tipo),
+            "actividadId": data.actividad_origen_id,
         }
 
     if topic == topics.RECLAMO_RECLASIFICADO and isinstance(data, ReclamoReclasificado):

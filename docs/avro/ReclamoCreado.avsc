@@ -21,6 +21,9 @@
     { "name": "alertaId", "type": ["null", "string"], "default": null, "doc": "Alerta climatica que marco el reclamo, o null si no cae en ninguna." },
     { "name": "afectaCirculacion", "type": "boolean", "doc": "Verdadero para TRANSITO, BACHES y ARBOLADO. Viaja calculado para que cada consumidor no reimplemente la regla." },
     { "name": "correlationId", "type": ["null", "string"], "default": null, "doc": "Permite seguir una misma interaccion a traves de varios modulos." },
-    { "name": "createdAt", "type": "long", "doc": "Milisegundos desde epoch." }
+    { "name": "createdAt", "type": "long", "doc": "Milisegundos desde epoch." },
+    { "name": "causaId", "type": ["null", "string"], "default": null, "doc": "Id de la entidad que origino el reclamo, del modulo que la publico. Null si no hay causa externa." },
+    { "name": "causaTipo", "type": ["null", "string"], "default": null, "doc": "A que entidad pertenece causaId: EVENTO_CLIMATICO, INCIDENTE_VIAL, EVENTO_PUBLICO o RESERVA. Null si y solo si causaId es null. Un reclamo tiene una sola causa: si cae en una alerta climatica y cerca de una actividad masiva, gana la alerta." },
+    { "name": "actividadId", "type": ["null", "string"], "default": null, "doc": "actividadId de Espacios (ActividadCreada) de la actividad masiva con la que quedo relacionado el reclamo, o null. Viaja aparte de la causa para que la alerta climatica no la tape." }
   ]
 }
