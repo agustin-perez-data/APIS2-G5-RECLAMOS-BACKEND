@@ -391,6 +391,10 @@ class ReclamoService:
                 descripcion=reclamo.descripcion,
                 origen_clasificacion=reclamo.origen_clasificacion,
                 confianza_clasificacion=reclamo.confianza_clasificacion,
+                # `crear` ties the claim to the alert before the commit, so the
+                # alert is already there by the time we publish. Analytics
+                # cross-references claims against alerts from this event alone.
+                alerta_id=reclamo.alerta_id,
                 causa_id=origen_actividad,
                 causa_tipo=CausaTipo.EVENTO_PUBLICO if actividad is not None else None,
                 actividad_origen_id=origen_actividad,
@@ -479,6 +483,10 @@ class ReclamoService:
                 asignado_a=reclamo.asignado_a,
                 cambiado_por=actor_id,
                 cambiado_at=ahora,
+                # Same reason as in `_publicar_creado`: the field is declared in
+                # the contract and translated by the gateway, so leaving it out
+                # here would publish it null for a claim that is under an alert.
+                alerta_id=reclamo.alerta_id,
             ),
             key=str(reclamo.id),
             correlation_id=reclamo.correlation_id,
@@ -1190,6 +1198,7 @@ class ReclamoService:
                     asignado_a=reclamo.asignado_a,
                     cambiado_por=USUARIO_SISTEMA,
                     cambiado_at=reclamo.cerrado_at,
+                    alerta_id=reclamo.alerta_id,
                 ),
                 key=str(reclamo.id),
                 correlation_id=reclamo.correlation_id,

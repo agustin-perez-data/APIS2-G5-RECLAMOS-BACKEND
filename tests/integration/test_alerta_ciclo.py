@@ -22,7 +22,8 @@ from app.domain.enums import (
     OrigenClasificacion,
     PrioridadReclamo,
 )
-from app.schemas.reclamo import ReclamoCrear
+from app.events import topics
+from app.schemas.reclamo import CambioEstado, ReclamoCrear
 from app.services.reclamo_service import ReclamoService
 
 
@@ -91,6 +92,79 @@ async def test_un_reclamo_nuevo_del_area_queda_bajo_la_alerta(session, publisher
     assert reclamo.alerta_id == alerta.alerta_id
     # ARBOLADO is one of the categories the weather makes worse.
     assert reclamo.prioridad is PrioridadReclamo.ALTA
+
+
+@pytest.mark.asyncio
+async def test_el_evento_de_alta_lleva_la_alerta(session, publisher) -> None:
+    # Analytics cross-references claims against alerts reading `ReclamoCreado`
+    # alone -- the mark on our table is of no use to them. The claim is tied to
+    # the alert before the commit, so the event can already carry it. Without
+    # this assertion the field travels null forever and nothing looks broken:
+    # the contract declares it, the gateway translates it, and the unit test
+    # sets it on the envelope by hand.
+    alerta = _alerta(barrios=["PALERMO"])
+    session.add(alerta)
+    await session.commit()
+
+    reclamo = await ReclamoService(session, publisher).crear(
+        ReclamoCrear(
+            titulo="Se cayo una rama grande",
+            descripcion="Una rama bloquea la vereda por el temporal",
+            categoria=CategoriaReclamo.ARBOLADO,
+            barrio="Palermo",
+        ),
+        ciudadano_id=str(uuid.uuid4()),
+    )
+
+    assert reclamo.alerta_id == alerta.alerta_id
+    creado = publisher.eventos_de(topics.RECLAMO_CREADO)[0]
+    assert creado.data.alerta_id == alerta.alerta_id
+
+
+@pytest.mark.asyncio
+async def test_sin_alerta_el_evento_de_alta_la_manda_vacia(session, publisher) -> None:
+    reclamo = await ReclamoService(session, publisher).crear(
+        ReclamoCrear(
+            titulo="Arbol caido",
+            descripcion="Se cayo un arbol en la vereda",
+            categoria=CategoriaReclamo.ARBOLADO,
+            barrio="Caballito",
+        ),
+        ciudadano_id=str(uuid.uuid4()),
+    )
+
+    assert reclamo.alerta_id is None
+    creado = publisher.eventos_de(topics.RECLAMO_CREADO)[0]
+    assert creado.data.alerta_id is None
+
+
+@pytest.mark.asyncio
+async def test_el_evento_de_cambio_de_estado_tambien_lleva_la_alerta(
+    session, publisher, usuario_operador
+) -> None:
+    # `ReclamoEstadoCambiado` declares the same field and the gateway translates
+    # it too, so it has the same hole: Movilidad frees a lane on RESUELTO and
+    # reads the alert from this event.
+    alerta = _alerta(barrios=["PALERMO"])
+    session.add(alerta)
+    await session.commit()
+
+    service = ReclamoService(session, publisher)
+    reclamo = await service.crear(
+        ReclamoCrear(
+            titulo="Se cayo una rama grande",
+            descripcion="Una rama bloquea la vereda por el temporal",
+            categoria=CategoriaReclamo.ARBOLADO,
+            barrio="Palermo",
+        ),
+        ciudadano_id=str(uuid.uuid4()),
+    )
+    await service.cambiar_estado(
+        reclamo.id, CambioEstado(estado=EstadoReclamo.ASIGNADO), usuario_operador
+    )
+
+    cambiado = publisher.eventos_de(topics.RECLAMO_ESTADO_CAMBIADO)[0]
+    assert cambiado.data.alerta_id == alerta.alerta_id
 
 
 @pytest.mark.asyncio
