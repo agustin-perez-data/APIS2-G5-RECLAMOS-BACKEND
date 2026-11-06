@@ -366,12 +366,32 @@ class ReclamoService:
         await self.session.commit()
         log.info("reclamo.ticket_abierto", reclamo_id=str(reclamo.id), ticket=clave)
 
+    @staticmethod
+    def _causa_de(reclamo: Reclamo) -> tuple[str | None, CausaTipo | None]:
+        """The claim's external cause at filing time, most explanatory first.
+
+        A claim can be under a weather alert **and** next to a mass activity at
+        the same time, and ADR 0016 lets only one cause travel. The alert wins:
+        it explains *why* the claim exists -- the storm brought the branch down
+        -- while the activity explains only *where* it happened.
+
+        Nothing is lost by that choice. `alertaId` and `actividadId` travel in
+        the event on their own, so Analytics can still count a claim on both
+        sides whatever the cause ends up saying.
+
+        `INCIDENTE_VIAL` and `RESERVA` belong here too, above the activity, the
+        day we have a source for them.
+        """
+        if reclamo.alerta_id is not None:
+            return str(reclamo.alerta_id), CausaTipo.EVENTO_CLIMATICO
+        if reclamo.actividad is not None:
+            return reclamo.actividad.actividad_origen_id, CausaTipo.EVENTO_PUBLICO
+        return None, None
+
     async def _publicar_creado(self, reclamo: Reclamo) -> None:
-        # Squad 3 (ADR 0016): the mass activity is the claim's cause for
-        # Analytics. A weather alert outranks it once that case fills its own
-        # cause: the alert explains why the claim exists, the activity only where.
         actividad = reclamo.actividad
         origen_actividad = actividad.actividad_origen_id if actividad is not None else None
+        causa_id, causa_tipo = self._causa_de(reclamo)
         await self.publisher.publish(
             topics.RECLAMO_CREADO,
             ReclamoCreado(
@@ -395,8 +415,11 @@ class ReclamoService:
                 # alert is already there by the time we publish. Analytics
                 # cross-references claims against alerts from this event alone.
                 alerta_id=reclamo.alerta_id,
-                causa_id=origen_actividad,
-                causa_tipo=CausaTipo.EVENTO_PUBLICO if actividad is not None else None,
+                causa_id=causa_id,
+                causa_tipo=causa_tipo,
+                # Always the activity, whatever the cause says: a claim under an
+                # alert near a festival still belongs to the festival, and this
+                # is what keeps it countable on that side (ADR 0016).
                 actividad_origen_id=origen_actividad,
             ),
             # Keyed by claim id, which guarantees ordering per aggregate.

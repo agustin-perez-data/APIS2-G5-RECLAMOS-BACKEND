@@ -12,10 +12,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.db.models import EventoClimatico, Reclamo
+from app.db.models import ActividadMasiva, EventoClimatico, Reclamo
 from app.domain.enums import (
     CanalOrigen,
     CategoriaReclamo,
+    CausaTipo,
     EstadoEventoClimatico,
     EstadoReclamo,
     NivelCriticidad,
@@ -165,6 +166,85 @@ async def test_el_evento_de_cambio_de_estado_tambien_lleva_la_alerta(
 
     cambiado = publisher.eventos_de(topics.RECLAMO_ESTADO_CAMBIADO)[0]
     assert cambiado.data.alerta_id == alerta.alerta_id
+
+
+@pytest.mark.asyncio
+async def test_la_alerta_viaja_como_causa_del_reclamo(session, publisher) -> None:
+    # ADR 0016: Analytics counts "claims caused by a weather event" from
+    # `causaTipo`. Until this, the value existed in the enum and never travelled.
+    alerta = _alerta(barrios=["PALERMO"])
+    session.add(alerta)
+    await session.commit()
+
+    await ReclamoService(session, publisher).crear(
+        ReclamoCrear(
+            titulo="Se cayo una rama grande",
+            descripcion="Una rama bloquea la vereda por el temporal",
+            categoria=CategoriaReclamo.ARBOLADO,
+            barrio="Palermo",
+        ),
+        ciudadano_id=str(uuid.uuid4()),
+    )
+
+    creado = publisher.eventos_de(topics.RECLAMO_CREADO)[0]
+    assert creado.data.causa_tipo is CausaTipo.EVENTO_CLIMATICO
+    assert creado.data.causa_id == str(alerta.alerta_id)
+
+
+@pytest.mark.asyncio
+async def test_con_alerta_Y_actividad_gana_la_climatica(session, publisher) -> None:
+    # The whole point of the precedence, and the only case where it is visible.
+    # The alert explains *why* the claim exists; the activity only *where*.
+    # The activity is not lost: it keeps travelling in `actividadId`, which is
+    # what lets Analytics count the claim on both sides (ADR 0016).
+    ahora = datetime.now(UTC)
+    alerta = _alerta(barrios=["PALERMO"])
+    actividad = ActividadMasiva(
+        actividad_origen_id="A-77",
+        titulo="Festival de Primavera",
+        capacidad=5000,
+        latitud=-34.5889,
+        longitud=-58.4306,
+        inicio=ahora - timedelta(hours=1),
+        fin=ahora + timedelta(hours=3),
+    )
+    session.add_all([alerta, actividad])
+    await session.commit()
+
+    await ReclamoService(session, publisher).crear(
+        ReclamoCrear(
+            titulo="Se cayo una rama grande",
+            descripcion="Una rama bloquea la vereda por el temporal",
+            categoria=CategoriaReclamo.ARBOLADO,
+            barrio="Palermo",
+            latitud=-34.5889,
+            longitud=-58.4306,
+        ),
+        ciudadano_id=str(uuid.uuid4()),
+    )
+
+    creado = publisher.eventos_de(topics.RECLAMO_CREADO)[0]
+    assert creado.data.causa_tipo is CausaTipo.EVENTO_CLIMATICO
+    assert creado.data.causa_id == str(alerta.alerta_id)
+    # The activity still travels, which is what makes the choice safe.
+    assert creado.data.actividad_origen_id == "A-77"
+
+
+@pytest.mark.asyncio
+async def test_sin_alerta_ni_actividad_no_hay_causa(session, publisher) -> None:
+    await ReclamoService(session, publisher).crear(
+        ReclamoCrear(
+            titulo="Arbol caido",
+            descripcion="Se cayo un arbol en la vereda del pasaje",
+            categoria=CategoriaReclamo.ARBOLADO,
+            barrio="Caballito",
+        ),
+        ciudadano_id=str(uuid.uuid4()),
+    )
+
+    creado = publisher.eventos_de(topics.RECLAMO_CREADO)[0]
+    assert creado.data.causa_tipo is None
+    assert creado.data.causa_id is None
 
 
 @pytest.mark.asyncio
