@@ -8,10 +8,17 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from app.domain.enums import CategoriaReclamo, EstadoReclamo, PrioridadReclamo
+from app.domain.enums import (
+    CategoriaReclamo,
+    EstadoReclamo,
+    PrioridadReclamo,
+    ResultadoIntervencion,
+)
 from app.events.contracts import (
     ContenedorDesbordado,
     EventEnvelope,
+    IncidenteCreado,
+    IntervencionFinalizada,
     ReclamoCreado,
     parse_envelope,
 )
@@ -86,4 +93,75 @@ def test_falta_el_campo_clave_del_payload() -> None:
         parse_envelope(
             {"event_type": "residuos.contenedor.desbordado", "data": {"nivel": 10}},
             ContenedorDesbordado,
+        )
+
+
+# --- What other teams actually registered in the catalogue --------------------
+def test_el_incidente_lee_la_ubicacion_anidada() -> None:
+    # The schema Emergencies registered nests the location and types the
+    # coordinates as strings; the contract they had described to us had the
+    # three loose. Reading only the loose ones escalates nothing and logs a
+    # success, which is the worst shape a bug can take.
+    incidente = IncidenteCreado.model_validate(
+        {
+            "emergenciaId": "e-1",
+            "categoria": "CHOQUE",
+            "afectaCirculacion": True,
+            "ubicacion": {"barrio": "Palermo", "latitud": "-34.5889", "longitud": "-58.4306"},
+        }
+    )
+
+    assert incidente.barrio == "Palermo"
+    assert incidente.latitud == pytest.approx(-34.5889)
+    assert incidente.longitud == pytest.approx(-58.4306)
+
+
+def test_si_el_incidente_trae_las_dos_formas_gana_la_de_arriba() -> None:
+    incidente = IncidenteCreado.model_validate(
+        {
+            "emergenciaId": "e-2",
+            "barrio": "Caballito",
+            "ubicacion": {"barrio": "Palermo"},
+        }
+    )
+
+    assert incidente.barrio == "Caballito"
+
+
+def test_el_incidente_sin_ubicacion_sigue_andando() -> None:
+    incidente = IncidenteCreado.model_validate({"emergenciaId": "e-3", "barrio": "Flores"})
+
+    assert incidente.barrio == "Flores"
+    assert incidente.latitud is None
+
+
+@pytest.mark.parametrize(
+    ("enviado", "esperado"),
+    [
+        ("RESUELTO", ResultadoIntervencion.RESUELTO),
+        ("completado", ResultadoIntervencion.RESUELTO),
+        ("  Finalizada  ", ResultadoIntervencion.RESUELTO),
+        ("RECHAZADO", ResultadoIntervencion.RECHAZADO),
+        ("NO_CORRESPONDE", ResultadoIntervencion.RECHAZADO),
+    ],
+)
+def test_el_resultado_de_la_intervencion_tolera_sinonimos(
+    enviado: str, esperado: ResultadoIntervencion
+) -> None:
+    # Their registered schema types `resultado` as a bare string with no
+    # documented values. A wording we reject sends the message to the DLQ and
+    # the claim never closes, with nothing visible on their side.
+    intervencion = IntervencionFinalizada.model_validate(
+        {"reclamoId": str(uuid.uuid4()), "resultado": enviado}
+    )
+
+    assert intervencion.resultado is esperado
+
+
+def test_un_resultado_desconocido_sigue_fallando() -> None:
+    # On purpose: guessing between "fixed" and "not our job" is what tells the
+    # neighbour a lie. Better the DLQ, which is findable.
+    with pytest.raises(ValidationError):
+        IntervencionFinalizada.model_validate(
+            {"reclamoId": str(uuid.uuid4()), "resultado": "EN_CURSO"}
         )
