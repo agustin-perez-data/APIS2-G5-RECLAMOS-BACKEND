@@ -392,6 +392,7 @@ módulo.
   "descripcion": "Hay un auto arriba de la bicisenda y no se puede pasar",
   "categoria": "TRANSITO",
   "prioridad": "ALTA",
+  "estado": "RECIBIDO",
   "origenClasificacion": "CIUDADANO",
   "confianzaClasificacion": null,
   "direccion": "Av. Cordoba 4800",
@@ -411,6 +412,11 @@ es `BACHES` + `CICLOVIA`. **Lo elige el vecino al dar de alta** —el clasificad
 infiere— así que **viaja nulo cada vez que no lo completó**: cualquier consumidor que
 filtre por él tiene que contar con eso. Valores: `CICLOVIA`, `CALZADA`, `VEREDA`,
 `SENDA_PEATONAL`, `PLAZA_PARQUE`, `MOBILIARIO_URBANO`, `EDIFICIO_PUBLICO` y `OTRO`.
+
+`estado` en el alta vale `RECIBIDO`, o **`EN_REVISION` cuando el clasificador no
+alcanzó la confianza mínima** y el reclamo quedó esperando revisión humana. No es
+una constante: si se cuentan reclamos por estado, los `EN_REVISION` todavía no
+tienen categoría confirmada y pueden cambiarla.
 
 `afectaCirculacion` es **verdadero para `TRANSITO`, `BACHES` y `ARBOLADO`**. Es
 el campo que usan Movilidad —para no recomendar estaciones cerca de un

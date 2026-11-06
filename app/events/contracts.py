@@ -15,7 +15,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Generic, TypeVar
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domain.enums import (
     CategoriaReclamo,
@@ -216,6 +216,29 @@ class IncidenteCreado(BaseModel):
         default=None, validation_alias=AliasChoices("longitud", "lng", "lon")
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _ubicacion_anidada(cls, valores: Any) -> Any:
+        """Lift `ubicacion.{barrio,latitud,longitud}` to the top level.
+
+        The schema Emergencies registered in the catalogue nests the location
+        and declares the coordinates as **strings**, while the contract they
+        described to us had all three loose. Reading only the loose ones would
+        make `escalar_por_incidente` start from an empty neighbourhood and
+        escalate nothing, with no error anywhere: the handler would run, find
+        no claims and log a success.
+        """
+        if not isinstance(valores, dict):
+            return valores
+        ubicacion = valores.get("ubicacion")
+        if not isinstance(ubicacion, dict):
+            return valores
+        completado = dict(valores)
+        for campo in ("barrio", "latitud", "longitud"):
+            if completado.get(campo) is None and ubicacion.get(campo) is not None:
+                completado[campo] = ubicacion[campo]
+        return completado
+
 
 class CriticidadClimaticaAplicada(BaseModel):
     """`com.citypass.reclamos.CriticidadClimaticaAplicada` (ADR 0014).
@@ -310,6 +333,23 @@ class CriticidadClimaticaFinalizada(BaseModel):
     )
 
 
+# Wordings seen or plausible from Public Spaces for `IntervencionFinalizada`.
+# Deliberately short: a synonym that is not obvious belongs in a conversation
+# with them, not in a guess here.
+_RESULTADOS_EQUIVALENTES: dict[str, str] = {
+    "COMPLETADO": ResultadoIntervencion.RESUELTO,
+    "COMPLETADA": ResultadoIntervencion.RESUELTO,
+    "FINALIZADO": ResultadoIntervencion.RESUELTO,
+    "FINALIZADA": ResultadoIntervencion.RESUELTO,
+    "RESUELTA": ResultadoIntervencion.RESUELTO,
+    "EXITOSO": ResultadoIntervencion.RESUELTO,
+    "RECHAZADA": ResultadoIntervencion.RECHAZADO,
+    "NO_CORRESPONDE": ResultadoIntervencion.RECHAZADO,
+    "DESESTIMADO": ResultadoIntervencion.RECHAZADO,
+    "DESESTIMADA": ResultadoIntervencion.RECHAZADO,
+}
+
+
 class IntervencionFinalizada(BaseModel):
     """`com.citypass.espacios.IntervencionFinalizada` (CU-INT-01).
 
@@ -322,6 +362,24 @@ class IntervencionFinalizada(BaseModel):
 
     reclamo_id: uuid.UUID = Field(validation_alias=AliasChoices("reclamo_id", "reclamoId"))
     resultado: ResultadoIntervencion
+
+    @field_validator("resultado", mode="before")
+    @classmethod
+    def _normalizar_resultado(cls, valor: Any) -> Any:
+        """Map the wordings Public Spaces may send onto our two outcomes.
+
+        Their registered schema types `resultado` as a bare `string` with no
+        documented values, so a wording we do not know would fail validation and
+        send the message to the DLQ -- and the claim would simply never close,
+        with nothing visible on their side. These are the synonyms worth
+        accepting; anything else still fails, on purpose, because guessing
+        between "fixed" and "not our job" is what tells the neighbour a lie.
+        """
+        if not isinstance(valor, str):
+            return valor
+        limpio = valor.strip().upper()
+        return _RESULTADOS_EQUIVALENTES.get(limpio, limpio)
+
     # Operational detail of their domain: we store none of it, but it travels so
     # Analytics can measure how long the intervention took.
     solicitado_at: int | None = Field(

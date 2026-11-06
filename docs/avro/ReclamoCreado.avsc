@@ -11,6 +11,7 @@
     { "name": "descripcion", "type": "string" },
     { "name": "categoria", "type": "string", "doc": "ALUMBRADO, BACHES, RESIDUOS, ARBOLADO, AGUA_CLOACAS, TRANSITO, RUIDOS, ESPACIOS_PUBLICOS, SEGURIDAD u OTROS. String y no enum a proposito: agregar una categoria no tiene que romper el contrato." },
     { "name": "prioridad", "type": "string", "doc": "BAJA, MEDIA, ALTA o CRITICA." },
+    { "name": "estado", "type": "string", "default": "RECIBIDO", "doc": "Estado en el momento del alta: RECIBIDO, o EN_REVISION cuando el clasificador no alcanzo la confianza minima y el reclamo espera revision humana." },
     { "name": "origenClasificacion", "type": "string", "doc": "Quien decidio la categoria: CIUDADANO, MODELO u OPERADOR." },
     { "name": "confianzaClasificacion", "type": ["null", "double"], "default": null, "doc": "Confianza del clasificador entre 0 y 1. Nulo cuando la categoria no la decidio el modelo." },
     { "name": "direccion", "type": ["null", "string"], "default": null },
