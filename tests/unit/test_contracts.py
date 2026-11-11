@@ -96,6 +96,11 @@ def test_falta_el_campo_clave_del_payload() -> None:
         )
 
 
+# How Emergencies sends the position since 6/11: base64 ciphertext we cannot read.
+LATITUD_CIFRADA = "RUxDAQExuIWL05EIEbZ+pYcyRW/K80OxpZXy4Qcz56ETZxfmAL0vlgcQeUjGZq4ZEP+PEg=="
+LONGITUD_CIFRADA = "RUxDAQExgnptTMas+gjNvow+FKmMMYGk8p9W9PO+Ca4YjRqnMcCsz39YUHSsdYhSivnvkA=="
+
+
 # --- What other teams actually registered in the catalogue --------------------
 def test_el_incidente_lee_la_ubicacion_anidada() -> None:
     # The schema Emergencies registered nests the location and types the
@@ -133,6 +138,26 @@ def test_el_incidente_sin_ubicacion_sigue_andando() -> None:
 
     assert incidente.barrio == "Flores"
     assert incidente.latitud is None
+
+
+def test_las_coordenadas_cifradas_cuentan_como_ausentes() -> None:
+    # Since 6/11 Emergencies encrypts the position. Rejecting the event over it
+    # was a 500 on every delivery; the neighbourhood still travels in clear.
+    incidente = IncidenteCreado.model_validate(
+        {
+            "emergenciaId": "e-4",
+            "barrio": "SAN NICOLAS",
+            "ubicacion": {
+                "barrio": "SAN NICOLAS",
+                "latitud": LATITUD_CIFRADA,
+                "longitud": LONGITUD_CIFRADA,
+            },
+        }
+    )
+
+    assert incidente.barrio == "SAN NICOLAS"
+    assert incidente.latitud is None
+    assert incidente.longitud is None
 
 
 @pytest.mark.parametrize(

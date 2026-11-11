@@ -239,6 +239,24 @@ class IncidenteCreado(BaseModel):
                 completado[campo] = ubicacion[campo]
         return completado
 
+    @field_validator("latitud", "longitud", mode="before")
+    @classmethod
+    def _coordenada_legible(cls, valor: Any) -> Any:
+        """An unreadable coordinate counts as a missing one.
+
+        Emergencies started encrypting the position: the coordinates arrive as
+        base64 ciphertext ("RUxDAQ..."), which we cannot decrypt. Failing the
+        whole event over that rejected it with a 500 and lost the escalation;
+        without coordinates the handler still escalates by `barrio`, which
+        travels in clear.
+        """
+        if isinstance(valor, str):
+            try:
+                return float(valor)
+            except ValueError:
+                return None
+        return valor
+
 
 class IncidenteActualizado(BaseModel):
     """`com.citypass.emergencias.EmergenciaActualizada` (ADR 0017).
