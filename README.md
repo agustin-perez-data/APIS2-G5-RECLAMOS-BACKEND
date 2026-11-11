@@ -173,6 +173,7 @@ Prefijo `/api/v1`.
 | `POST` | `/reclamos/similares` | autenticado | Reclamos parecidos al que se está escribiendo, para sumarse en vez de duplicar. |
 | `GET` | `/reclamos/{id}/similares` | autenticado | Posibles duplicados de un reclamo ya cargado. |
 | `GET` | `/reclamos/estadisticas` | **admin** | Métricas agregadas (para el Grupo 8). |
+| `GET` | `/admin/analitica` | **admin federado de Reclamos** | Proxy del tablero HTML de Analítica; solo con `ANALITICA_ENABLED=true`. |
 | `GET` | `/notificaciones` | autenticado | Bandeja propia, paginada, con `unread_count`. |
 | `GET` | `/notificaciones/conteo` | autenticado | Solo el contador de no leídas, para la campana. |
 | `PATCH` | `/notificaciones/{id}/leer` | autenticado | Marca una como leída (idempotente). |
@@ -197,6 +198,61 @@ Los errores siguen **RFC 7807**:
   "instance": "/api/v1/reclamos/6f1c.../estado"
 }
 ```
+
+### Tablero de Analítica (Grupo 8, contrato provisional)
+
+Esta integración **no está verificada en producción**. El contrato acordado
+provisionalmente es la Alternativa A: el frontend de Reclamos solicita
+`GET /api/v1/admin/analitica` a este backend; este valida el JWT del administrador
+y solicita `GET {ANALITICA_URL}/embed/reclamos` al backend de Analítica. Devuelve
+el HTML recibido sin consultar la API JSON `/analytics/reclamos`. Los datos
+agregados e informes de IA se generarían del lado de Analítica.
+
+La ruta requiere `Authorization: Bearer <JWT humano>` emitido por Login Federado
+(Grupo 2), con firma RS256 válida, emisor y audiencia configurados, `token_use=human`,
+grupo LDAP mapeado a `admin` y `module=reclamos`. Reenvía ese JWT original en
+`X-Usuario-Token`. Para la llamada saliente obtiene otro JWT mediante
+`client_credentials`, usando las mismas `GATEWAY_TOKEN_URL`,
+`GATEWAY_CLIENT_ID` y `GATEWAY_CLIENT_SECRET` que ya usa el backend con EDA;
+lo envía como `Authorization: Bearer` y lo conserva en memoria hasta antes de
+su vencimiento. Este backend no inserta tokens en el HTML ni en sus errores.
+
+La integración está apagada por defecto (`ANALITICA_ENABLED=false`): la ruta ni
+siquiera se monta. Para habilitarla se necesita `ANALITICA_URL` (base HTTPS),
+`ANALITICA_TIMEOUT_SECONDS` (por defecto 10), las credenciales `GATEWAY_*`
+vigentes y la configuración federada `JWT_ALGORITHM=RS256`, `JWT_JWKS_URL`,
+`JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_ROLES_CLAIM=groups`,
+`JWT_STAFF_ESTRICTO=true`, `JWT_TOKEN_USE_ESPERADO=human` y
+`JWT_STAFF_GRUPOS_ADMIN`. `AUTH_ENABLED` debe seguir en `true` y
+`AUTH_DEV_LOGIN_ENABLED` en `false`. Una configuración incompleta impide el
+arranque; deshabilitarla solo requiere volver a `ANALITICA_ENABLED=false`.
+El login ciudadano no cambia.
+
+En un 200 se entrega `Content-Type`, `Content-Security-Policy` si viene del
+Grupo 8 y `Cache-Control: no-store` como mínimo. Los rechazos locales son 401
+o 403; un 403 de Analítica sigue siendo 403 y otros fallos externos se presentan
+como 502 sin exponer el cuerpo remoto.
+
+Pruebas locales, con Analítica y JWKS simulados y sin llamadas externas:
+
+```bash
+pytest tests/unit/test_analitica.py tests/integration/test_analitica.py
+pytest tests/unit/test_gateway.py tests/unit/test_emisores_jwt.py
+pytest
+ruff check app tests
+ruff format --check app tests
+```
+
+**Pendiente con Grupo 8:** confirmar que exista y se despliegue
+`GET /embed/reclamos`, la URL base, el alta del clientId de servicio actual,
+la audiencia aceptada para su JWT, los headers y el HTML autocontenido.
+En la revisión de su rama `main` solo se encontró `GET /analytics/reclamos`
+(JSON) y documentación que aún no acredita la validación de ambos JWT.
+**Pendiente con Grupo 2:** verificar con un JWT real de administrador de Reclamos
+los claims y grupo configurados y que el token de servicio actual sirva para
+Analítica. **Pendiente con frontend:** un iframe con `src` no envía el header
+Bearer; debe acordar cómo pedir y mostrar el HTML en un iframe aislado y cómo
+aplicar la CSP. Estas dependencias impiden dar por terminada la prueba real.
 
 ### Máquina de estados
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from importlib import import_module
 from types import SimpleNamespace
 
 import jwt
@@ -145,6 +146,23 @@ async def test_rechaza_ausencia_de_token_y_token_ciudadano(entorno) -> None:
     assert cliente.tokens == []
 
 
+async def test_rechaza_firma_alterada_audiencia_ajena_y_grupos_vacios(entorno, caplog) -> None:
+    cfg, clave, app, cliente = entorno
+    otro_firmante = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    casos = [
+        (token_staff(cfg, otro_firmante), 401),
+        (token_staff(cfg, clave, aud=["citypass-analitica-api"]), 401),
+        (token_staff(cfg, clave, groups=[]), 403),
+        (token_staff(cfg, clave, module=None), 403),
+    ]
+    for token, codigo in casos:
+        respuesta = await pedir(app, token)
+        assert respuesta.status_code == codigo
+        assert token not in respuesta.text
+        assert token not in caplog.text
+    assert cliente.tokens == []
+
+
 @pytest.mark.parametrize(("upstream", "esperado"), [(401, 502), (403, 403), (503, 502)])
 async def test_errores_de_analitica_no_exponen_su_respuesta(
     entorno, upstream: int, esperado: int
@@ -166,7 +184,69 @@ async def test_fuerza_no_store_si_analitica_no_lo_envia(entorno) -> None:
     assert "content-security-policy" not in respuesta.headers
 
 
+async def test_error_del_upstream_no_filtra_el_jwt_humano(entorno, caplog) -> None:
+    cfg, clave, app, cliente = entorno
+    token = token_staff(cfg, clave)
+    cliente.error = ErrorAnalitica()
+    respuesta = await pedir(app, token)
+    assert respuesta.status_code == 502
+    assert token not in respuesta.text
+    assert token not in caplog.text
+
+
+def test_ruta_no_se_monta_por_defecto() -> None:
+    from app.main import app
+
+    assert RUTA not in app.openapi()["paths"]
+
+
 def test_configuracion_no_habilita_analitica_sin_identidad_federada() -> None:
     assert not Settings().analitica_enabled
     with pytest.raises(ValueError, match="AUTH_ENABLED=true y JWT_ALGORITHM=RS256"):
         Settings(analitica_enabled=True, analitica_url="https://analitica.example")
+
+
+@pytest.mark.parametrize(
+    ("cambio", "error"),
+    [
+        ({"analitica_url": "http://analitica.example"}, "ANALITICA_URL"),
+        ({"analitica_url": None}, "ANALITICA_URL"),
+        ({"auth_enabled": False}, "AUTH_ENABLED"),
+        ({"jwt_jwks_url": None}, "JWKS"),
+        ({"jwt_staff_grupos_admin": []}, "grupo ADMIN"),
+        ({"gateway_client_secret": ""}, "GATEWAY_"),
+        ({"analitica_timeout_seconds": 0}, "analitica_timeout_seconds"),
+    ],
+)
+def test_configuracion_invalida_falla_cerrada(entorno, cambio: dict, error: str) -> None:
+    cfg, _clave, _app, _cliente = entorno
+    with pytest.raises(ValueError, match=error):
+        Settings(**(cfg.model_dump() | cambio))
+
+
+async def test_lifespan_inicia_y_cierra_el_cliente_de_analitica(entorno, monkeypatch) -> None:
+    cfg, _clave, _app, _cliente = entorno
+    main = import_module("app.main")
+    eventos: list[str] = []
+
+    class RecursoFalso:
+        async def start(self) -> None:
+            eventos.append("start")
+
+        async def stop(self) -> None:
+            eventos.append("stop")
+
+    async def cerrar_engine() -> None:
+        eventos.append("engine.stop")
+
+    monkeypatch.setattr(main, "settings", cfg)
+    monkeypatch.setattr(main, "setup_logging", lambda: None)
+    monkeypatch.setattr(main, "crear_publisher", RecursoFalso)
+    monkeypatch.setattr(main, "AnaliticaClient", lambda *_args, **_kwargs: RecursoFalso())
+    monkeypatch.setattr(main, "cerrar_engine", cerrar_engine)
+    app = FastAPI()
+
+    async with main.lifespan(app):
+        assert app.state.publisher is not app.state.analitica
+        assert eventos == ["start", "start"]
+    assert eventos == ["start", "start", "stop", "stop", "engine.stop"]
