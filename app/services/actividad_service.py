@@ -41,6 +41,9 @@ ESTADOS_SIN_RELACION = ESTADOS_CANCELADOS | {"SUSPENDIDA", "SUSPENDIDO", "SUSPEN
 # What an activity is when its creation says nothing.
 ESTADO_INICIAL = "PROGRAMADA"
 
+# Log event for every ActividadModificada that changes nothing; `motivo` says why.
+_MODIFICACION_IGNORADA = "actividad.modificacion_ignorada"
+
 
 def _normalizar_estado(estado: str | None) -> str | None:
     limpio = (estado or "").strip().upper()
@@ -141,7 +144,7 @@ class ActividadService:
         actividad = await self._buscar(datos.actividad_id, correlation_id)
         if actividad is None:
             log.info(
-                "actividad.modificacion_ignorada",
+                _MODIFICACION_IGNORADA,
                 actividad_id=datos.actividad_id,
                 correlation_id=correlation_id,
                 motivo="desconocida",
@@ -153,7 +156,7 @@ class ActividadService:
             actividad.estado_cambiado_at
         ):
             log.info(
-                "actividad.modificacion_ignorada",
+                _MODIFICACION_IGNORADA,
                 id=str(actividad.id),
                 motivo="vieja",
                 estado=datos.estado_nuevo,
@@ -162,7 +165,7 @@ class ActividadService:
 
         estado = _normalizar_estado(datos.estado_nuevo)
         if estado is None or estado == actividad.estado:
-            log.info("actividad.modificacion_ignorada", id=str(actividad.id), motivo="sin_cambios")
+            log.info(_MODIFICACION_IGNORADA, id=str(actividad.id), motivo="sin_cambios")
             return None
 
         anterior = actividad.estado

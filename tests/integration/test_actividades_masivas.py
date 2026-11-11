@@ -429,6 +429,33 @@ async def test_la_modificacion_de_una_actividad_que_no_guardamos_se_ignora(
     assert await actividades(client, auth, token_operador, incluir_finalizadas=True) == []
 
 
+async def test_una_modificacion_al_mismo_estado_no_hace_nada(
+    client: AsyncClient, auth, token_ciudadano, token_operador
+) -> None:
+    creada = actividad_creada()
+    await publicar(client, creada)
+    await publicar(client, actividad_modificada(creada, "programada"))
+
+    [actividad] = await actividades(client, auth, token_operador)
+    assert actividad["estado"] == "PROGRAMADA"
+    reclamo = await cargar_reclamo(client, auth, token_ciudadano, reclamo_en(A_200_METROS))
+    assert reclamo["actividad"] is not None
+
+
+async def test_sin_actividad_id_ni_correlation_id_se_ignora(
+    client: AsyncClient, auth, token_operador
+) -> None:
+    creada = actividad_creada()
+    await publicar(client, creada)
+    modificada = actividad_modificada(creada, "CANCELADA")
+    del modificada["data"]["actividadId"]
+    del modificada["data"]["correlationId"]
+    await publicar(client, modificada)
+
+    [actividad] = await actividades(client, auth, token_operador)
+    assert actividad["estado"] == "PROGRAMADA"
+
+
 async def test_una_actividad_nueva_aparece_como_programada(
     client: AsyncClient, auth, token_operador
 ) -> None:
