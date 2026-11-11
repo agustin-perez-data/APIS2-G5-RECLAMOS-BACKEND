@@ -17,6 +17,7 @@ from app.domain.enums import CategoriaReclamo, NivelCriticidad, PrioridadReclamo
 from app.events import topics
 from app.events.contracts import (
     ActividadCreada,
+    ActividadModificada,
     ContenedorDesbordado,
     CriticidadClimaticaAplicada,
     CriticidadClimaticaConfirmada,
@@ -265,6 +266,31 @@ async def manejar_actividad_creada(raw: dict[str, Any], service: ReclamoService)
     )
 
 
+async def manejar_actividad_modificada(raw: dict[str, Any], service: ReclamoService) -> None:
+    """`com.citypass.espacios.ActividadModificada` -> move the activity's state.
+
+    Squad 3 (ADR 0018): a cancelled or suspended activity stops relating the
+    claims filed around it, and one back in PROGRAMADA resumes. No claim
+    changes here: the ones already related keep their relation, because they
+    were filed while the activity was on. Idempotent on redelivery.
+    """
+    evento = parse_envelope(raw, ActividadModificada)
+    actividad = await service.actividades.cambiar_estado(
+        evento.data,
+        recibida_at=evento.occurred_at,
+        correlation_id=evento.correlation_id,
+    )
+    if actividad is None:
+        return
+
+    log.info(
+        "handler.actividad_modificada.aplicada",
+        id=str(actividad.id),
+        actividad_id=actividad.actividad_origen_id,
+        estado=actividad.estado,
+    )
+
+
 def _acciones_de(nivel: NivelCriticidad) -> list[str]:
     """What the level actually did, for the summary event."""
     acciones = ["MARCA_RECLAMOS", "AVISO_CIUDADANOS"]
@@ -396,4 +422,5 @@ HANDLERS: dict[str, Handler] = {
     topics.ESPACIOS_CLIMA_CONFIRMADA: manejar_criticidad_confirmada,
     topics.ESPACIOS_CLIMA_FINALIZADA: manejar_criticidad_finalizada,
     topics.ESPACIOS_ACTIVIDAD_CREADA: manejar_actividad_creada,
+    topics.ESPACIOS_ACTIVIDAD_MODIFICADA: manejar_actividad_modificada,
 }

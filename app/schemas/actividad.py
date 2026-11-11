@@ -25,6 +25,13 @@ class ActividadOut(ActividadVinculada):
     longitud: float
     direccion: str | None
     espacio_nombre: str | None
+    estado: str = Field(
+        default="PROGRAMADA",
+        description=(
+            "Lo que informa Espacios Publicos. CANCELADA o SUSPENDIDA: no relaciona "
+            "reclamos nuevos; los que ya relaciono los conserva"
+        ),
+    )
     reclamos_relacionados: int = Field(
         default=0, description="Reclamos cargados en la zona mientras duraba la actividad"
     )

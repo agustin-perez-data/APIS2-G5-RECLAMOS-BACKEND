@@ -33,12 +33,20 @@ class ActividadRepository:
         )
         return resultado.scalar_one_or_none()
 
+    async def obtener_por_correlation(self, correlation_id: str) -> ActividadMasiva | None:
+        """Public Spaces' `act-<id>`, the case file both of its events carry."""
+        resultado = await self.session.execute(
+            select(ActividadMasiva).where(ActividadMasiva.correlation_id == correlation_id)
+        )
+        return resultado.scalars().first()
+
     async def en_curso(
         self,
         *,
         momento: datetime,
         fin_desde: datetime,
         caja: tuple[float, float, float, float],
+        excluir_estados: frozenset[str] = frozenset(),
     ) -> list[ActividadMasiva]:
         """Activities already started at `momento`, ended no earlier than `fin_desde`.
 
@@ -53,6 +61,8 @@ class ActividadRepository:
             ActividadMasiva.latitud.between(lat_min, lat_max),
             ActividadMasiva.longitud.between(lon_min, lon_max),
         )
+        if excluir_estados:
+            stmt = stmt.where(ActividadMasiva.estado.not_in(excluir_estados))
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def listar(self, *, fin_desde: datetime | None = None) -> list[ActividadMasiva]:

@@ -17,6 +17,10 @@ from tests.conftest import CIUDADANO_ID
 URL = "/api/v1/webhooks/citypass"
 TOKEN = "secreto-webhook"
 
+# How Emergencies sends the position since 6/11: base64 ciphertext we cannot read.
+LATITUD_CIFRADA = "RUxDAQExuIWL05EIEbZ+pYcyRW/K80OxpZXy4Qcz56ETZxfmAL0vlgcQeUjGZq4ZEP+PEg=="
+LONGITUD_CIFRADA = "RUxDAQExgnptTMas+gjNvow+FKmMMYGk8p9W9PO+Ca4YjRqnMcCsz39YUHSsdYhSivnvkA=="
+
 
 @pytest.fixture(autouse=True)
 def token_webhook(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -198,4 +202,47 @@ async def test_un_evento_masivo_eleva_los_reclamos_de_su_zona(
     palermo, _ = await service.listar(FiltroReclamos(barrio="Palermo"))
     caballito, _ = await service.listar(FiltroReclamos(barrio="Caballito"))
     assert palermo[0].prioridad is PrioridadReclamo.MEDIA
+    assert caballito[0].prioridad is PrioridadReclamo.BAJA
+
+
+async def test_una_emergencia_con_coordenadas_cifradas_escala_por_barrio(
+    client: AsyncClient, service: ReclamoService
+) -> None:
+    """The EmergenciaCreada that bounced on 6/11, as the gateway delivered it.
+
+    Emergencies encrypts the position, so the coordinates are unreadable. That
+    used to fail the whole event with a 500 until it landed in the gateway's
+    dead letter queue; the neighbourhood travels in clear and is enough.
+    """
+    await _reclamo_en(service, "San Nicolas")
+    await _reclamo_en(service, "Caballito")
+
+    evento = sobre(
+        "com.citypass.emergencias.EmergenciaCreada",
+        {
+            "emergenciaId": "07181734-9403-4a3a-9a3e-c347e359e18b",
+            "categoria": "INCENDIO",
+            "prioridad": "ALTA",
+            "estado": "PENDIENTE",
+            "barrio": "SAN NICOLAS",
+            "ubicacion": {
+                "barrio": "SAN NICOLAS",
+                "latitud": LATITUD_CIFRADA,
+                "longitud": LONGITUD_CIFRADA,
+            },
+            "afectaCirculacion": True,
+            "causaId": None,
+            "causaTipo": None,
+            "prioridadOriginal": None,
+            "ciudadanoId": "CIT-JuanPanico",
+            "correlationId": "07181734-9403-4a3a-9a3e-c347e359e18b",
+            "createdAt": "2026-11-06T07:26:45.959Z",
+        },
+    )
+    respuesta = await client.post(URL, params={"token": TOKEN}, json=evento)
+    assert respuesta.status_code == 204
+
+    san_nicolas, _ = await service.listar(FiltroReclamos(barrio="San Nicolas"))
+    caballito, _ = await service.listar(FiltroReclamos(barrio="Caballito"))
+    assert san_nicolas[0].prioridad is PrioridadReclamo.CRITICA
     assert caballito[0].prioridad is PrioridadReclamo.BAJA

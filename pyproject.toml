@@ -61,4 +61,5 @@ addopts = "-q --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-un
 
 [tool.coverage.run]
 source = ["app"]
+concurrency = ["greenlet", "thread"]
 omit = ["app/worker.py", "app/core/logging.py"]

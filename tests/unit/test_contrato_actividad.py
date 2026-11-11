@@ -1,10 +1,11 @@
-"""The `ActividadCreada` contract accepts both versions of Public Spaces' payload."""
+"""Public Spaces' activity contracts: `ActividadCreada` in both versions of its
+payload, and `ActividadModificada` as registered in the catalogue."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.events.contracts import ActividadCreada
+from app.events.contracts import ActividadCreada, ActividadModificada
 
 
 def test_lee_las_fechas_en_milisegundos_como_utc() -> None:
@@ -58,3 +59,32 @@ def test_los_campos_que_no_usamos_no_molestan() -> None:
         }
     )
     assert datos.actividad_id == "a-4"
+
+
+def test_lee_la_modificacion_como_la_publica_espacios() -> None:
+    # The payload of com.citypass.espacios.ActividadModificada as registered.
+    datos = ActividadModificada.model_validate(
+        {
+            "correlationId": "act-a-1",
+            "actividadId": "a-1",
+            "estadoAnterior": "PROGRAMADA",
+            "estadoNuevo": "CANCELADA",
+            "motivo": "Pronostico de tormenta",
+            "causaId": None,
+            "causaTipo": None,
+            "modificadaEn": 1793545200000,
+            "actorSub": "op-espacios",
+        }
+    )
+    assert datos.actividad_id == "a-1"
+    assert datos.estado_nuevo == "CANCELADA"
+    assert datos.estado_anterior == "PROGRAMADA"
+    assert datos.modificada_en == datetime(2026, 11, 1, 15, 0, tzinfo=UTC)
+
+
+def test_la_modificacion_sin_actividad_id_igual_se_lee() -> None:
+    # Not what the registered schema allows, but cheap to tolerate: the
+    # service falls back to the correlationId.
+    datos = ActividadModificada.model_validate({"estadoNuevo": "SUSPENDIDA"})
+    assert datos.actividad_id is None
+    assert datos.modificada_en is None
