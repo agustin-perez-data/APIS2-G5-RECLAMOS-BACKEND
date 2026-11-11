@@ -11,6 +11,11 @@ api_router.include_router(notificaciones.router)
 api_router.include_router(webhooks.router)
 api_router.include_router(actividades.router)
 
+if settings.analitica_enabled:
+    from app.api.v1 import analitica
+
+    api_router.include_router(analitica.router)
+
 # Group 2's IdP does not authenticate neighbours, so this module does (ADR 0011).
 if settings.ciudadanos_auth_enabled:
     from app.api.v1 import auth_ciudadanos

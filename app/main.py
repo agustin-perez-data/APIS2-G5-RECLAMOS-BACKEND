@@ -19,6 +19,7 @@ from app.core.logging import get_logger, setup_logging
 from app.core.rate_limit import limiter
 from app.db.session import cerrar_engine
 from app.events.producer import crear_publisher
+from app.integrations.analitica import AnaliticaClient
 
 log = get_logger(__name__)
 
@@ -35,6 +36,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await publisher.start()
     app.state.publisher = publisher
 
+    analitica = None
+    if settings.analitica_enabled:
+        analitica = AnaliticaClient(
+            settings.analitica_url or "",
+            timeout_seconds=settings.analitica_timeout_seconds,
+        )
+        await analitica.start()
+        app.state.analitica = analitica
+
     if not settings.auth_enabled:
         log.warning(
             "seguridad.auth_deshabilitada", detalle="AUTH_ENABLED=false, solo para desarrollo"
@@ -49,6 +59,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        if analitica is not None:
+            await analitica.stop()
         await publisher.stop()
         await cerrar_engine()
         log.info("app.detenida")

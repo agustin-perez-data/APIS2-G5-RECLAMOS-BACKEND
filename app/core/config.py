@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     gateway_webhook_token: str = ""
     gateway_timeout_seconds: float = 5.0
 
+    # --- Analytics dashboard (Group 8) -------------------------------------
+    # Uses the same Group 2 service credentials as the event gateway.
+    analitica_enabled: bool = False
+    analitica_url: str | None = None
+    analitica_timeout_seconds: float = Field(default=10.0, gt=0)
+
     # --- Security: municipal staff ------------------------------------------
     # Group 2's Federated Login (LDAP + JWT) issues these and we only validate
     # them. Their IdP covers staff only, so citizens have their own issuer
@@ -295,6 +301,24 @@ class Settings(BaseSettings):
                 f"JWT_ALGORITHM='{self.jwt_algorithm}' apunta al IdP real: "
                 "AUTH_DEV_LOGIN_ENABLED tiene que estar en false, sus tokens ya no validan"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _analitica_requiere_identidad_federada(self) -> Settings:
+        """The proxy must never forward a development or unvalidated token."""
+        if not self.analitica_enabled:
+            return self
+        url = urlsplit(self.analitica_url or "")
+        if url.scheme != "https" or not url.netloc or url.query or url.fragment:
+            raise ValueError("ANALITICA_URL debe ser una URL base HTTPS")
+        if not self.auth_enabled or self.jwt_algorithm != "RS256":
+            raise ValueError("ANALITICA_ENABLED requiere AUTH_ENABLED=true y JWT_ALGORITHM=RS256")
+        if not self.jwt_jwks_url or not self.jwt_staff_estricto:
+            raise ValueError("ANALITICA_ENABLED requiere JWKS y JWT_STAFF_ESTRICTO=true")
+        if self.jwt_token_use_esperado != "human" or not self.jwt_staff_grupos_admin:
+            raise ValueError("ANALITICA_ENABLED requiere token_use=human y grupo ADMIN")
+        if not all((self.gateway_token_url, self.gateway_client_id, self.gateway_client_secret)):
+            raise ValueError("ANALITICA_ENABLED requiere credenciales GATEWAY_* del Grupo 2")
         return self
 
     @model_validator(mode="after")
