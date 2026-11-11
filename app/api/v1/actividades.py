@@ -25,9 +25,10 @@ router = APIRouter(prefix="/actividades", tags=["actividades"])
         f"{settings.actividad_masiva_capacidad_minima} personas o mas. Todo reclamo que se "
         f"carga a {settings.actividad_masiva_radio_metros} m o menos, desde que empieza la "
         f"actividad hasta {settings.actividad_masiva_horas_despues} h despues de que termina, "
-        "queda relacionado con ella. Por defecto solo trae las que todavia relacionan "
-        "reclamos o estan por empezar; ordenadas por fecha de inicio. Para ver los reclamos "
-        "de una: `GET /reclamos?actividad_id={id}`."
+        "queda relacionado con ella, salvo que Espacios la haya cancelado o suspendido "
+        "(campo `estado`). Por defecto solo trae las que todavia no cerraron su ventana; "
+        "ordenadas por fecha de inicio. Para ver los reclamos de una: "
+        "`GET /reclamos?actividad_id={id}`."
     ),
 )
 async def listar_actividades(

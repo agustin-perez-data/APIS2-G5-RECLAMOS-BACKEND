@@ -5,9 +5,13 @@ claim filed close to it, between its start and a few hours after its end, is
 related to it: once a festival is over, the overflowing bins and the noise
 complaints in that square are part of the same event, not isolated reports.
 
-`registrar` runs from the event handler and owns its transaction.
-`en_curso_cerca` runs inside `ReclamoService.crear`, before the claim's commit,
-so the claim and its relation are saved together or not at all.
+`ActividadModificada` moves the activity's state (ADR 0018): a cancelled or
+suspended activity stops relating new claims, and one back in PROGRAMADA
+resumes. The claims already related keep their relation.
+
+`registrar` and `cambiar_estado` run from the event handlers and own their
+transaction. `en_curso_cerca` runs inside `ReclamoService.crear`, before the
+claim's commit, so the claim and its relation are saved together or not at all.
 """
 
 from __future__ import annotations
@@ -21,13 +25,31 @@ from app.core.config import Settings, settings
 from app.core.logging import get_logger
 from app.db.models import ActividadMasiva
 from app.domain import geo
-from app.events.contracts import ActividadCreada
+from app.events.contracts import ActividadCreada, ActividadModificada
 from app.repositories.actividad_repository import ActividadRepository
 
 log = get_logger(__name__)
 
 # What Public Spaces may send for a cancelled activity, in either language.
 ESTADOS_CANCELADOS = frozenset({"CANCELADA", "CANCELADO", "CANCELLED"})
+
+# States in which an activity relates no new claims. Only these: an activity
+# that ends (FINALIZADA) still relates for the hours after it -- the clean-up
+# after the festival is the whole point of the case.
+ESTADOS_SIN_RELACION = ESTADOS_CANCELADOS | {"SUSPENDIDA", "SUSPENDIDO", "SUSPENDED"}
+
+# What an activity is when its creation says nothing.
+ESTADO_INICIAL = "PROGRAMADA"
+
+
+def _normalizar_estado(estado: str | None) -> str | None:
+    limpio = (estado or "").strip().upper()
+    return limpio[:20] or None
+
+
+def _con_zona(momento: datetime) -> datetime:
+    # SQLite hands timestamps back without a zone; PostgreSQL keeps it.
+    return momento if momento.tzinfo is not None else momento.replace(tzinfo=UTC)
 
 
 class ActividadService:
@@ -88,6 +110,7 @@ class ActividadService:
             inicio=datos.inicio or recibida_at,
             fin=datos.fin,
             correlation_id=correlation_id,
+            estado=_normalizar_estado(datos.estado) or ESTADO_INICIAL,
         )
         await self.repo.agregar(actividad)
         await self.session.commit()
@@ -101,14 +124,85 @@ class ActividadService:
         )
         return actividad
 
+    async def cambiar_estado(
+        self,
+        datos: ActividadModificada,
+        *,
+        recibida_at: datetime,
+        correlation_id: str | None = None,
+    ) -> ActividadMasiva | None:
+        """Apply Public Spaces' new state, or return None when nothing changes.
+
+        Ignored: activities we never stored (below the mass cut, without
+        coordinates, or whose creation never reached us), a change older than
+        the last one applied, and a state equal to the current one. The last
+        two are what make a redelivery, or a late delivery, harmless.
+        """
+        actividad = await self._buscar(datos.actividad_id, correlation_id)
+        if actividad is None:
+            log.info(
+                "actividad.modificacion_ignorada",
+                actividad_id=datos.actividad_id,
+                correlation_id=correlation_id,
+                motivo="desconocida",
+            )
+            return None
+
+        momento = _con_zona(datos.modificada_en or recibida_at)
+        if actividad.estado_cambiado_at is not None and momento <= _con_zona(
+            actividad.estado_cambiado_at
+        ):
+            log.info(
+                "actividad.modificacion_ignorada",
+                id=str(actividad.id),
+                motivo="vieja",
+                estado=datos.estado_nuevo,
+            )
+            return None
+
+        estado = _normalizar_estado(datos.estado_nuevo)
+        if estado is None or estado == actividad.estado:
+            log.info("actividad.modificacion_ignorada", id=str(actividad.id), motivo="sin_cambios")
+            return None
+
+        anterior = actividad.estado
+        actividad.estado = estado
+        actividad.estado_cambiado_at = momento
+        await self.session.commit()
+        await self.session.refresh(actividad)
+
+        log.info(
+            "actividad.estado_cambiado",
+            id=str(actividad.id),
+            actividad_id=actividad.actividad_origen_id,
+            anterior=anterior,
+            nuevo=estado,
+            motivo=datos.motivo,
+            relaciona_reclamos=estado not in ESTADOS_SIN_RELACION,
+        )
+        return actividad
+
+    async def _buscar(
+        self, actividad_id: str | None, correlation_id: str | None
+    ) -> ActividadMasiva | None:
+        """By Public Spaces' id first; by the case file both events share after."""
+        if actividad_id:
+            actividad = await self.repo.obtener_por_origen(actividad_id)
+            if actividad is not None:
+                return actividad
+        if correlation_id:
+            return await self.repo.obtener_por_correlation(correlation_id)
+        return None
+
     async def en_curso_cerca(
         self, latitud: float, longitud: float, *, momento: datetime | None = None
     ) -> ActividadMasiva | None:
         """The mass activity a claim filed here and now belongs to, if any.
 
-        In course means started, and ended no more than the configured hours
-        ago. Within the radius; with two activities in range, the closest one.
-        Does not commit: it runs inside the claim's own transaction.
+        In course means started, ended no more than the configured hours ago,
+        and neither cancelled nor suspended. Within the radius; with two
+        activities in range, the closest one. Does not commit: it runs inside
+        the claim's own transaction.
         """
         cfg = self.cfg
         momento = momento or datetime.now(UTC)
@@ -116,6 +210,7 @@ class ActividadService:
             momento=momento,
             fin_desde=momento - timedelta(hours=cfg.actividad_masiva_horas_despues),
             caja=geo.caja_alrededor(latitud, longitud, cfg.actividad_masiva_radio_metros),
+            excluir_estados=ESTADOS_SIN_RELACION,
         )
 
         cercanas: list[tuple[float, ActividadMasiva]] = []

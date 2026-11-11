@@ -22,6 +22,7 @@ el contexto, las opciones que se evaluaron y por qué se descartaron.
 | [0015](0015-autenticacion-ciudadana-sin-contrasena.md) | Autenticación ciudadana solo con email | Aceptada |
 | [0016](0016-causa-del-reclamo-para-analitica.md) | Causa del reclamo en `ReclamoCreado` para Analítica | Aceptada |
 | [0017](0017-incidentes-viales-como-causa.md) | Incidentes viales de Emergencias como causa de un reclamo | Aceptada |
+| [0018](0018-actividad-cancelada-o-suspendida.md) | Una actividad cancelada o suspendida deja de relacionar reclamos | Aceptada |
 
 ## Cómo agregar uno
 

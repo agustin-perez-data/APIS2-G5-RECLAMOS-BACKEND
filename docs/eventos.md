@@ -523,6 +523,7 @@ cabecera `X-Webhook-Token` (preferido) o por `?token=...`. Las entregas son
 | `com.citypass.espacios.EventoComunitarioPublicado` | Con cupo ≥ 100, eleva a `MEDIA` los reclamos abiertos de la zona. Los `CANCELLED` se ignoran. |
 | `com.citypass.espacios.IntervencionFinalizada` | **Cierra el reclamo.** Con `resultado: RESUELTO` pasa a RESUELTO; con `RECHAZADO`, a RECHAZADO. Ver abajo. |
 | `com.citypass.espacios.ActividadCreada` | Squad 3. Guarda la actividad masiva; los reclamos que se carguen cerca mientras dura quedan relacionados con ella. Ver abajo. |
+| `com.citypass.espacios.ActividadModificada` | Squad 3. Cambia el estado de la actividad: cancelada o suspendida, deja de relacionar reclamos nuevos; de vuelta en `PROGRAMADA`, retoma. Ver abajo. |
 | `com.citypass.espacios.CriticidadClimaticaConfirmada` | Squad 3. Marca los reclamos abiertos del área, avisa al vecino y sube la prioridad de las categorías que el clima empeora. Ver [ADR 0014](adr/0014-modo-evento-climatico.md). |
 | `com.citypass.espacios.CriticidadClimaticaFinalizada` | Squad 3. Avisa que terminó, restaura el umbral de adhesiones y cuenta los duplicados **sin cerrarlos**. |
 
@@ -597,13 +598,50 @@ También aceptamos los nombres del primer borrador, en inglés (`communityEventI
 con fechas en milisegundos o en ISO 8601.
 
 **Qué reclamos se relacionan:** los que se dan de alta con coordenadas, a
-**300 m** o menos del centro, entre el inicio y 6 h después del fin. Con dos
-actividades en rango gana la más cercana. Incluye los que abre Residuos por un
-contenedor desbordado. Se ven en el campo `actividad` del reclamo, en
-`GET /reclamos?actividad_id=` y en `GET /actividades`.
+**300 m** o menos del centro, entre el inicio y 6 h después del fin, mientras la
+actividad no esté cancelada ni suspendida. Con dos actividades en rango gana la
+más cercana. Incluye los que abre Residuos por un contenedor desbordado. Se ven
+en el campo `actividad` del reclamo, en `GET /reclamos?actividad_id=` y en
+`GET /actividades`.
 
 **No publicamos nada en respuesta.** En el diagrama del squad, Reclamos solo
 recibe.
+
+#### `ActividadModificada`, cuando se cancela, se suspende o se reanuda
+
+Lo publica Espacios cuando cambia el estado de una actividad. Hoy lo manda solo
+al cancelar; la suspensión por clima llega con su próximo cambio. El porqué está
+en el [ADR 0018](adr/0018-actividad-cancelada-o-suspendida.md).
+
+```json
+{
+  "correlationId": "act-3f1c2a9e-0000-4000-8000-000000000001",
+  "actividadId": "3f1c2a9e-0000-4000-8000-000000000001",
+  "estadoAnterior": "PROGRAMADA",
+  "estadoNuevo": "CANCELADA",
+  "motivo": "Pronóstico de tormenta",
+  "causaId": null,
+  "causaTipo": null,
+  "modificadaEn": 1793550000000,
+  "actorSub": null
+}
+```
+
+| Llega `estadoNuevo` | Qué hace Reclamos |
+| --- | --- |
+| `CANCELADA` | Deja de relacionar reclamos nuevos con la actividad. |
+| `SUSPENDIDA` | Lo mismo, hasta que se reanude. |
+| `PROGRAMADA` | Vuelve a relacionar los reclamos que se carguen desde ese momento. |
+| Cualquier otro (por ejemplo `FINALIZADA`) | Se guarda, pero no corta la relación: las 6 h posteriores al fin siguen contando. |
+
+- **Los reclamos ya relacionados no cambian.** Tampoco se relacionan después los
+  que se cargaron durante una suspensión.
+- **Cómo se encuentra la actividad:** por `actividadId` y, si no, por
+  `correlationId`. La modificación de una actividad que no guardamos (de menos de
+  1.000 personas, por ejemplo) se ignora.
+- **Idempotencia y orden:** un cambio con `modificadaEn` anterior al último
+  aplicado se ignora, y uno con el mismo estado no hace nada.
+- `GET /actividades` muestra el `estado` de cada actividad.
 
 ### Respuestas del webhook
 

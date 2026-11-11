@@ -44,5 +44,16 @@ class ActividadMasiva(Base, TimestampMixin):
 
     correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    # What Public Spaces says the activity is now (ADR 0018). A cancelled or
+    # suspended one stops relating new claims; one back in PROGRAMADA resumes.
+    estado: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="PROGRAMADA", server_default="PROGRAMADA"
+    )
+    # When Public Spaces made the last change applied: one older than this,
+    # delivered late, must not undo it.
+    estado_cambiado_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<ActividadMasiva {self.id} {self.titulo!r}>"

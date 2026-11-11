@@ -70,6 +70,25 @@ def actividad_creada(
     return sobre("com.citypass.espacios.ActividadCreada", data)
 
 
+def actividad_modificada(
+    creada: dict, estado_nuevo: str, *, hace: timedelta = timedelta(0), **cambios
+) -> dict:
+    """ActividadModificada for an activity already announced, as Public Spaces publishes it."""
+    data = {
+        "correlationId": creada["data"]["correlationId"],
+        "actividadId": creada["data"]["actividadId"],
+        "estadoAnterior": "PROGRAMADA",
+        "estadoNuevo": estado_nuevo,
+        "motivo": None,
+        "causaId": None,
+        "causaTipo": None,
+        "modificadaEn": ms(datetime.now(UTC) - hace),
+        "actorSub": "op-espacios",
+    }
+    data.update(cambios)
+    return sobre("com.citypass.espacios.ActividadModificada", data)
+
+
 def reclamo_en(latitud: float | None, longitud: float | None = PLAZA_LNG) -> dict:
     return {
         "titulo": "Basura acumulada en la plaza",
@@ -298,6 +317,125 @@ async def test_un_reclamo_automatico_de_residuos_tambien_se_relaciona(
     )
     [reclamo] = listado.json()["items"]
     assert reclamo["actividad"]["titulo"] == "Festival de Primavera"
+
+
+# --- Cancelled, suspended, resumed (ADR 0018) ---------------------------------
+async def test_una_actividad_cancelada_deja_de_relacionar_reclamos(
+    client: AsyncClient, auth, token_ciudadano, token_operador
+) -> None:
+    creada = actividad_creada()
+    await publicar(client, creada)
+    await publicar(client, actividad_modificada(creada, "CANCELADA"))
+
+    reclamo = await cargar_reclamo(client, auth, token_ciudadano, reclamo_en(A_200_METROS))
+    assert reclamo["actividad"] is None
+
+    # Still listed, with its state, so the operator knows why nothing relates.
+    [actividad] = await actividades(client, auth, token_operador)
+    assert actividad["estado"] == "CANCELADA"
+
+
+async def test_los_reclamos_ya_relacionados_conservan_la_relacion(
+    client: AsyncClient, auth, token_ciudadano, token_operador
+) -> None:
+    creada = actividad_creada()
+    await publicar(client, creada)
+    antes = await cargar_reclamo(client, auth, token_ciudadano, reclamo_en(A_200_METROS))
+
+    await publicar(client, actividad_modificada(creada, "CANCELADA"))
+
+    detalle = await client.get(f"/api/v1/reclamos/{antes['id']}", headers=auth(token_ciudadano))
+    assert detalle.json()["actividad"]["titulo"] == "Festival de Primavera"
+    [actividad] = await actividades(client, auth, token_operador)
+    assert actividad["reclamos_relacionados"] == 1
+
+
+async def test_una_suspendida_que_se_reanuda_vuelve_a_relacionar(
+    client: AsyncClient, auth, token_ciudadano
+) -> None:
+    creada = actividad_creada()
+    await publicar(client, creada)
+
+    await publicar(client, actividad_modificada(creada, "SUSPENDIDA", hace=timedelta(minutes=5)))
+    durante = await cargar_reclamo(client, auth, token_ciudadano, reclamo_en(A_200_METROS))
+    assert durante["actividad"] is None
+
+    await publicar(client, actividad_modificada(creada, "PROGRAMADA", estadoAnterior="SUSPENDIDA"))
+    despues = await cargar_reclamo(client, auth, token_ciudadano, reclamo_en(A_200_METROS))
+    assert despues["actividad"]["titulo"] == "Festival de Primavera"
+
+
+async def test_una_finalizada_sigue_relacionando_en_las_horas_siguientes(
+    client: AsyncClient, auth, token_ciudadano
+) -> None:
+    # The clean-up after the festival is the whole case: ending is not cancelling.
+    creada = actividad_creada(empieza_hace=timedelta(hours=4), termina_en=timedelta(hours=-1))
+    await publicar(client, creada)
+    await publicar(client, actividad_modificada(creada, "FINALIZADA"))
+
+    reclamo = await cargar_reclamo(client, auth, token_ciudadano, reclamo_en(A_200_METROS))
+    assert reclamo["actividad"] is not None
+
+
+async def test_una_modificacion_vieja_no_pisa_una_nueva(
+    client: AsyncClient, auth, token_ciudadano, token_operador
+) -> None:
+    creada = actividad_creada()
+    await publicar(client, creada)
+    await publicar(client, actividad_modificada(creada, "CANCELADA"))
+    # A resume from before the cancellation, delivered late by the bus.
+    await publicar(client, actividad_modificada(creada, "PROGRAMADA", hace=timedelta(minutes=10)))
+
+    [actividad] = await actividades(client, auth, token_operador)
+    assert actividad["estado"] == "CANCELADA"
+    reclamo = await cargar_reclamo(client, auth, token_ciudadano, reclamo_en(A_200_METROS))
+    assert reclamo["actividad"] is None
+
+
+async def test_una_reentrega_de_la_modificacion_no_hace_nada(
+    client: AsyncClient, auth, token_operador
+) -> None:
+    creada = actividad_creada()
+    await publicar(client, creada)
+    cancelacion = actividad_modificada(creada, "CANCELADA")
+    await publicar(client, cancelacion)
+    await publicar(client, cancelacion)
+
+    [actividad] = await actividades(client, auth, token_operador)
+    assert actividad["estado"] == "CANCELADA"
+
+
+async def test_sin_actividad_id_se_encuentra_por_correlation_id(
+    client: AsyncClient, auth, token_operador
+) -> None:
+    creada = actividad_creada()
+    await publicar(client, creada)
+    modificada = actividad_modificada(creada, "CANCELADA")
+    del modificada["data"]["actividadId"]
+    await publicar(client, modificada)
+
+    [actividad] = await actividades(client, auth, token_operador)
+    assert actividad["estado"] == "CANCELADA"
+
+
+async def test_la_modificacion_de_una_actividad_que_no_guardamos_se_ignora(
+    client: AsyncClient, auth, token_operador
+) -> None:
+    # Below the mass cut: never stored, so its cancellation has nothing to cancel.
+    chica = actividad_creada(capacidad=200)
+    await publicar(client, chica)
+    await publicar(client, actividad_modificada(chica, "CANCELADA"))
+
+    assert await actividades(client, auth, token_operador, incluir_finalizadas=True) == []
+
+
+async def test_una_actividad_nueva_aparece_como_programada(
+    client: AsyncClient, auth, token_operador
+) -> None:
+    await publicar(client, actividad_creada())
+
+    [actividad] = await actividades(client, auth, token_operador)
+    assert actividad["estado"] == "PROGRAMADA"
 
 
 # --- What Analytics receives (ADR 0016) ---------------------------------------
