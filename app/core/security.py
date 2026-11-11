@@ -195,9 +195,11 @@ def _emisor_para(token: str, cfg: Settings) -> EmisorJWT:
     on the signature anyway.
     """
     try:
+        # Sonar S5659 flags this decode; it is reviewed and safe for the reason
+        # in the docstring: decode_token verifies the signature right after.
         sin_verificar = jwt.decode(
             token,
-            options={
+            options={  # NOSONAR
                 "verify_signature": False,
                 "verify_exp": False,
                 "verify_aud": False,
