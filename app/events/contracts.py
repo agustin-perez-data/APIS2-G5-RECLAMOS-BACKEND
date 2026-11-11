@@ -239,6 +239,24 @@ class IncidenteCreado(BaseModel):
                 completado[campo] = ubicacion[campo]
         return completado
 
+    @field_validator("latitud", "longitud", mode="before")
+    @classmethod
+    def _coordenada_legible(cls, valor: Any) -> Any:
+        """An unreadable coordinate counts as a missing one.
+
+        Emergencies started encrypting the position: the coordinates arrive as
+        base64 ciphertext ("RUxDAQ..."), which we cannot decrypt. Failing the
+        whole event over that rejected it with a 500 and lost the escalation;
+        without coordinates the handler still escalates by `barrio`, which
+        travels in clear.
+        """
+        if isinstance(valor, str):
+            try:
+                return float(valor)
+            except ValueError:
+                return None
+        return valor
+
 
 class IncidenteActualizado(BaseModel):
     """`com.citypass.emergencias.EmergenciaActualizada` (ADR 0017).
@@ -487,6 +505,33 @@ class ActividadCreada(BaseModel):
             if lat is not None and lng is not None:
                 return {**valores, "ubicacion": {"lat": lat, "lng": lng}}
         return valores
+
+
+class ActividadModificada(BaseModel):
+    """`com.citypass.espacios.ActividadModificada` (squad 3, ADR 0018).
+
+    Public Spaces changing an activity's state: CANCELADA today, SUSPENDIDA
+    when the weather stops it, and back to PROGRAMADA when it resumes. It is
+    matched to the stored activity by `actividadId`, or by the `correlationId`
+    (`act-<id>`) it shares with `ActividadCreada`.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    actividad_id: str | None = Field(
+        default=None, validation_alias=AliasChoices("actividad_id", "actividadId")
+    )
+    estado_nuevo: str = Field(
+        validation_alias=AliasChoices("estado_nuevo", "estadoNuevo", "estado")
+    )
+    estado_anterior: str | None = Field(
+        default=None, validation_alias=AliasChoices("estado_anterior", "estadoAnterior")
+    )
+    motivo: str | None = None
+    # Epoch millis. Orders the changes: the bus may deliver an older one late.
+    modificada_en: datetime | None = Field(
+        default=None, validation_alias=AliasChoices("modificada_en", "modificadaEn")
+    )
 
 
 class MensajeFallido(BaseModel):

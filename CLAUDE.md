@@ -262,6 +262,7 @@ supere al anterior:
 | 0012 | Un cierre que viene de otro módulo saltea la máquina de estados, pero sólo la validación |
 | 0013 | Un reclamo se relaciona con una actividad masiva en su alta, por distancia y horario |
 | 0016 | `ReclamoCreado` lleva una sola causa para Analítica (gana la climática) y la actividad aparte |
+| 0018 | Una actividad cancelada o suspendida deja de relacionar reclamos nuevos; los ya relacionados quedan |
 
 ---
 
