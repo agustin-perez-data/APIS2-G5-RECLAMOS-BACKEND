@@ -12,7 +12,9 @@ def test_el_hash_no_contiene_la_password_en_claro() -> None:
 def test_dos_hashes_de_la_misma_password_son_distintos() -> None:
     # Random salt: two neighbours with the same password must not be spottable
     # by comparing rows.
-    assert hash_password("misma-clave") != hash_password("misma-clave")
+    primero = hash_password("misma-clave")
+    segundo = hash_password("misma-clave")
+    assert primero != segundo
 
 
 def test_verifica_la_password_correcta() -> None:
