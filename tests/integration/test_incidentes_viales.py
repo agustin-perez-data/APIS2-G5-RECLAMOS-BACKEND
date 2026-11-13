@@ -13,10 +13,18 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.domain.enums import CategoriaReclamo, CausaTipo
+from app.domain.enums import (
+    USUARIO_SISTEMA,
+    CanalOrigen,
+    CategoriaReclamo,
+    CausaTipo,
+    OrigenClasificacion,
+    PrioridadReclamo,
+)
 from app.events import topics
 from app.events.handlers import manejar_incidente_actualizado, manejar_incidente_creado
 from app.schemas.reclamo import ReclamoCrear
+from app.services.emergencia_via_service import TITULO_RECLAMO_VIAL
 from app.services.reclamo_service import ReclamoService
 
 OBELISCO = (-34.6037, -58.3816)
@@ -49,6 +57,19 @@ def evento_cerrado(estado: str = "RESUELTA", **overrides) -> dict:
     data = {"emergenciaId": "EMG-1", "estadoNuevo": estado, "estadoAnterior": "EN_CURSO"}
     data.update(overrides)
     return _evento(topics.EMERGENCIAS_INCIDENTE_ACTUALIZADO, data)
+
+
+def evento_a5(**overrides) -> dict:
+    data = {
+        "causasRelacionadas": ["VIA"],
+        "descripcionProblema": "Quedo un pozo profundo en la calzada luego del accidente.",
+        "barrio": "San Nicolas",
+        "latitud": OBELISCO[0],
+        "longitud": OBELISCO[1],
+        "correlationId": "corr-emergencia-a5",
+    }
+    data.update(overrides)
+    return evento_cerrado(**data)
 
 
 def reclamo_en(lat: float, lon: float) -> ReclamoCrear:
@@ -149,6 +170,98 @@ async def test_un_estado_que_no_es_final_lo_deja_abierto(
 
     _, causa_tipo = causa_publicada(publisher)
     assert causa_tipo is CausaTipo.INCIDENTE_VIAL
+
+
+# --- A5 and incident closure on the same update ------------------------------
+@pytest.mark.asyncio
+async def test_a5_crea_reclamo_sin_incidente_interno_previo(
+    service: ReclamoService, publisher, session
+) -> None:
+    await manejar_incidente_actualizado(evento_a5(), service)
+
+    session.expunge_all()
+    reclamo = await service.repo.obtener_por_evento_origen("emergencia:EMG-1")
+    assert reclamo is not None
+    assert reclamo.ciudadano_id == USUARIO_SISTEMA
+    assert reclamo.titulo == TITULO_RECLAMO_VIAL
+    assert reclamo.descripcion == "Quedo un pozo profundo en la calzada luego del accidente."
+    assert reclamo.barrio == "San Nicolas"
+    assert (reclamo.latitud, reclamo.longitud) == OBELISCO
+    assert reclamo.canal is CanalOrigen.EVENTO
+    assert reclamo.origen_clasificacion is OrigenClasificacion.MODELO
+    assert reclamo.prioridad in {PrioridadReclamo.ALTA, PrioridadReclamo.CRITICA}
+    assert reclamo.incidente_id is None
+    assert reclamo.correlation_id == "corr-emergencia-a5"
+    assert publisher.topics == [topics.RECLAMO_CREADO, topics.RECLAMO_CLASIFICADO]
+    publicado = publisher.eventos_de(topics.RECLAMO_CREADO)[0]
+    assert publicado.data.reclamo_id == reclamo.id
+    assert publicado.data.prioridad is reclamo.prioridad
+
+
+@pytest.mark.asyncio
+async def test_a5_cierra_primero_el_incidente_y_luego_crea_el_reclamo(
+    service: ReclamoService, publisher, session
+) -> None:
+    await manejar_incidente_creado(evento_creado(), service)
+    await manejar_incidente_actualizado(evento_a5(), service)
+
+    session.expunge_all()
+    incidente = await service.incidentes.repo.obtener_por_origen("EMG-1")
+    reclamo = await service.repo.obtener_por_evento_origen("emergencia:EMG-1")
+    assert incidente is not None and incidente.fin is not None
+    assert reclamo is not None
+    assert reclamo.incidente_id is None
+    assert len(publisher.eventos_de(topics.RECLAMO_CREADO)) == 1
+
+
+@pytest.mark.asyncio
+async def test_a5_reentregado_con_otro_event_id_no_duplica(
+    service: ReclamoService, publisher, session
+) -> None:
+    primero = evento_a5()
+    segundo = evento_a5()
+    assert primero["event_id"] != segundo["event_id"]
+
+    await manejar_incidente_actualizado(primero, service)
+    await manejar_incidente_actualizado(segundo, service)
+
+    session.expunge_all()
+    assert await service.repo.obtener_por_evento_origen("emergencia:EMG-1") is not None
+    assert len(publisher.eventos_de(topics.RECLAMO_CREADO)) == 1
+    assert len(publisher.eventos_de(topics.RECLAMO_CLASIFICADO)) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "evento",
+    [
+        evento_cerrado("CERRADA", causasRelacionadas=["VIA"]),
+        evento_cerrado("RESUELTA", causasRelacionadas=["RESIDUOS"]),
+    ],
+)
+async def test_estado_final_o_causa_sin_a5_solo_cierra_incidente(
+    service: ReclamoService, publisher, evento: dict
+) -> None:
+    await manejar_incidente_creado(evento_creado(), service)
+
+    await manejar_incidente_actualizado(evento, service)
+
+    incidente = await service.incidentes.repo.obtener_por_origen("EMG-1")
+    assert incidente is not None and incidente.fin is not None
+    assert await service.repo.obtener_por_evento_origen("emergencia:EMG-1") is None
+    assert publisher.eventos_de(topics.RECLAMO_CREADO) == []
+
+
+@pytest.mark.asyncio
+async def test_a5_sin_coordenadas_no_crea_pero_cierra_incidente(service: ReclamoService) -> None:
+    await manejar_incidente_creado(evento_creado(), service)
+
+    with pytest.raises(ValueError, match="latitud y longitud validas"):
+        await manejar_incidente_actualizado(evento_a5(latitud=None, longitud=None), service)
+
+    incidente = await service.incidentes.repo.obtener_por_origen("EMG-1")
+    assert incidente is not None and incidente.fin is not None
+    assert await service.repo.obtener_por_evento_origen("emergencia:EMG-1") is None
 
 
 @pytest.mark.asyncio

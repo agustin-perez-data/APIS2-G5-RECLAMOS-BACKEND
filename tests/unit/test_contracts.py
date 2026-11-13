@@ -17,6 +17,7 @@ from app.domain.enums import (
 from app.events.contracts import (
     ContenedorDesbordado,
     EventEnvelope,
+    IncidenteActualizado,
     IncidenteCreado,
     IntervencionFinalizada,
     ReclamoCreado,
@@ -158,6 +159,142 @@ def test_las_coordenadas_cifradas_cuentan_como_ausentes() -> None:
     assert incidente.barrio == "SAN NICOLAS"
     assert incidente.latitud is None
     assert incidente.longitud is None
+
+
+# --- EmergenciaActualizada: Avro payload used by A5 and incident closure ----
+def test_la_actualizacion_lee_los_campos_de_a5_y_el_sobre() -> None:
+    event_id = uuid.uuid4()
+    evento = parse_envelope(
+        {
+            "event_id": str(event_id),
+            "event_type": "emergencias.incidente.actualizado",
+            "correlation_id": "corr-emergencia-1",
+            "data": {
+                "emergenciaId": "EMG-1",
+                "estadoAnterior": "EN_CURSO",
+                "estadoNuevo": "RESUELTA",
+                "updatedAt": "2026-11-13T12:00:00Z",
+                "resueltoAt": "2026-11-13T11:59:00Z",
+                "correlationId": "corr-emergencia-1",
+                "causasRelacionadas": ["VIA", "RESIDUOS"],
+                "descripcionProblema": "La calzada quedo danada despues de la emergencia.",
+                "barrio": "Palermo",
+                "latitud": -34.589,
+                "longitud": -58.431,
+                "ubicacion": {
+                    "barrio": "Palermo",
+                    "latitud": LATITUD_CIFRADA,
+                    "longitud": LONGITUD_CIFRADA,
+                },
+            },
+        },
+        IncidenteActualizado,
+    )
+
+    assert evento.event_id == event_id
+    assert evento.correlation_id == "corr-emergencia-1"
+    assert evento.data.incidente_id == "EMG-1"
+    assert evento.data.estado_nuevo == "RESUELTA"
+    assert evento.data.resuelto_at == datetime(2026, 11, 13, 11, 59, tzinfo=UTC)
+    assert evento.data.correlation_id == "corr-emergencia-1"
+    assert evento.data.causas_relacionadas == ["VIA", "RESIDUOS"]
+    assert evento.data.descripcion_problema == "La calzada quedo danada despues de la emergencia."
+    assert evento.data.barrio == "Palermo"
+    assert evento.data.latitud == pytest.approx(-34.589)
+    assert evento.data.longitud == pytest.approx(-58.431)
+    assert evento.data.ubicacion is not None
+    assert evento.data.ubicacion.latitud == LATITUD_CIFRADA
+
+
+def test_la_actualizacion_usa_ubicacion_anidada_si_no_hay_coordenadas_en_raiz() -> None:
+    actualizacion = IncidenteActualizado.model_validate(
+        {
+            "emergenciaId": "EMG-2",
+            "ubicacion": {
+                "barrio": "Caballito",
+                "latitud": "-34.620",
+                "longitud": "-58.440",
+            },
+        }
+    )
+
+    assert actualizacion.barrio == "Caballito"
+    assert actualizacion.latitud == pytest.approx(-34.620)
+    assert actualizacion.longitud == pytest.approx(-58.440)
+
+
+def test_la_actualizacion_prioriza_las_coordenadas_de_la_raiz() -> None:
+    actualizacion = IncidenteActualizado.model_validate(
+        {
+            "emergenciaId": "EMG-3",
+            "barrio": "Palermo",
+            "latitud": -34.589,
+            "longitud": -58.431,
+            "ubicacion": {"barrio": "Belgrano", "latitud": "-34.555", "longitud": "-58.459"},
+        }
+    )
+
+    assert actualizacion.barrio == "Palermo"
+    assert actualizacion.latitud == pytest.approx(-34.589)
+    assert actualizacion.longitud == pytest.approx(-58.431)
+
+
+def test_actualizacion_con_ubicacion_cifrada_no_inventa_coordenadas() -> None:
+    actualizacion = IncidenteActualizado.model_validate(
+        {
+            "emergenciaId": "EMG-4",
+            "barrio": "San Nicolas",
+            "ubicacion": {"latitud": LATITUD_CIFRADA, "longitud": LONGITUD_CIFRADA},
+        }
+    )
+
+    assert actualizacion.barrio == "San Nicolas"
+    assert actualizacion.latitud is None
+    assert actualizacion.longitud is None
+
+
+def test_actualizacion_antigua_o_con_campos_nulos_sigue_siendo_legible() -> None:
+    antigua = IncidenteActualizado.model_validate(
+        {"emergenciaId": "EMG-5", "estadoNuevo": "RESUELTA"}
+    )
+    con_nulos = IncidenteActualizado.model_validate(
+        {
+            "emergenciaId": "EMG-6",
+            "estadoNuevo": "RESUELTA",
+            "causasRelacionadas": None,
+            "descripcionProblema": None,
+            "barrio": None,
+            "latitud": None,
+            "longitud": None,
+            "ubicacion": None,
+        }
+    )
+
+    for actualizacion in (antigua, con_nulos):
+        assert actualizacion.causas_relacionadas == []
+        assert actualizacion.descripcion_problema is None
+        assert actualizacion.latitud is None
+        assert actualizacion.longitud is None
+
+
+@pytest.mark.parametrize(
+    ("latitud", "longitud"),
+    [(91, -58.431), (-34.589, -181), ("NaN", -58.431), ("no-es-numero", -58.431)],
+)
+def test_actualizacion_marca_coordenadas_invalidas_como_ausentes(latitud, longitud) -> None:
+    actualizacion = IncidenteActualizado.model_validate(
+        {"emergenciaId": "EMG-7", "latitud": latitud, "longitud": longitud}
+    )
+
+    if latitud in (91, "NaN", "no-es-numero"):
+        assert actualizacion.latitud is None
+    if longitud == -181:
+        assert actualizacion.longitud is None
+
+
+def test_actualizacion_no_acepta_causas_con_formato_incorrecto() -> None:
+    with pytest.raises(ValidationError):
+        IncidenteActualizado.model_validate({"emergenciaId": "EMG-8", "causasRelacionadas": "VIA"})
 
 
 @pytest.mark.parametrize(

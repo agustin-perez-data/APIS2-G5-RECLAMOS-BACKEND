@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from math import isfinite
 from typing import Any, Generic, TypeVar
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -258,6 +259,16 @@ class IncidenteCreado(BaseModel):
         return valor
 
 
+class UbicacionIncidenteActualizado(BaseModel):
+    """Location in Emergencies' Avro payload; its coordinates may be encrypted."""
+
+    model_config = ConfigDict(extra="allow")
+
+    barrio: str | None = None
+    latitud: str | None = None
+    longitud: str | None = None
+
+
 class IncidenteActualizado(BaseModel):
     """`com.citypass.emergencias.EmergenciaActualizada` (ADR 0017).
 
@@ -281,6 +292,61 @@ class IncidenteActualizado(BaseModel):
     resuelto_at: datetime | None = Field(
         default=None, validation_alias=AliasChoices("resuelto_at", "resueltoAt")
     )
+    # The gateway payload also carries these A5 fields. Older closing events
+    # may omit them, so they cannot become requirements for incident closure.
+    correlation_id: str | None = Field(
+        default=None, validation_alias=AliasChoices("correlation_id", "correlationId")
+    )
+    causas_relacionadas: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("causas_relacionadas", "causasRelacionadas"),
+    )
+    descripcion_problema: str | None = Field(
+        default=None, validation_alias=AliasChoices("descripcion_problema", "descripcionProblema")
+    )
+    barrio: str | None = None
+    latitud: float | None = None
+    longitud: float | None = None
+    ubicacion: UbicacionIncidenteActualizado | None = None
+
+    @field_validator("causas_relacionadas", mode="before")
+    @classmethod
+    def _causas_nulas(cls, valor: Any) -> Any:
+        # Avro defaults to [], but simulated and older events may send null.
+        return [] if valor is None else valor
+
+    @staticmethod
+    def _coordenada_usable(valor: Any, limite: float) -> float | None:
+        if isinstance(valor, bool) or not isinstance(valor, int | float | str):
+            return None
+        try:
+            numero = float(valor)
+        except ValueError:
+            return None
+        return numero if isfinite(numero) and -limite <= numero <= limite else None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ubicacion_legible(cls, valores: Any) -> Any:
+        """Prefer clear root coordinates; use nested values only when readable.
+
+        The nested Avro fields are strings and can contain ciphertext. Unusable
+        coordinates become absent so a closing event still reaches its handler;
+        A5 will require a valid pair before filing a claim.
+        """
+        if not isinstance(valores, dict):
+            return valores
+        completado = dict(valores)
+        ubicacion = valores.get("ubicacion")
+        anidada = ubicacion if isinstance(ubicacion, dict) else {}
+        if completado.get("barrio") is None and anidada.get("barrio") is not None:
+            completado["barrio"] = anidada["barrio"]
+        for campo, limite in (("latitud", 90), ("longitud", 180)):
+            raiz = cls._coordenada_usable(completado.get(campo), limite)
+            completado[campo] = (
+                raiz if raiz is not None else cls._coordenada_usable(anidada.get(campo), limite)
+            )
+        return completado
 
 
 class CriticidadClimaticaAplicada(BaseModel):
