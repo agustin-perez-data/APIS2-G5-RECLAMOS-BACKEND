@@ -8,9 +8,11 @@ import pytest
 from httpx import AsyncClient
 
 from app.core.config import settings
-from app.domain.enums import CategoriaReclamo, PrioridadReclamo
+from app.domain.enums import USUARIO_SISTEMA, CanalOrigen, CategoriaReclamo, PrioridadReclamo
+from app.events import topics
 from app.repositories.reclamo_repository import FiltroReclamos
 from app.schemas.reclamo import ReclamoCrear
+from app.services.emergencia_via_service import TITULO_RECLAMO_VIAL
 from app.services.reclamo_service import ReclamoService
 from tests.conftest import CIUDADANO_ID
 
@@ -246,3 +248,46 @@ async def test_una_emergencia_con_coordenadas_cifradas_escala_por_barrio(
     caballito, _ = await service.listar(FiltroReclamos(barrio="Caballito"))
     assert san_nicolas[0].prioridad is PrioridadReclamo.CRITICA
     assert caballito[0].prioridad is PrioridadReclamo.BAJA
+
+
+async def test_emergencia_actualizada_crea_a5_por_webhook_sin_incidente_previo(
+    client: AsyncClient, service: ReclamoService, publisher
+) -> None:
+    emergencia_id = "07181734-9403-4a3a-9a3e-c347e359e18b"
+    evento = sobre(
+        "com.citypass.emergencias.EmergenciaActualizada",
+        {
+            "emergenciaId": emergencia_id,
+            "estadoAnterior": "EN_CURSO",
+            "estadoNuevo": "RESUELTA",
+            "updatedAt": "2026-11-13T12:00:00Z",
+            "resueltoAt": "2026-11-13T12:00:00Z",
+            "causasRelacionadas": ["VIA"],
+            "descripcionProblema": "Quedo un bache profundo en la calzada tras el choque.",
+            "barrio": "SAN NICOLAS",
+            "latitud": -34.604,
+            "longitud": -58.382,
+            "ubicacion": {
+                "barrio": "SAN NICOLAS",
+                "latitud": LATITUD_CIFRADA,
+                "longitud": LONGITUD_CIFRADA,
+            },
+            "correlationId": "corr-a5-webhook",
+        },
+    )
+
+    respuesta = await client.post(URL, headers={"X-Webhook-Token": TOKEN}, json=evento)
+
+    assert respuesta.status_code == 204, respuesta.text
+    reclamo = await service.repo.obtener_por_evento_origen(f"emergencia:{emergencia_id}")
+    assert reclamo is not None
+    assert reclamo.ciudadano_id == USUARIO_SISTEMA
+    assert reclamo.titulo == TITULO_RECLAMO_VIAL
+    assert reclamo.canal is CanalOrigen.EVENTO
+    assert reclamo.latitud == -34.604
+    assert reclamo.longitud == -58.382
+    assert reclamo.prioridad in {PrioridadReclamo.ALTA, PrioridadReclamo.CRITICA}
+    assert reclamo.correlation_id == "corr-a5-webhook"
+    creado = publisher.eventos_de(topics.RECLAMO_CREADO)
+    assert len(creado) == 1
+    assert creado[0].data.reclamo_id == reclamo.id

@@ -1,7 +1,6 @@
 """A5: file a road claim from a resolved Emergencies event.
 
-The event handler will call this use case in a later stage. Keeping it separate
-lets the existing incident-closing reaction continue independently.
+The event handler calls this use case after closing any registered incident.
 """
 
 from __future__ import annotations

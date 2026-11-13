@@ -30,6 +30,7 @@ from app.events.contracts import (
     parse_envelope,
 )
 from app.schemas.reclamo import ReclamoCrear
+from app.services.emergencia_via_service import crear_reclamo_por_emergencia_vial
 from app.services.reclamo_service import ReclamoService
 
 log = get_logger(__name__)
@@ -212,11 +213,11 @@ async def manejar_intervencion_finalizada(raw: dict[str, Any], service: ReclamoS
 
 
 async def manejar_incidente_actualizado(raw: dict[str, Any], service: ReclamoService) -> None:
-    """`emergencias.incidente.actualizado` -> close the incident when it ends.
+    """Close the internal incident and, when A5 applies, file a road claim.
 
-    Only the closing matters to us: while an incident is open, a claim filed
-    next to it is caused by it (ADR 0017), and that has to stop when the street
-    is cleared. The intermediate states are Emergencies' business.
+    The incident closes first, so the new claim cannot be related by proximity
+    to a road incident that has just ended. A5 also runs when we never stored
+    that incident (for example, when its creation lacked usable coordinates).
 
     A state we do not recognise as final leaves the incident open on purpose --
     closing on a word we are unsure about would silently stop relating claims
@@ -231,15 +232,23 @@ async def manejar_incidente_actualizado(raw: dict[str, Any], service: ReclamoSer
         estado_nuevo=datos.estado_nuevo,
         cerrado_at=datos.resuelto_at,
     )
-    if incidente is None:
-        return
+    if incidente is not None:
+        log.info(
+            "handler.incidente_actualizado.cerrado",
+            id=str(incidente.id),
+            incidente_id=datos.incidente_id,
+            estado=datos.estado_nuevo,
+        )
 
-    log.info(
-        "handler.incidente_actualizado.cerrado",
-        id=str(incidente.id),
-        incidente_id=datos.incidente_id,
-        estado=datos.estado_nuevo,
+    reclamo = await crear_reclamo_por_emergencia_vial(
+        datos, service, correlation_id=evento.correlation_id
     )
+    if reclamo is not None:
+        log.info(
+            "handler.incidente_actualizado.reclamo_creado",
+            reclamo_id=str(reclamo.id),
+            emergencia_id=datos.incidente_id,
+        )
 
 
 async def manejar_actividad_creada(raw: dict[str, Any], service: ReclamoService) -> None:
