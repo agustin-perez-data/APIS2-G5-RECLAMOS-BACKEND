@@ -106,15 +106,35 @@ async def test_cada_cambio_de_estado_es_una_notificacion(
         )
 
     notificaciones = await bandeja(session)
-    # Newest first.
-    assert [n.estado_nuevo for n in notificaciones] == [
-        EstadoReclamo.RESUELTO,
-        EstadoReclamo.EN_PROCESO,
-        EstadoReclamo.ASIGNADO,
-    ]
-    resuelto = notificaciones[0]
+    # One per change, no duplicates. The order is pinned by the next test, with
+    # dates that differ on purpose: three changes in a row can land inside the
+    # same clock tick -- 15 ms on Windows -- and then the three `created_at`
+    # are identical and the `id` that breaks the tie is a random uuid4.
+    assert sorted(n.estado_nuevo for n in notificaciones) == sorted(
+        [EstadoReclamo.ASIGNADO, EstadoReclamo.EN_PROCESO, EstadoReclamo.RESUELTO]
+    )
+    [resuelto] = [n for n in notificaciones if n.estado_nuevo is EstadoReclamo.RESUELTO]
     assert resuelto.titulo == "Tu reclamo fue resuelto"
     assert "Resolución: Se cambio la lampara" in resuelto.mensaje
+
+
+async def test_la_bandeja_devuelve_primero_lo_mas_nuevo(
+    service: ReclamoService, session: AsyncSession, usuario_operador
+) -> None:
+    cambios = (EstadoReclamo.ASIGNADO, EstadoReclamo.EN_PROCESO, EstadoReclamo.RESUELTO)
+    reclamo = await service.crear(datos_reclamo(), CIUDADANO_ID)
+    for estado in cambios:
+        await service.cambiar_estado(reclamo.id, CambioEstado(estado=estado), usuario_operador)
+
+    # Separated by a minute each, which is what the inbox actually promises:
+    # an order by date. Comparing dates that tie would be testing the uuid.
+    ahora = datetime.now(UTC)
+    por_estado = {n.estado_nuevo: n for n in await bandeja(session)}
+    for minutos, estado in enumerate(cambios):
+        por_estado[estado].created_at = ahora - timedelta(minutes=len(cambios) - minutos)
+    await session.commit()
+
+    assert [n.estado_nuevo for n in await bandeja(session)] == list(reversed(cambios))
 
 
 async def test_no_se_notifica_al_duenio_de_su_propio_cambio(
