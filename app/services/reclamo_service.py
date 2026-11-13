@@ -238,6 +238,7 @@ class ReclamoService:
         *,
         correlation_id: str | None = None,
         evento_origen_id: str | None = None,
+        prioridad_minima: PrioridadReclamo | None = None,
     ) -> Reclamo:
         """File a claim, classifying it when the citizen did not."""
         sugerencia = None
@@ -257,6 +258,11 @@ class ReclamoService:
             # of landing straight in the wrong department's inbox.
             if confianza < self.cfg.confianza_minima_clasificador:
                 estado = EstadoReclamo.EN_REVISION
+
+        # A specific intake may impose a policy floor after the model has
+        # classified normally. With no floor, all existing flows are unchanged.
+        if prioridad_minima is not None:
+            prioridad = escalar(prioridad, prioridad_minima)
 
         # Squad 3 (ADR 0013): a claim filed near a mass activity while it lasts
         # is related to it. Without coordinates there is no way to tell.
@@ -860,6 +866,7 @@ class ReclamoService:
         evento_id: str,
         correlation_id: str | None = None,
         ciudadano_id: str = USUARIO_SISTEMA,
+        prioridad_minima: PrioridadReclamo | None = None,
     ) -> Reclamo | None:
         """Automatic intake triggered by an external event.
 
@@ -878,6 +885,7 @@ class ReclamoService:
             ciudadano_id,
             correlation_id=correlation_id,
             evento_origen_id=evento_id,
+            prioridad_minima=prioridad_minima,
         )
 
     async def escalar_por_incidente(
