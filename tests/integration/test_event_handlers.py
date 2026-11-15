@@ -410,6 +410,19 @@ async def test_una_intervencion_sobre_un_reclamo_inexistente_no_falla(
     await manejar_intervencion_finalizada(evento_intervencion(uuid.uuid4()), service)
 
 
+async def test_una_intervencion_con_un_id_que_no_es_nuestro_no_toca_nada(
+    service: ReclamoService, publisher: InMemoryEventPublisher
+) -> None:
+    # Public Spaces' test runs send ids like "reclamo-grua-4". None of our
+    # claims can have one, so it is the same as an unknown claim: ignored.
+    reclamo_id = await _reclamo_en(service, "Palermo")
+
+    await manejar_intervencion_finalizada(evento_intervencion("reclamo-grua-4"), service)
+
+    assert (await service.obtener(reclamo_id)).estado is EstadoReclamo.RECIBIDO
+    assert publisher.eventos_de(topics.RECLAMO_RESUELTO) == []
+
+
 async def test_el_consumer_ignora_topics_sin_handler(
     publisher: InMemoryEventPublisher,
 ) -> None:

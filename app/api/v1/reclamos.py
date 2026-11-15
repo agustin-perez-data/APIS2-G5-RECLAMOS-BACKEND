@@ -13,6 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Request, status
 
 from app.api.deps import AdminDep, ServiceDep, StaffDep, UsuarioDep
+from app.api.visibilidad import comentarios_visibles, historial_visible, reclamo_visible
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.domain.enums import CategoriaReclamo, EstadoReclamo, PrioridadReclamo
@@ -22,6 +23,7 @@ from app.schemas.reclamo import (
     AdhesionOut,
     BusquedaSimilares,
     CambioEstado,
+    CierreAutomaticoOut,
     ClasificacionPedido,
     ComentarioCrear,
     ComentarioOut,
@@ -176,6 +178,23 @@ async def correcciones_del_modelo(
 
 
 @router.post(
+    "/mantenimiento/cierre-automatico",
+    summary="Cerrar los reclamos resueltos cuyo plazo de respuesta vencio",
+    description=(
+        "Pasa a `CERRADO` los reclamos que llevan mas de `DIAS_CIERRE_AUTOMATICO` "
+        "dias en `RESUELTO` sin respuesta del vecino (US-17). Cada cierre deja su "
+        "entrada en el historial, avisa al vecino y publica el cambio de estado. "
+        "Es idempotente: una segunda llamada no encuentra nada que cerrar. "
+        "Requiere rol `admin`; lo ejecuta una vez por dia el workflow "
+        "`cierre-automatico.yml`."
+    ),
+)
+async def cierre_automatico(_usuario: AdminDep, service: ServiceDep) -> CierreAutomaticoOut:
+    cerrados = await service.cerrar_resueltos_vencidos()
+    return CierreAutomaticoOut(cerrados=len(cerrados), reclamo_ids=[r.id for r in cerrados])
+
+
+@router.post(
     "/clasificacion",
     response_model=SugerenciaClasificacion,
     summary="Sugerir categoria y prioridad sin persistir nada",
@@ -247,10 +266,11 @@ async def bandeja_reclamos(
 
 @router.get("/{reclamo_id}", response_model=ReclamoDetalle, summary="Detalle de un reclamo")
 async def obtener_reclamo(
-    reclamo_id: uuid.UUID, _usuario: UsuarioDep, service: ServiceDep
+    reclamo_id: uuid.UUID, usuario: UsuarioDep, service: ServiceDep
 ) -> ReclamoDetalle:
     reclamo = await service.obtener(reclamo_id)
-    return ReclamoDetalle.model_validate(reclamo)
+    # Any authenticated user may read a claim, but not its internal side.
+    return reclamo_visible(ReclamoDetalle.model_validate(reclamo), usuario)
 
 
 @router.patch(
@@ -310,11 +330,11 @@ async def comentar(
     summary="Comentarios de un reclamo",
 )
 async def listar_comentarios(
-    reclamo_id: uuid.UUID, _usuario: UsuarioDep, service: ServiceDep
+    reclamo_id: uuid.UUID, usuario: UsuarioDep, service: ServiceDep
 ) -> list[ComentarioOut]:
     await service.obtener(reclamo_id)  # raises 404 when it does not exist
     comentarios = await service.repo.comentarios_de(reclamo_id)
-    return [ComentarioOut.model_validate(c) for c in comentarios]
+    return comentarios_visibles([ComentarioOut.model_validate(c) for c in comentarios], usuario)
 
 
 @router.get(
@@ -323,11 +343,13 @@ async def listar_comentarios(
     summary="Trazabilidad de estados del reclamo",
 )
 async def listar_historial(
-    reclamo_id: uuid.UUID, _usuario: UsuarioDep, service: ServiceDep
+    reclamo_id: uuid.UUID, usuario: UsuarioDep, service: ServiceDep
 ) -> list[HistorialOut]:
-    await service.obtener(reclamo_id)
+    reclamo = await service.obtener(reclamo_id)
     historial = await service.repo.historial_de(reclamo_id)
-    return [HistorialOut.model_validate(h) for h in historial]
+    return historial_visible(
+        [HistorialOut.model_validate(h) for h in historial], usuario, reclamo.ciudadano_id
+    )
 
 
 @router.get(

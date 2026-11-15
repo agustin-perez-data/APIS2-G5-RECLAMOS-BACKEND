@@ -28,6 +28,7 @@ flowchart TB
         cicd["CI y CD"]
         keepR["keepalive-render<br/>cada 10 min"]
         keepS["keepalive-supabase<br/>cada 12 h"]
+        cierre["cierre-automatico<br/>una vez por día"]
     end
 
     subgraph externos["Infraestructura de otros grupos"]
@@ -50,6 +51,8 @@ flowchart TB
     cicd -->|"API de Render: dispara el deploy"| api
     keepR -->|"GET /health"| api
     keepS -->|"consulta mínima"| pg
+    cierre -->|"login de admin"| idp
+    cierre -->|"POST mantenimiento"| api
 ```
 
 ## Nodos
@@ -108,7 +111,7 @@ login de desarrollo activo contra un emisor RS256, o dos emisores que compartan
 | --- | --- | --- |
 | Bus | Gateway de CityPass+, por HTTPS | Redpanda (Kafka) |
 | Entrada de eventos | Webhook de la API | Proceso `worker` consumiendo de Kafka |
-| Cierre automático por vencimiento | No corre: lo ejecuta el `worker`, que no está desplegado | Corre en el `worker` |
+| Cierre automático por vencimiento | Workflow diario `cierre-automatico.yml`, que llama al endpoint de mantenimiento | Corre en el `worker` |
 | Base | Supabase | Contenedor `postgres:16-alpine` |
 | Identidad del personal | Login Federado, RS256 | Configurable; login de desarrollo disponible |
 
@@ -116,8 +119,9 @@ login de desarrollo activo contra un emisor RS256, o dos emisores que compartan
 
 - **No hay infraestructura como código**: lo que muestra este diagrama está
   configurado a mano en Render, Supabase y Vercel.
-- **El proceso `worker` no está desplegado**, así que el cierre automático de
-  reclamos resueltos no ocurre en producción.
+- **El proceso `worker` no está desplegado.** El cierre automático de reclamos
+  resueltos lo dispara un workflow diario en su lugar, con una cuenta de
+  administrador del Login Federado y no con una cuenta de servicio.
 - **La variable `ENVIRONMENT` de producción vale `dev`**, lo que relaja
   validaciones pensadas para producción.
 - **Punto único de falla**: una instancia de la API, sin réplica.

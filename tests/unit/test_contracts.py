@@ -327,3 +327,31 @@ def test_un_resultado_desconocido_sigue_fallando() -> None:
         IntervencionFinalizada.model_validate(
             {"reclamoId": str(uuid.uuid4()), "resultado": "EN_CURSO"}
         )
+
+
+@pytest.mark.parametrize("enviado", ["reclamo-grua-4", "reclamo-demo-1794588613701", "", None])
+def test_un_reclamo_id_que_no_es_uuid_cuenta_como_ajeno(enviado: str | None) -> None:
+    # Every claim id we hand out is a UUID: anything else is somebody else's
+    # test data, and failing validation sent it to the DLQ with a 500.
+    intervencion = IntervencionFinalizada.model_validate(
+        {"reclamoId": enviado, "resultado": "RESUELTO"}
+    )
+
+    assert intervencion.reclamo_id is None
+
+
+def test_un_reclamo_id_valido_se_sigue_leyendo() -> None:
+    reclamo_id = uuid.uuid4()
+
+    intervencion = IntervencionFinalizada.model_validate(
+        {"reclamoId": str(reclamo_id), "resultado": "RESUELTO"}
+    )
+
+    assert intervencion.reclamo_id == reclamo_id
+
+
+def test_una_intervencion_sin_reclamo_id_sigue_fallando() -> None:
+    # A missing field is a broken contract, not test data: the DLQ is where
+    # Public Spaces can find it.
+    with pytest.raises(ValidationError):
+        IntervencionFinalizada.model_validate({"resultado": "RESUELTO"})

@@ -234,10 +234,11 @@ cortada; la actividad, solo el dónde. La actividad no se pierde: viaja aparte e
 
 ## Deuda visible en esta vista
 
-- **El cierre automático por vencimiento no corre en producción.** La transición
-  `RESUELTO` a `CERRADO` a los 7 días (`dias_cierre_automatico`) la ejecuta
-  `app/worker.py`, que hoy solo se levanta en el entorno local (ver la
-  [vista física](vista-fisica.md)). En producción ese cierre es manual.
+- **El cierre automático por vencimiento corre una vez por día, no de forma
+  continua.** La transición `RESUELTO` a `CERRADO` a los 7 días
+  (`dias_cierre_automatico`) la dispara en producción un workflow programado
+  (ver la [vista física](vista-fisica.md)), así que un reclamo puede quedar
+  hasta un día de más en `RESUELTO`.
 
 - **`barrio` y `area_responsable` son texto libre**, sin catálogo. Es lo que
   obliga a cruzar por coordenadas con los demás módulos y deja sin cruce a un

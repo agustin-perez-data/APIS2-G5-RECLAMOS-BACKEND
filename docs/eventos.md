@@ -557,6 +557,14 @@ que Analitica pueda medir cuanto tardo la intervencion.
 **Idempotencia:** si el reclamo ya esta en ese estado, o ya esta cerrado o
 rechazado, el evento no hace nada. Una reentrega del gateway es inofensiva.
 
+**Reclamos que no son nuestros:** un `reclamoId` que no existe se ignora. Uno
+que ni siquiera es un UUID (por ejemplo `"reclamo-grua-4"`, de las pruebas de
+Espacios) también se ignora y responde 204: todos los ids que damos son UUID,
+así que no puede ser un reclamo nuestro. Para que el reclamo se cierre, el
+evento tiene que traer el `reclamoId` tal como lo publicamos. Si falta el campo,
+el evento sí falla y queda en la cola de fallidos del bus, porque eso es un
+contrato roto.
+
 
 El barrio se compara **sin distinguir mayúsculas**, así que da igual si mandan
 `Palermo`, `PALERMO` o `palermo`.
@@ -568,6 +576,13 @@ Públicos al crear una actividad. Al recibirlo **no cambia ningún reclamo**:
 guardamos la actividad y, desde ahí, cada reclamo nuevo que se carga cerca
 mientras dura queda relacionado con ella. El porqué está en el
 [ADR 0013](adr/0013-reclamos-relacionados-con-actividades-masivas.md).
+
+**Suscripción al tópico `.v3`.** Desde el 14/11 Espacios publica la versión 3
+del contrato (schemaId 91) en `com.citypass.espacios.ActividadCreada.v3`, y los
+tópicos de la v1 y la v2 ya no reciben eventos. La suscripción del webhook
+tiene que apuntar a ese tópico. El `eventType` que llega sigue siendo
+`com.citypass.espacios.ActividadCreada`, así que el código no cambia. El campo
+nuevo `organizadorTipo` (`CIUDAD` o `CIUDADANO`) no lo usamos.
 
 ```json
 {
