@@ -1,0 +1,100 @@
+name: Alertas
+
+# Nobody watches the Actions tab. When one of the workflows that keep
+# production running fails, this opens an issue, and GitHub notifies whoever
+# watches the repository. When the workflow passes again, the issue is closed.
+#
+#   CD Backend                     a deploy failed, or was rolled back
+#   Cierre automatico de reclamos  the daily auto-close did not run
+#   Configuracion de Render        Render drifted away from render.yaml
+#   Keep Render awake              the API does not answer /health
+#   Keep Supabase awake            the database does not answer
+#
+# One issue per workflow, not one per failure: a service that is down fails
+# the keepalive every ten minutes.
+#
+# `workflow_run` only fires from the default branch.
+
+on:
+  workflow_run:
+    workflows:
+      - CD Backend
+      - Cierre automatico de reclamos
+      - Configuracion de Render
+      - Keep Render awake
+      - Keep Supabase awake
+    types: [completed]
+
+permissions:
+  issues: write
+
+# Two runs of the same workflow finishing together must not open two issues.
+concurrency:
+  group: alertas-${{ github.event.workflow_run.name }}
+  cancel-in-progress: false
+
+jobs:
+  avisar:
+    name: Abrir o cerrar la alerta
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Skipped and cancelled runs say nothing about production.
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' ||
+      github.event.workflow_run.conclusion == 'timed_out' ||
+      github.event.workflow_run.conclusion == 'success'
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      # Passed through the environment, never pasted into the script.
+      WORKFLOW: ${{ github.event.workflow_run.name }}
+      RESULTADO: ${{ github.event.workflow_run.conclusion }}
+      CORRIDA: ${{ github.event.workflow_run.html_url }}
+      COMMIT: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Abrir, actualizar o cerrar
+        run: |
+          set -euo pipefail
+          TITULO="Alerta: falla el workflow ${WORKFLOW}"
+          ABIERTA=$(gh issue list --state open --label alerta --limit 100 \
+            --json number,title,updatedAt \
+            | jq -r --arg t "$TITULO" '[.[] | select(.title == $t)][0] // empty | @json')
+          NUMERO=""
+          if [ -n "$ABIERTA" ]; then
+            NUMERO=$(echo "$ABIERTA" | jq -r '.number')
+          fi
+
+          if [ "$RESULTADO" = "success" ]; then
+            if [ -n "$NUMERO" ]; then
+              gh issue close "$NUMERO" --comment "El workflow volvio a pasar: ${CORRIDA}"
+              echo "Alerta #${NUMERO} cerrada"
+            else
+              echo "Sin alerta abierta: nada que hacer"
+            fi
+            exit 0
+          fi
+
+          if [ -z "$NUMERO" ]; then
+            gh label create alerta --color B60205 \
+              --description "Abierta sola por el workflow Alertas" 2> /dev/null || true
+            {
+              echo "El workflow **${WORKFLOW}** termino en \`${RESULTADO}\`."
+              echo
+              echo "- Corrida: ${CORRIDA}"
+              echo "- Commit: \`${COMMIT}\`"
+              echo
+              echo "Esta alerta se cierra sola cuando el workflow vuelve a pasar."
+              echo "Que revisar en cada caso esta en \`docs/arquitectura/vista-desarrollo.md\`."
+            } > /tmp/cuerpo.md
+            gh issue create --title "$TITULO" --label alerta --body-file /tmp/cuerpo.md
+            exit 0
+          fi
+
+          # Already open. A new comment at most every six hours, so an outage
+          # does not bury the issue under one comment per failed run.
+          ULTIMA=$(echo "$ABIERTA" | jq -r '.updatedAt')
+          if [ "$(date -u -d "$ULTIMA" +%s)" -lt "$(date -u -d '6 hours ago' +%s)" ]; then
+            gh issue comment "$NUMERO" --body "Sigue fallando (\`${RESULTADO}\`): ${CORRIDA}"
+          else
+            echo "Alerta #${NUMERO} ya avisada hace menos de seis horas"
+          fi
