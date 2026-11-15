@@ -102,7 +102,11 @@ def test_los_pliegues_reparten_cada_clase_en_todos() -> None:
 def test_los_pliegues_son_deterministicos() -> None:
     etiquetas = ["A", "B", "A", "C", "B", "A", "C", "B", "C"]
 
-    assert pliegues_estratificados(etiquetas, 3) == pliegues_estratificados(etiquetas, 3)
+    primera = pliegues_estratificados(etiquetas, 3)
+    segunda = pliegues_estratificados(list(etiquetas), 3)
+
+    assert primera == segunda
+    assert primera == [[0, 1, 3], [2, 4, 6], [5, 7, 8]]
 
 
 def test_menos_de_dos_pliegues_es_un_error() -> None:

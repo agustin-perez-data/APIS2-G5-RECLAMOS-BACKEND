@@ -189,4 +189,5 @@ def test_la_configuracion_por_defecto_es_la_que_eligio_la_evaluacion() -> None:
     assert isinstance(clasificador._modelo, ComplementNaiveBayes)
     assert clasificador._modelo.alpha == 1.0
     assert clasificador._modelo.temperatura == 0.4
-    assert clasificador._con_raices and clasificador._con_bigramas
+    assert clasificador._con_raices
+    assert clasificador._con_bigramas

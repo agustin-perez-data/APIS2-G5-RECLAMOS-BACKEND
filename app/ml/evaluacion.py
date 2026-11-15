@@ -18,6 +18,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+SIN_PREDICCIONES = "No hay predicciones para evaluar"
+
 # (text, label)
 Ejemplo = tuple[str, str]
 # text -> (predicted label, confidence in [0, 1])
@@ -122,7 +124,7 @@ def evaluar(predicciones: Sequence[Prediccion]) -> Reporte:
     model that ignores a rare category cannot hide behind the frequent ones.
     """
     if not predicciones:
-        raise ValueError("No hay predicciones para evaluar")
+        raise ValueError(SIN_PREDICCIONES)
 
     matriz: Counter[tuple[str, str]] = Counter((p.real, p.predicha) for p in predicciones)
     clases = sorted({p.real for p in predicciones})
@@ -203,7 +205,7 @@ def curva_riesgo_cobertura(
     """
     total = len(predicciones)
     if total == 0:
-        raise ValueError("No hay predicciones para evaluar")
+        raise ValueError(SIN_PREDICCIONES)
 
     puntos: list[PuntoUmbral] = []
     for umbral in umbrales:
@@ -241,7 +243,7 @@ def calibracion(
     only means what it says if the confidence is calibrated.
     """
     if not predicciones:
-        raise ValueError("No hay predicciones para evaluar")
+        raise ValueError(SIN_PREDICCIONES)
 
     grupos: list[list[Prediccion]] = [[] for _ in range(tramos)]
     for p in predicciones:

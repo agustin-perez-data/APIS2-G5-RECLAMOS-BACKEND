@@ -159,7 +159,6 @@ async def estadisticas(_usuario: AdminDep, service: ServiceDep) -> Estadisticas:
 
 @router.get(
     "/clasificador/correcciones",
-    response_model=list[CorreccionDelModelo],
     summary="Reclamos donde un operador corrigio la categoria del modelo",
     description=(
         "Material para ampliar el corpus del clasificador: los casos que el "
@@ -170,7 +169,7 @@ async def estadisticas(_usuario: AdminDep, service: ServiceDep) -> Estadisticas:
 async def correcciones_del_modelo(
     _usuario: AdminDep,
     service: ServiceDep,
-    limite: int = Query(default=200, ge=1, le=1000),
+    limite: Annotated[int, Query(ge=1, le=1000)] = 200,
 ) -> list[CorreccionDelModelo]:
     reclamos = await service.correcciones_del_modelo(limite)
     return [CorreccionDelModelo.model_validate(reclamo) for reclamo in reclamos]
