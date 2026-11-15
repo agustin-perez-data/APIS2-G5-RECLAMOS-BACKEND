@@ -577,6 +577,13 @@ guardamos la actividad y, desde ahí, cada reclamo nuevo que se carga cerca
 mientras dura queda relacionado con ella. El porqué está en el
 [ADR 0013](adr/0013-reclamos-relacionados-con-actividades-masivas.md).
 
+**Suscripción al tópico `.v3`.** Desde el 14/11 Espacios publica la versión 3
+del contrato (schemaId 91) en `com.citypass.espacios.ActividadCreada.v3`, y los
+tópicos de la v1 y la v2 ya no reciben eventos. La suscripción del webhook
+tiene que apuntar a ese tópico. El `eventType` que llega sigue siendo
+`com.citypass.espacios.ActividadCreada`, así que el código no cambia. El campo
+nuevo `organizadorTipo` (`CIUDAD` o `CIUDADANO`) no lo usamos.
+
 ```json
 {
   "correlationId": "act-3f1c2a9e-0000-4000-8000-000000000001",
