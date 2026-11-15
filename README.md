@@ -192,6 +192,7 @@ que no dependen del bus ([ADR 0008](docs/adr/0008-notificaciones-internas.md)).
 | `POST` | `/auth/dev/login` | público | Login de desarrollo. Solo con `AUTH_DEV_LOGIN_ENABLED=true`. |
 | `GET` | `/auth/dev/usuarios` | público | Usuarios de prueba disponibles, sin contraseñas. |
 | `GET` | `/health`, `/health/ready` | público | Liveness y readiness. |
+| `GET` | `/metrics` | admin | Métricas operativas en formato Prometheus (ADR 0022). |
 
 Los errores siguen **RFC 7807**:
 

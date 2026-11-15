@@ -142,3 +142,4 @@ logs salen en JSON. `GET /health` informa el valor en uso.
 - [ADR 0002](../adr/0002-persistencia-supabase.md): Supabase y el pooler.
 - [ADR 0009](../adr/0009-integracion-por-el-gateway.md): integración por el gateway.
 - [ADR 0021](../adr/0021-infraestructura-como-codigo.md): la configuración de Render en el repositorio.
+- [ADR 0022](../adr/0022-despliegue-condicionado-y-observabilidad.md): deploy condicionado al CI, rollback, alertas y métricas.

@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_publisher
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.core.metrics import EVENTOS_RECIBIDOS
 from app.core.rate_limit import limiter
 from app.db.session import get_session
 from app.events import topics
@@ -102,12 +103,19 @@ async def recibir_evento(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     if traducido is None:
+        # No topic label: the type comes from outside and is not a closed set.
+        EVENTOS_RECIBIDOS.labels("otro", "ignorado").inc()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     topic, interno = traducido
     # A failure here returns 500: the dispatcher retries and, after three
     # attempts, leaves the event in its dead letter queue.
-    await HANDLERS[topic](interno, ReclamoService(session, publisher))
+    try:
+        await HANDLERS[topic](interno, ReclamoService(session, publisher))
+    except Exception:
+        EVENTOS_RECIBIDOS.labels(topic, "error").inc()
+        raise
 
+    EVENTOS_RECIBIDOS.labels(topic, "procesado").inc()
     log.info("webhook.evento_procesado", topic=topic, event_id=interno["event_id"])
     return Response(status_code=status.HTTP_204_NO_CONTENT)
