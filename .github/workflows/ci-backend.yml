@@ -98,6 +98,12 @@ jobs:
       - uses: actions/checkout@v7
       - name: Build image
         run: docker build -t citypass-reclamos:${{ github.sha }} .
+      # Building is not enough: the image ships without pip, so a dependency
+      # that needed it at import time would only show up in the deploy.
+      - name: La imagen carga la aplicacion
+        run: >-
+          docker run --rm -e KAFKA_ENABLED=false citypass-reclamos:${{ github.sha }}
+          python -c "import app.main; print('rutas:', len(app.main.app.routes))"
       # Vulnerabilities in the base image and in the installed packages. The
       # critical and high ones that already have a fix break the build: those
       # are the ones a rebuild or a version bump solves. Unfixed ones would
