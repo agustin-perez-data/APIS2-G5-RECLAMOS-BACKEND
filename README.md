@@ -13,6 +13,7 @@ bus de la ciudad.
 | **Stack** | Python 3.12 · FastAPI · SQLAlchemy 2 async · Alembic · Kafka (Redpanda) · Supabase |
 | **Docs API** | `http://localhost:8000/docs` |
 | **Convenciones** | [`CLAUDE.md`](CLAUDE.md) |
+| **Arquitectura** | [`docs/arquitectura/`](docs/arquitectura/README.md): modelo C4 y vistas 4+1 |
 | **Decisiones** | [`docs/adr/`](docs/adr/) |
 | **Contratos de eventos** | [`docs/eventos.md`](docs/eventos.md) |
 
@@ -22,40 +23,44 @@ bus de la ciudad.
 
 ```mermaid
 flowchart LR
-    subgraph Cliente
-        APP[App / Web ciudadano]
-        BO[Backoffice municipal]
+    subgraph Clientes
+        APP["Aplicación web<br/>vecinos y personal"]
     end
 
     subgraph Reclamos["Módulo Reclamos (este repo)"]
-        API[FastAPI<br/>api/]
-        SVC[ReclamoService<br/>services/]
-        ML[Clasificador<br/>ml/]
-        REPO[Repositorio<br/>repositories/]
-        WRK[Worker<br/>worker.py]
+        API["FastAPI<br/>api/"]
+        SVC["Servicios<br/>services/"]
+        ML["Clasificador<br/>ml/"]
+        REPO["Repositorios<br/>repositories/"]
+        EVT["Eventos<br/>events/"]
     end
 
-    IDP[(Grupo 2<br/>Login Federado)]
-    DB[(Supabase<br/>PostgreSQL)]
-    BUS{{Kafka / Redpanda}}
+    IDP["Grupo 2<br/>Login Federado"]
+    DB[("Supabase<br/>PostgreSQL")]
+    GW{{"Gateway de eventos<br/>CityPass+"}}
 
-    APP -->|JWT| API
-    BO -->|JWT| API
-    IDP -.emite JWT.-> APP
-    API -.valida firma.-> IDP
+    APP -->|"JWT"| API
+    IDP -.->|"emite el JWT del personal"| APP
+    API -.->|"valida la firma (JWKS)"| IDP
 
     API --> SVC
     SVC --> ML
     SVC --> REPO
     REPO --> DB
-    SVC -->|publica| BUS
-    BUS -->|consume| WRK
-    WRK --> SVC
+    SVC --> EVT
+    EVT -->|"publica"| GW
+    GW -->|"webhook"| API
 ```
 
 **Reglas de capa** (detalle en `CLAUDE.md`): las dependencias apuntan hacia
-adentro, el servicio depende del puerto `EventPublisher` y no de Kafka, y el
-repositorio nunca commitea — la unidad de trabajo la maneja el servicio.
+adentro, el servicio depende del puerto `EventPublisher` y no del gateway ni de
+Kafka, y el repositorio nunca commitea — la unidad de trabajo la maneja el
+servicio.
+
+Este diagrama es el resumen. La documentación completa de arquitectura, con el
+modelo **C4** (contexto, contenedores y componentes) y las vistas **4+1**
+(lógica, de procesos, de desarrollo, física y escenarios), está en
+[`docs/arquitectura/`](docs/arquitectura/README.md).
 
 ---
 
