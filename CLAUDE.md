@@ -55,7 +55,7 @@ app/
 ├── domain/       Enums, máquina de estados, invariantes puras
 ├── events/       Contratos, producer, consumer, handlers
 ├── integrations/ Sistemas externos por HTTP (tickets en Jira)
-├── ml/           Clasificador (texto, Naive Bayes, corpus)
+├── ml/           Clasificador (texto, Naive Bayes, corpus, evaluación)
 ├── schemas/      DTOs Pydantic de entrada/salida
 ├── core/         Config, logging, seguridad, excepciones
 ├── main.py       App FastAPI
@@ -263,6 +263,7 @@ supere al anterior:
 | 0013 | Un reclamo se relaciona con una actividad masiva en su alta, por distancia y horario |
 | 0016 | `ReclamoCreado` lleva una sola causa para Analítica (gana la climática) y la actividad aparte |
 | 0018 | Una actividad cancelada o suspendida deja de relacionar reclamos nuevos; los ya relacionados quedan |
+| 0019 | El clasificador se elige por validación cruzada, se mide sobre conjuntos apartados y tiene piso de calidad en la suite; tocar el corpus obliga a correr `scripts/evaluar_clasificador.py` |
 
 ---
 

@@ -24,6 +24,7 @@ classDiagram
         +ObjetoAfectado objeto_afectado
         +OrigenClasificacion origen_clasificacion
         +float confianza_clasificacion
+        +str categoria_sugerida
         +CanalOrigen canal
         +str barrio
         +float latitud
@@ -208,7 +209,8 @@ stateDiagram-v2
 - **Estados finales:** `CERRADO` y `RECHAZADO` no aceptan más cambios.
 - **Estado inicial:** si el modelo clasifica con una confianza menor a
   `confianza_minima_clasificador`, el reclamo nace en `EN_REVISION` para que lo
-  revise una persona en vez de caer en la bandeja equivocada (ADR 0005).
+  revise una persona en vez de caer en la bandeja equivocada (ADR 0005). El
+  umbral sale de la curva de riesgo y cobertura del modelo (ADR 0019).
 - **Cada transición** escribe una fila de historial y un aviso al vecino en la
   misma transacción, y publica `ReclamoActualizado` después del commit.
 - **Cierre por intervención externa:** cuando otro módulo resuelve el reclamo en

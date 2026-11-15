@@ -50,7 +50,7 @@ incorporar ese inicio de sesión y el refresco del token, que dura 15 minutos.
 
 ## Notas sobre lo que no es un contenedor
 
-- **El clasificador no es un servicio aparte.** Es un Naive Bayes en Python puro
+- **El clasificador no es un servicio aparte.** Es un Complement Naive Bayes en Python puro
   que se entrena una vez por proceso, la primera vez que se lo pide, y vive
   dentro de la API (ADR 0005).
 - **No hay un consumidor de eventos desplegado.** En producción los eventos

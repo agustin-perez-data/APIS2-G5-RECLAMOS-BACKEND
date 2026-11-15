@@ -20,7 +20,7 @@ flowchart LR
         subgraph negocio["Negocio: app/services, app/domain, app/ml"]
             reclamoSvc["<b>ReclamoService</b><br/>[services/reclamo_service.py]<br/>Alta, estados, reclasificación,<br/>adhesiones, similares, métricas"]
             soporte["<b>Servicios de apoyo</b><br/>[Notificacion, Actividad, Incidente,<br/>Clima, Ciudadano, emergencia_via]"]
-            clasificador["<b>Clasificador</b><br/>[services/clasificador.py, app/ml]<br/>Naive Bayes, reglas de prioridad<br/>y similitud de textos"]
+            clasificador["<b>Clasificador</b><br/>[services/clasificador.py, app/ml]<br/>Complement Naive Bayes, reglas de<br/>prioridad y similitud de textos"]
             dominio["<b>Dominio</b><br/>[domain: enums, geo, barrios]<br/>Máquina de estados, vocabulario<br/>y cálculo geográfico"]
         end
 
