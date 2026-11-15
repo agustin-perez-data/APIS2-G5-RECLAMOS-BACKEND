@@ -557,6 +557,14 @@ que Analitica pueda medir cuanto tardo la intervencion.
 **Idempotencia:** si el reclamo ya esta en ese estado, o ya esta cerrado o
 rechazado, el evento no hace nada. Una reentrega del gateway es inofensiva.
 
+**Reclamos que no son nuestros:** un `reclamoId` que no existe se ignora. Uno
+que ni siquiera es un UUID (por ejemplo `"reclamo-grua-4"`, de las pruebas de
+Espacios) también se ignora y responde 204: todos los ids que damos son UUID,
+así que no puede ser un reclamo nuestro. Para que el reclamo se cierre, el
+evento tiene que traer el `reclamoId` tal como lo publicamos. Si falta el campo,
+el evento sí falla y queda en la cola de fallidos del bus, porque eso es un
+contrato roto.
+
 
 El barrio se compara **sin distinguir mayúsculas**, así que da igual si mandan
 `Palermo`, `PALERMO` o `palermo`.

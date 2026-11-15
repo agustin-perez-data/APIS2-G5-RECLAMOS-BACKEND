@@ -153,6 +153,29 @@ async def test_una_intervencion_finalizada_cierra_el_reclamo(
     assert detalle.json()["resolucion"]
 
 
+async def test_una_intervencion_con_un_id_que_no_es_nuestro_responde_204(
+    client: AsyncClient,
+) -> None:
+    """The payload Public Spaces published on 2026-11-12, left in our DLQ."""
+    respuesta = await client.post(
+        URL,
+        headers={"X-Webhook-Token": TOKEN},
+        json=sobre(
+            "com.citypass.espacios.IntervencionFinalizada",
+            {
+                "reclamoId": "reclamo-grua-4",
+                "resultado": "RESUELTO",
+                "idAuto": None,
+                "solicitadoAt": None,
+                "resueltoAt": 1794497444086,
+            },
+        ),
+    )
+
+    # A 500 makes the gateway retry three times and park it in the DLQ.
+    assert respuesta.status_code == 204, respuesta.text
+
+
 async def test_un_tipo_que_no_consumimos_se_acepta_y_se_ignora(client: AsyncClient) -> None:
     respuesta = await client.post(
         URL,

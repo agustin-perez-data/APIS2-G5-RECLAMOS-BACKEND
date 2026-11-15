@@ -469,8 +469,28 @@ class IntervencionFinalizada(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    reclamo_id: uuid.UUID = Field(validation_alias=AliasChoices("reclamo_id", "reclamoId"))
+    # Required, but None when the id cannot be one of ours (see below).
+    reclamo_id: uuid.UUID | None = Field(validation_alias=AliasChoices("reclamo_id", "reclamoId"))
     resultado: ResultadoIntervencion
+
+    @field_validator("reclamo_id", mode="before")
+    @classmethod
+    def _reclamo_ajeno(cls, valor: Any) -> Any:
+        """An id that is not a UUID cannot be one of our claims.
+
+        Every claim id we hand out is a UUID, so anything else is somebody
+        else's test data: Public Spaces' test runs publish ids such as
+        `"reclamo-grua-4"`, seen from 2026-11-12. Failing validation answered
+        500, and the gateway retried three times and parked each one in our
+        dead letter queue. It is the same as an unknown claim, which is already
+        ignored. A missing field still fails: that is a broken contract.
+        """
+        if isinstance(valor, uuid.UUID):
+            return valor
+        try:
+            return uuid.UUID(str(valor))
+        except ValueError:
+            return None
 
     @field_validator("resultado", mode="before")
     @classmethod
