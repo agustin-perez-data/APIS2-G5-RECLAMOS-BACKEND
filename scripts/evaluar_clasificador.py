@@ -48,6 +48,7 @@ from app.ml.evaluacion import (  # noqa: E402
     predecir_conjunto,
     validacion_cruzada,
 )
+from app.ml.naive_bayes import mas_probable  # noqa: E402
 from app.ml.text import tokenizar  # noqa: E402
 from app.services.clasificador import ClasificadorNaiveBayes  # noqa: E402
 
@@ -220,8 +221,7 @@ def predicciones_a(
         if not proba:
             predicciones.append(Prediccion(real, "OTROS", 0.0))
             continue
-        predicha = max(proba, key=proba.__getitem__)
-        predicciones.append(Prediccion(real, predicha, proba[predicha]))
+        predicciones.append(Prediccion(real, *mas_probable(proba)))
     return predicciones
 
 

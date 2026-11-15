@@ -13,6 +13,19 @@ import math
 from collections import Counter, defaultdict
 from collections.abc import Sequence
 
+# Two classes closer than this are tied. Their order would otherwise hang on
+# the last bit of a float, and `math.log` does not round that bit the same way
+# on every platform: the same claim could get a different category on a
+# laptop and on the server.
+TOLERANCIA_EMPATE = 1e-9
+
+
+def mas_probable(probabilidades: dict[str, float]) -> tuple[str, float]:
+    """The winning class; ties go to the first one in alphabetical order."""
+    tope = max(probabilidades.values())
+    clase = next(c for c in sorted(probabilidades) if tope - probabilidades[c] <= TOLERANCIA_EMPATE)
+    return clase, probabilidades[clase]
+
 
 class MultinomialNaiveBayes:
     """Bag-of-tokens text classifier with Laplace smoothing."""
@@ -90,9 +103,7 @@ class MultinomialNaiveBayes:
         return {clase: valor / total for clase, valor in exponenciales.items()}
 
     def predict(self, tokens: Sequence[str]) -> tuple[str, float]:
-        probabilidades = self.predict_proba(tokens)
-        clase = max(probabilidades, key=probabilidades.__getitem__)
-        return clase, probabilidades[clase]
+        return mas_probable(self.predict_proba(tokens))
 
     def tokens_decisivos(self, tokens: Sequence[str], clase: str, limite: int = 5) -> list[str]:
         """Tokens that pushed hardest towards `clase`.

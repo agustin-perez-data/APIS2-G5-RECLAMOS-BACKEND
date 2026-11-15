@@ -87,7 +87,7 @@ ampliación, medido sobre el conjunto independiente:
 
 | Ejemplos de entrenamiento | Exactitud | F1 macro |
 | --- | --- | --- |
-| 70 | 80,0 % | 0,795 |
+| 70 | 81,0 % | 0,804 |
 | 150 | 92,0 % | 0,918 |
 | 230 | 92,0 % | 0,919 |
 | 310 | 97,0 % | 0,970 |

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.domain.enums import CategoriaReclamo
-from app.ml.naive_bayes import ComplementNaiveBayes, MultinomialNaiveBayes
+from app.ml.naive_bayes import ComplementNaiveBayes, MultinomialNaiveBayes, mas_probable
 from app.ml.text import raiz, tokenizar
 from app.services.clasificador import ClasificadorNaiveBayes
 
@@ -46,6 +46,32 @@ def test_temperatura_baja_afila_y_alta_suaviza() -> None:
 def test_una_temperatura_no_positiva_es_un_error(temperatura: float) -> None:
     with pytest.raises(ValueError, match="positiva"):
         MultinomialNaiveBayes(temperatura=temperatura)
+
+
+# --- desempate ---------------------------------------------------------------
+
+
+def test_un_empate_por_ruido_numerico_se_resuelve_siempre_igual() -> None:
+    # 1e-14 apart: which one is "bigger" depends on the platform's libm.
+    assert mas_probable({"SEGURIDAD": 0.3 + 1e-14, "ALUMBRADO": 0.3, "BACHES": 0.1})[0] == (
+        "ALUMBRADO"
+    )
+    assert mas_probable({"SEGURIDAD": 0.3, "ALUMBRADO": 0.3 + 1e-14, "BACHES": 0.1})[0] == (
+        "ALUMBRADO"
+    )
+
+
+def test_una_diferencia_real_no_se_trata_como_empate() -> None:
+    assert mas_probable({"SEGURIDAD": 0.31, "ALUMBRADO": 0.30})[0] == "SEGURIDAD"
+
+
+def test_sin_ninguna_palabra_conocida_gana_la_primera_clase_y_con_confianza_baja() -> None:
+    modelo = ComplementNaiveBayes(alpha=1.0).fit(DOCUMENTOS)
+
+    clase, confianza = modelo.predict(["zzz"])
+
+    assert clase == "ALUMBRADO"
+    assert confianza == pytest.approx(1 / 3)
 
 
 # --- Complement Naive Bayes --------------------------------------------------
