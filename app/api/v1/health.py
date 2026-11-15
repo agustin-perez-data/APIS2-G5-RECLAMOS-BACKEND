@@ -1,4 +1,8 @@
-"""Health endpoints. Public on purpose: the orchestrator calls them, not a user."""
+"""Health and metrics endpoints.
+
+The health ones are public on purpose: the orchestrator calls them, not a user.
+The metrics one is not: it describes how the service is used.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +10,8 @@ from fastapi import APIRouter, Response, status
 from sqlalchemy import text
 
 from app import __version__
-from app.api.deps import SessionDep
+from app.api.deps import AdminDep, SessionDep
+from app.core import metrics
 from app.core.config import settings
 
 router = APIRouter(tags=["health"])
@@ -38,3 +43,16 @@ async def ready(session: SessionDep, response: Response) -> dict:
         "database": base,
         "kafka_enabled": settings.kafka_enabled,
     }
+
+
+@router.get(
+    "/metrics",
+    summary="Metricas operativas en formato Prometheus (admin)",
+    response_class=Response,
+    responses={200: {"content": {"text/plain": {}}}},
+)
+async def metricas(usuario: AdminDep) -> Response:
+    # Administrators only: request volumes per route and event counts say a lot
+    # about how the service is used. A scraper would need its own credential;
+    # there is none yet, so for now a person reads this.
+    return Response(content=metrics.exposicion(), media_type=metrics.TIPO_DE_CONTENIDO)

@@ -83,13 +83,14 @@ app/                 código de la aplicación (ver C4 nivel 3)
 alembic/versions/    13 migraciones, de 0001 a 0013
 tests/unit/          lógica pura: dominio, clasificador, contratos, seguridad
 tests/integration/   API y servicios contra una base real
-docs/adr/            20 decisiones de arquitectura
+docs/adr/            22 decisiones de arquitectura
 docs/arquitectura/   estas vistas
 docs/avro/           esquemas de los cinco eventos publicados
 docs/ml/             evaluación y ficha del clasificador
 docs/eventos.md      contrato de eventos, campo por campo
-scripts/             utilidades (tipos del gateway, evaluación del clasificador)
-.github/workflows/   CI, CD y tareas programadas
+scripts/             utilidades (tipos del gateway, evaluación del clasificador, configuración de Render)
+.github/workflows/   CI, CD, alertas y tareas programadas
+render.yaml          el servicio de Render y sus variables, como código
 ```
 
 ## Del commit a producción
@@ -110,13 +111,14 @@ flowchart LR
         lint --> sonar
     end
 
-    subgraph cd["CD Backend: en cada push a main"]
+    subgraph cd["CD Backend: cuando el CI de main termina en verde"]
         direction TB
-        build["Compila la imagen"]
         migrar["Migraciones contra Supabase<br/>alembic upgrade head"]
-        deploy["Deploy en Render<br/>y espera a que quede activo"]
-        smoke["Smoke test<br/>contra /health"]
-        build --> migrar --> deploy --> smoke
+        deploy["Deploy en Render<br/>del commit que pasó el CI"]
+        smoke["Smoke test<br/>contra /health/ready y /health"]
+        rollback["Rollback<br/>al deploy anterior"]
+        migrar --> deploy --> smoke
+        smoke -.->|"si falla"| rollback
     end
 
     prod(["Producción"])
@@ -125,7 +127,8 @@ flowchart LR
     pr -->|"dispara"| ci
     pr -->|"review y merge"| develop
     develop -->|"PR de release"| main
-    main -->|"dispara"| cd
+    main -->|"dispara"| ci
+    ci -->|"si pasa entero"| cd
     smoke --> prod
 ```
 
@@ -138,8 +141,14 @@ flowchart LR
 | SonarCloud | Bugs, vulnerabilidades y deuda sobre el reporte de cobertura | Informa en el PR |
 | Imagen Docker | Que el `Dockerfile` compila y que la imagen no trae vulnerabilidades críticas ni altas con arreglo disponible (Trivy) | El PR queda en rojo |
 | Secretos | Que ningún commit nuevo traiga una credencial (gitleaks) | El PR queda en rojo |
+| CI de `main` | Todo lo anterior, sobre el commit que entró a `main` | No hay deploy: el CD solo arranca si esa corrida terminó en verde |
 | Migraciones contra Supabase | Corren **antes** del deploy | El deploy no arranca: la base no queda adelantada respecto del código |
-| Smoke test | Que la versión nueva responde en `/health` | El pipeline queda en rojo aunque el deploy haya salido |
+| Deploy en Render | Que el commit exacto que pasó el CI queda activo | Render deja en vivo la versión anterior |
+| Smoke test | Que la versión nueva responde en `/health/ready` y que `/health` informa `production` | Rollback automático al deploy anterior; el pipeline queda en rojo |
+
+El rollback no deshace migraciones, así que una migración tiene que seguir
+siendo compatible con la versión anterior del código
+([ADR 0022](../adr/0022-despliegue-condicionado-y-observabilidad.md)).
 
 ### Tareas programadas
 
@@ -151,6 +160,23 @@ flowchart LR
 | `configuracion-render.yml` | Los lunes, y en cada cambio de `render.yaml` en `main` | Compara el servicio de Render con `render.yaml`; en un cambio, además aplica las variables públicas y redespliega ([ADR 0021](../adr/0021-infraestructura-como-codigo.md)) |
 
 Dependabot abre los pull requests de actualización de dependencias y de acciones.
+
+### Alertas y métricas
+
+`alertas.yml` abre un issue con la etiqueta `alerta` cuando falla uno de los
+workflows que sostienen producción, y lo cierra cuando vuelve a pasar.
+
+| Si falla | Qué significa | Qué revisar |
+| --- | --- | --- |
+| `CD Backend` | Un deploy no salió, o salió y se revirtió | El paso que falló en la corrida; si hubo rollback, producción quedó en la versión anterior |
+| `Cierre automatico de reclamos` | No se cerraron los reclamos vencidos | El login del administrador (secrets `IDP_ADMIN_USUARIO` e `IDP_ADMIN_PASSWORD`) y que el Login Federado responda |
+| `Configuracion de Render` | Render no coincide con `render.yaml` | Las diferencias que lista la corrida: alguien cambió el servicio a mano o falta declarar una variable |
+| `Keep Render awake` | La API no responde `/health` | El estado del servicio en Render |
+| `Keep Supabase awake` | La base no responde | El estado del proyecto en Supabase |
+
+`GET /metrics`, solo para administradores, expone en formato Prometheus los
+pedidos por ruta y status, su duración, y los eventos publicados y recibidos
+con su resultado. Viven en memoria y se reinician en cada deploy.
 
 ## Estrategia de pruebas
 

@@ -28,6 +28,9 @@ dependencies = [
     # for the API tests, so it adds nothing new to the environment.
     "httpx>=0.28",
     "slowapi>=0.1.9",
+    # Official Prometheus client, pure Python. Counters and histograms with
+    # labels, and the exposition format, are easy to get subtly wrong by hand.
+    "prometheus-client>=0.21",
 ]
 
 [project.optional-dependencies]
