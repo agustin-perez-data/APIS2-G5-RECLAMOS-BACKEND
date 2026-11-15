@@ -15,9 +15,15 @@ RUN apt-get update \
 
 COPY pyproject.toml README.md ./
 COPY app ./app
-# setuptools comes with the base image and is not a dependency of ours, so
-# nothing else would ever update it.
-RUN pip install --upgrade pip setuptools && pip install .
+# pip is needed to build the image and for nothing after that, so it is removed
+# once the application is installed, together with the copy Python bundles for
+# `ensurepip`. Less to attack in the running container, and it is what clears
+# CVE-2025-47273: pip ships an old setuptools inside itself (it says so in
+# `pip/_vendor/bom.cdx.json`), which no upgrade of pip or setuptools replaces.
+RUN pip install --upgrade pip \
+    && pip install . \
+    && python -m pip uninstall -y pip \
+    && rm -rf "$(python -c 'import ensurepip, os; print(os.path.dirname(ensurepip.__file__))')"
 
 COPY alembic.ini ./
 COPY alembic ./alembic
