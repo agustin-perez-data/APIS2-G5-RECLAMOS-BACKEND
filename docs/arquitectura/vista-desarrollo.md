@@ -136,7 +136,8 @@ flowchart LR
 | Lint + tests | Estilo, formato y la suite completa con un mínimo de 60 % de cobertura (`--cov-fail-under=60`) | El PR queda en rojo |
 | Alembic contra PostgreSQL | Que las migraciones suben y bajan enteras contra un PostgreSQL real, no contra SQLite | El PR queda en rojo |
 | SonarCloud | Bugs, vulnerabilidades y deuda sobre el reporte de cobertura | Informa en el PR |
-| Imagen Docker | Que el `Dockerfile` compila | El PR queda en rojo |
+| Imagen Docker | Que el `Dockerfile` compila y que la imagen no trae vulnerabilidades críticas con arreglo disponible (Trivy) | El PR queda en rojo |
+| Secretos | Que ningún commit nuevo traiga una credencial (gitleaks) | El PR queda en rojo |
 | Migraciones contra Supabase | Corren **antes** del deploy | El deploy no arranca: la base no queda adelantada respecto del código |
 | Smoke test | Que la versión nueva responde en `/health` | El pipeline queda en rojo aunque el deploy haya salido |
 
@@ -146,6 +147,7 @@ flowchart LR
 | --- | --- | --- |
 | `keepalive-render.yml` | Cada 10 minutos | Evita que el plan gratuito de Render duerma el servicio |
 | `keepalive-supabase.yml` | Cada 12 horas | Evita que Supabase pause el proyecto por inactividad |
+| `cierre-automatico.yml` | Una vez por día | Cierra los reclamos resueltos cuyo plazo de respuesta venció, llamando al endpoint de mantenimiento |
 
 Dependabot abre los pull requests de actualización de dependencias y de acciones.
 
@@ -194,7 +196,6 @@ handlers son los mismos.
 - **La mayoría de los tests de integración corre sobre SQLite** y producción es
   PostgreSQL. El job de Alembic y el test de concurrencia cubren parte de la
   diferencia, no toda.
-- **`railway.json` sigue en la raíz** aunque el deploy es a Render.
 
 ## Decisiones relacionadas
 

@@ -321,6 +321,13 @@ class Estadisticas(BaseModel):
     clasificador: DesempenoClasificador
 
 
+class CierreAutomaticoOut(BaseModel):
+    """Outcome of one run of the auto-close job (US-17)."""
+
+    cerrados: int = Field(description="Reclamos que pasaron de RESUELTO a CERRADO en esta corrida")
+    reclamo_ids: list[uuid.UUID]
+
+
 class CorreccionDelModelo(BaseModel):
     """A claim the model got wrong, as an operator fixed it: corpus material."""
 

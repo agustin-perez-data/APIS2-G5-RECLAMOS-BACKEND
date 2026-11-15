@@ -1292,8 +1292,11 @@ class ReclamoService:
     async def cerrar_resueltos_vencidos(self) -> list[Reclamo]:
         """Auto-close claims sitting in RESUELTO past the response window (US-17).
 
-        Runs periodically from the worker (see `app/worker.py`); a citizen who
-        never responds is not expected to keep a claim open forever.
+        A citizen who never responds is not expected to keep a claim open
+        forever. Two things trigger it, and both run this same code: the worker
+        loop where there is one (`app/worker.py`, local environment), and the
+        maintenance endpoint called by a scheduled workflow in production,
+        where only the API is deployed.
         """
         limite = datetime.now(UTC) - timedelta(days=self.cfg.dias_cierre_automatico)
         candidatos = await self.repo.resueltos_antes_de(limite)
