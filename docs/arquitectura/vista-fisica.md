@@ -95,6 +95,11 @@ La aplicación se niega a arrancar ante combinaciones inseguras: por ejemplo, el
 login de desarrollo activo contra un emisor RS256, o dos emisores que compartan
 `issuer` o `audience`.
 
+Producción corre con `ENVIRONMENT=production` desde el 15/11/2026. Con ese valor
+se suman dos controles de arranque: el login de desarrollo no puede estar
+activo y `JWT_CIUDADANOS_SECRET` no puede ser el valor de ejemplo. Además los
+logs salen en JSON. `GET /health` informa el valor en uso.
+
 ## Restricciones de la plataforma y cómo se mitigan
 
 | Restricción | Efecto | Mitigación |
@@ -122,8 +127,6 @@ login de desarrollo activo contra un emisor RS256, o dos emisores que compartan
 - **El proceso `worker` no está desplegado.** El cierre automático de reclamos
   resueltos lo dispara un workflow diario en su lugar, con una cuenta de
   administrador del Login Federado y no con una cuenta de servicio.
-- **La variable `ENVIRONMENT` de producción vale `dev`**, lo que relaja
-  validaciones pensadas para producción.
 - **Punto único de falla**: una instancia de la API, sin réplica.
 
 ## Decisiones relacionadas
