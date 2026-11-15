@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -16,6 +17,7 @@ from app.api.v1 import health
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
+from app.core.metrics import DURACION, PEDIDOS, plantilla_de_ruta
 from app.core.rate_limit import limiter
 from app.db.session import cerrar_engine
 from app.events.producer import crear_publisher
@@ -23,6 +25,10 @@ from app.events.producer import crear_publisher
 log = get_logger(__name__)
 
 CABECERA_CORRELACION = "X-Correlation-Id"
+
+# Anything else is counted under one label: the method is sent by the client,
+# and a metric label must not take arbitrary values.
+METODOS_HTTP = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"})
 
 
 @asynccontextmanager
@@ -103,6 +109,24 @@ async def correlacion_middleware(request: Request, call_next):
     respuesta = await call_next(request)
     respuesta.headers[CABECERA_CORRELACION] = correlation_id
     return respuesta
+
+
+@app.middleware("http")
+async def metricas_middleware(request: Request, call_next):
+    """Count and time every request, by method, route template and status."""
+    inicio = time.perf_counter()
+    estado = 500  # what the client gets when something below raises
+    try:
+        respuesta = await call_next(request)
+        estado = respuesta.status_code
+        return respuesta
+    finally:
+        # The template ("/api/v1/reclamos/{reclamo_id}") is the label, never
+        # the URL: one series per route, not one per claim.
+        ruta = plantilla_de_ruta(request.scope)
+        metodo = request.method if request.method in METODOS_HTTP else "OTRO"
+        PEDIDOS.labels(metodo, ruta, str(estado)).inc()
+        DURACION.labels(metodo, ruta).observe(time.perf_counter() - inicio)
 
 
 registrar_manejadores(app)
