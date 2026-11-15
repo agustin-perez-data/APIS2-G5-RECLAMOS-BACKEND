@@ -250,14 +250,20 @@ class ReclamoService:
 
         if categoria is None or prioridad is None:
             sugerencia = self.clasificador.clasificar(datos.titulo, datos.descripcion)
-            categoria = categoria or sugerencia.categoria
             prioridad = prioridad or sugerencia.prioridad
-            origen = OrigenClasificacion.MODELO
-            confianza = sugerencia.confianza
-            # When the model is unsure, the claim goes to human triage instead
-            # of landing straight in the wrong department's inbox.
-            if confianza < self.cfg.confianza_minima_clasificador:
-                estado = EstadoReclamo.EN_REVISION
+            # `origen_clasificacion` and the confidence describe the CATEGORY.
+            # A neighbour who chose it and only left the priority out is not a
+            # claim the model classified: its priority came from the urgency
+            # rule, and counting it as MODELO would spoil both the origin that
+            # Analytics reads and the model's accuracy in production.
+            if categoria is None:
+                categoria = sugerencia.categoria
+                origen = OrigenClasificacion.MODELO
+                confianza = sugerencia.confianza
+                # When the model is unsure, the claim goes to human triage
+                # instead of landing straight in the wrong department's inbox.
+                if confianza < self.cfg.confianza_minima_clasificador:
+                    estado = EstadoReclamo.EN_REVISION
 
         # A specific intake may impose a policy floor after the model has
         # classified normally. With no floor, all existing flows are unchanged.
@@ -285,6 +291,13 @@ class ReclamoService:
             objeto_afectado=datos.objeto_afectado,
             origen_clasificacion=origen,
             confianza_clasificacion=confianza,
+            categoria_sugerida=categoria.value if origen is OrigenClasificacion.MODELO else None,
+            confianza_sugerida=confianza,
+            modelo_clasificador=(
+                sugerencia.modelo
+                if sugerencia is not None and origen is OrigenClasificacion.MODELO
+                else None
+            ),
             canal=datos.canal,
             direccion=datos.direccion,
             barrio=datos.barrio,
@@ -459,6 +472,14 @@ class ReclamoService:
 
     async def estadisticas(self) -> dict:
         return await self.repo.estadisticas()
+
+    async def correcciones_del_modelo(self, limite: int = 200) -> list[Reclamo]:
+        """Claims where an operator overruled the model's category.
+
+        These are the most valuable examples to grow the corpus with: the ones
+        the model got wrong, labelled by the person who fixed them.
+        """
+        return await self.repo.correcciones_del_modelo(limite)
 
     # --- Case handling -------------------------------------------------------
     async def cambiar_estado(
