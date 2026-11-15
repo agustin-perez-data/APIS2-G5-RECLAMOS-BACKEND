@@ -24,7 +24,7 @@ flowchart TB
 
     subgraph dominio["Dominio"]
         domain["app/domain<br/>enums, geo, barrios"]
-        ml["app/ml<br/>naive_bayes, similitud, text, corpus"]
+        ml["app/ml<br/>naive_bayes, similitud, text,<br/>corpus, evaluacion"]
         contracts["app/events/contracts.py y topics.py<br/>sobre y payloads"]
     end
 
@@ -80,14 +80,15 @@ hay todavía un chequeo automático de imports entre capas.
 
 ```
 app/                 código de la aplicación (ver C4 nivel 3)
-alembic/versions/    12 migraciones, de 0001 a 0012
+alembic/versions/    13 migraciones, de 0001 a 0013
 tests/unit/          lógica pura: dominio, clasificador, contratos, seguridad
 tests/integration/   API y servicios contra una base real
-docs/adr/            18 decisiones de arquitectura
+docs/adr/            19 decisiones de arquitectura
 docs/arquitectura/   estas vistas
 docs/avro/           esquemas de los cinco eventos publicados
+docs/ml/             evaluación y ficha del clasificador
 docs/eventos.md      contrato de eventos, campo por campo
-scripts/             utilidades (registro de tipos en el gateway)
+scripts/             utilidades (tipos del gateway, evaluación del clasificador)
 .github/workflows/   CI, CD y tareas programadas
 ```
 
@@ -154,6 +155,7 @@ Dependabot abre los pull requests de actualización de dependencias y de accione
 | --- | --- | --- |
 | Unitarias | `tests/unit/` | Sin base ni red: dominio, clasificador, contratos, validación de JWT |
 | Integración | `tests/integration/` | La API completa con SQLite en memoria y el publisher en memoria |
+| Calidad del modelo | `tests/unit/test_calidad_clasificador.py` | Dos conjuntos de prueba apartados; falla si el clasificador baja de su piso (ADR 0019) |
 | Integración con PostgreSQL | `tests/integration/test_emergencia_via_postgres.py` y el job de Alembic | PostgreSQL real, para lo que SQLite no reproduce (concurrencia, tipos) |
 
 Los adaptadores en memoria del bus y de tickets son los que permiten que la suite

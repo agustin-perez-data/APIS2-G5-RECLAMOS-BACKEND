@@ -13,8 +13,11 @@ when the process starts.
 from __future__ import annotations
 
 from app.domain.enums import CategoriaReclamo
+from app.ml.corpus_ampliado import AMPLIACION
 
-CORPUS: list[tuple[str, CategoriaReclamo]] = [
+# The original Sprint 1 corpus, kept apart so the evaluation can still train on
+# it alone and show what the second batch added (ADR 0019).
+CORPUS_SEMILLA: list[tuple[str, CategoriaReclamo]] = [
     # --- ALUMBRADO -----------------------------------------------------------
     ("La luminaria de la esquina esta apagada hace dos semanas", CategoriaReclamo.ALUMBRADO),
     ("Foco quemado en el poste de luz frente a mi casa", CategoriaReclamo.ALUMBRADO),
@@ -102,6 +105,9 @@ CORPUS: list[tuple[str, CategoriaReclamo]] = [
     ("Problema con la carga de la tarjeta ciudadana", CategoriaReclamo.OTROS),
     ("Sugerencia para mejorar la aplicacion del municipio", CategoriaReclamo.OTROS),
 ]
+
+# What the model in production is trained on.
+CORPUS: list[tuple[str, CategoriaReclamo]] = CORPUS_SEMILLA + AMPLIACION
 
 
 # --- Urgency lexicon ---------------------------------------------------------

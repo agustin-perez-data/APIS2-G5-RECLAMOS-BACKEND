@@ -25,7 +25,10 @@ from app.schemas.reclamo import (
     ClasificacionPedido,
     ComentarioCrear,
     ComentarioOut,
+    ConfusionDelModelo,
     ConteoPorClave,
+    CorreccionDelModelo,
+    DesempenoClasificador,
     Estadisticas,
     HistorialOut,
     ReclamoBandeja,
@@ -142,7 +145,34 @@ async def estadisticas(_usuario: AdminDep, service: ServiceDep) -> Estadisticas:
         por_categoria=[ConteoPorClave(clave=k, cantidad=v) for k, v in datos["por_categoria"]],
         por_prioridad=[ConteoPorClave(clave=k, cantidad=v) for k, v in datos["por_prioridad"]],
         tiempo_resolucion_horas_promedio=datos["tiempo_resolucion_horas_promedio"],
+        clasificador=DesempenoClasificador(
+            clasificados_por_modelo=datos["clasificador"]["clasificados_por_modelo"],
+            corregidos_por_operador=datos["clasificador"]["corregidos_por_operador"],
+            tasa_de_correccion=datos["clasificador"]["tasa_de_correccion"],
+            correcciones=[
+                ConfusionDelModelo(sugerida=s, corregida=c, cantidad=n)
+                for s, c, n in datos["clasificador"]["correcciones"]
+            ],
+        ),
     )
+
+
+@router.get(
+    "/clasificador/correcciones",
+    summary="Reclamos donde un operador corrigio la categoria del modelo",
+    description=(
+        "Material para ampliar el corpus del clasificador: los casos que el "
+        "modelo clasifico mal, con la etiqueta que les puso quien los corrigio "
+        "(ADR 0019). Requiere rol `admin`. Los mas recientes primero."
+    ),
+)
+async def correcciones_del_modelo(
+    _usuario: AdminDep,
+    service: ServiceDep,
+    limite: Annotated[int, Query(ge=1, le=1000)] = 200,
+) -> list[CorreccionDelModelo]:
+    reclamos = await service.correcciones_del_modelo(limite)
+    return [CorreccionDelModelo.model_validate(reclamo) for reclamo in reclamos]
 
 
 @router.post(

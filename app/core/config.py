@@ -144,7 +144,10 @@ class Settings(BaseSettings):
     # priority (see `ReclamoService.adherir`).
     adhesiones_para_escalar: int = 10
     # Minimum classifier confidence to accept a suggestion without human triage.
-    confianza_minima_clasificador: float = 0.35
+    # Read off the risk/coverage curve: the lowest threshold that keeps wrongly
+    # routed, unreviewed claims under 5% of all claims (ADR 0019). It belongs
+    # to the current model and its temperature; retraining means re-reading it.
+    confianza_minima_clasificador: float = 0.65
     # Days a claim can sit in RESUELTO before the worker closes it on its own
     # (US-17: no response from the citizen).
     dias_cierre_automatico: int = 7

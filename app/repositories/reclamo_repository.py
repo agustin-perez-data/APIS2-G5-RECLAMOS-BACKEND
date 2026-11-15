@@ -12,11 +12,17 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import Select, and_, func, or_, select
+from sqlalchemy import Select, String, and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Adhesion, Comentario, HistorialEstado, Reclamo
-from app.domain.enums import ESTADOS_FINALES, CategoriaReclamo, EstadoReclamo, PrioridadReclamo
+from app.domain.enums import (
+    ESTADOS_FINALES,
+    CategoriaReclamo,
+    EstadoReclamo,
+    OrigenClasificacion,
+    PrioridadReclamo,
+)
 
 ORDENES_PERMITIDOS: dict[str, tuple[str, bool]] = {
     # public alias -> (column, descending)
@@ -342,4 +348,57 @@ class ReclamoRepository:
             "tiempo_resolucion_horas_promedio": (
                 round(sum(horas) / len(horas), 2) if horas else None
             ),
+            "clasificador": await self._desempeno_del_clasificador(),
         }
+
+    @staticmethod
+    def _corregido_por_operador():
+        """The model picked the category and an operator later changed it."""
+        return and_(
+            Reclamo.categoria_sugerida.is_not(None),
+            Reclamo.origen_clasificacion == OrigenClasificacion.OPERADOR,
+            cast(Reclamo.categoria, String) != Reclamo.categoria_sugerida,
+        )
+
+    async def _desempeno_del_clasificador(self) -> dict:
+        """How the classifier is doing on real claims (ADR 0019).
+
+        Only claims that kept the model's original suggestion count, that is,
+        the ones filed since migration 0013.
+        """
+        clasificados = (
+            await self.session.execute(
+                select(func.count())
+                .select_from(Reclamo)
+                .where(Reclamo.categoria_sugerida.is_not(None))
+            )
+        ).scalar_one()
+        corregidos = (
+            await self.session.execute(
+                select(func.count()).select_from(Reclamo).where(self._corregido_por_operador())
+            )
+        ).scalar_one()
+        confusiones = await self.session.execute(
+            select(Reclamo.categoria_sugerida, cast(Reclamo.categoria, String), func.count())
+            .where(self._corregido_por_operador())
+            .group_by(Reclamo.categoria_sugerida, Reclamo.categoria)
+            .order_by(func.count().desc(), Reclamo.categoria_sugerida)
+        )
+        return {
+            "clasificados_por_modelo": int(clasificados),
+            "corregidos_por_operador": int(corregidos),
+            "tasa_de_correccion": round(corregidos / clasificados, 4) if clasificados else None,
+            "correcciones": [
+                (str(sugerida), str(corregida), int(cantidad))
+                for sugerida, corregida, cantidad in confusiones.all()
+            ],
+        }
+
+    async def correcciones_del_modelo(self, limite: int) -> list[Reclamo]:
+        resultado = await self.session.execute(
+            select(Reclamo)
+            .where(self._corregido_por_operador())
+            .order_by(Reclamo.updated_at.desc(), Reclamo.id)
+            .limit(limite)
+        )
+        return list(resultado.scalars().unique().all())

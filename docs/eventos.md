@@ -326,7 +326,10 @@ contrato.
   `PLAZA_PARQUE` · `MOBILIARIO_URBANO` · `EDIFICIO_PUBLICO` · `OTRO`
   (opcional: puede venir en `null`)
 - **Canal:** `APP` · `WEB` · `TELEFONO` · `PRESENCIAL` · `EVENTO`
-- **Origen de clasificación:** `CIUDADANO` · `MODELO` · `OPERADOR`
+- **Origen de clasificación:** `CIUDADANO` · `MODELO` · `OPERADOR`. Dice quién
+  eligió la **categoría**. Si la eligió el vecino y solo faltaba la prioridad,
+  el origen es `CIUDADANO` aunque la prioridad la haya calculado la regla de
+  urgencia (ADR 0019).
 
 ---
 

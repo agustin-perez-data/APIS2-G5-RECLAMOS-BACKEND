@@ -284,6 +284,32 @@ class ConteoPorClave(BaseModel):
     cantidad: int
 
 
+class ConfusionDelModelo(BaseModel):
+    sugerida: str = Field(description="Categoria que propuso el modelo")
+    corregida: str = Field(description="Categoria que dejo el operador")
+    cantidad: int
+
+
+class DesempenoClasificador(BaseModel):
+    """How the classifier is doing on real claims (ADR 0019)."""
+
+    clasificados_por_modelo: int = Field(
+        description="Reclamos cuya categoria eligio el modelo (desde la migracion 0013)"
+    )
+    corregidos_por_operador: int = Field(
+        description="De esos, a cuantos un operador les cambio la categoria"
+    )
+    tasa_de_correccion: float | None = Field(
+        description=(
+            "corregidos / clasificados. Es una cota inferior del error real: un "
+            "reclamo mal clasificado que nadie reviso no figura como corregido"
+        )
+    )
+    correcciones: list[ConfusionDelModelo] = Field(
+        description="Que categoria propuso el modelo y cual quedo, de mas a menos frecuente"
+    )
+
+
 class Estadisticas(BaseModel):
     """Summary for our own dashboard and for Group 8 (Urban Analytics)."""
 
@@ -292,3 +318,19 @@ class Estadisticas(BaseModel):
     por_categoria: list[ConteoPorClave]
     por_prioridad: list[ConteoPorClave]
     tiempo_resolucion_horas_promedio: float | None
+    clasificador: DesempenoClasificador
+
+
+class CorreccionDelModelo(BaseModel):
+    """A claim the model got wrong, as an operator fixed it: corpus material."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    titulo: str
+    descripcion: str
+    categoria_sugerida: str
+    confianza_sugerida: float | None
+    modelo_clasificador: str | None
+    categoria: CategoriaReclamo = Field(description="La categoria corregida por el operador")
+    updated_at: datetime
