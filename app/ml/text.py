@@ -162,17 +162,42 @@ def normalizar(texto: str) -> str:
     return _ESPACIOS.sub(" ", _NO_ALFANUM.sub(" ", sin_tildes)).strip()
 
 
-def tokenizar(texto: str, *, con_bigramas: bool = True) -> list[str]:
+# Below this length stripping an ending destroys the word ("gas" -> "ga").
+LARGO_MINIMO_RAIZ = 4
+
+
+def raiz(palabra: str) -> str:
+    """Crude Spanish stemmer: plural, then gender/verb vowel.
+
+    postes -> post, poste -> post; apagada -> apagad, apagado -> apagad;
+    fugas -> fuga, fuga -> fuga (too short to strip further).
+    """
+    if len(palabra) > LARGO_MINIMO_RAIZ and palabra.endswith("es"):
+        palabra = palabra[:-2]
+    elif len(palabra) > LARGO_MINIMO_RAIZ and palabra.endswith("s"):
+        palabra = palabra[:-1]
+    if len(palabra) >= LARGO_MINIMO_RAIZ and palabra[-1] in "aoe":
+        palabra = palabra[:-1]
+    return palabra
+
+
+def tokenizar(texto: str, *, con_bigramas: bool = True, con_raices: bool = False) -> list[str]:
     """Unigrams (stopwords removed) plus bigrams.
 
     Bigrams matter: "fuga gas" or "cable caido" carry far more signal about
     category and priority than either word on its own.
+
+    `con_raices` stems every word first, so "apagada" and "apagado" count as
+    the same term. Off by default: the urgency lexicon is matched against the
+    plain words.
     """
     palabras = [
         palabra
         for palabra in normalizar(texto).split()
         if len(palabra) >= 3 and palabra not in STOPWORDS
     ]
+    if con_raices:
+        palabras = [raiz(palabra) for palabra in palabras]
     if not con_bigramas or len(palabras) < 2:
         return palabras
 
