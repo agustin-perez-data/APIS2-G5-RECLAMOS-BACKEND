@@ -82,6 +82,12 @@ Toda la configuración entra por variables de entorno y se valida al arrancar
 (`app/core/config.py`). Ningún secreto está en el repositorio; la lista con
 valores de ejemplo está en `.env.example`.
 
+La configuración de producción está declarada en `render.yaml`: el servicio
+(plan, región, health check) y cada variable, con su valor si es pública y solo
+con su nombre si es un secreto. Un workflow la compara con Render todas las
+semanas y aplica los cambios que llegan a `main`
+([ADR 0021](../adr/0021-infraestructura-como-codigo.md)).
+
 | Grupo | Variables | Qué controla |
 | --- | --- | --- |
 | Base | `DATABASE_URL` | Conexión al pooler de Supabase |
@@ -122,8 +128,10 @@ logs salen en JSON. `GET /health` informa el valor en uso.
 
 ## Deuda visible en esta vista
 
-- **No hay infraestructura como código**: lo que muestra este diagrama está
-  configurado a mano en Render, Supabase y Vercel.
+- **La infraestructura como código cubre solo Render**, y de Render solo las
+  variables se aplican solas: el plan, la región y el health check se verifican
+  contra `render.yaml` pero se cambian a mano. Supabase y Vercel siguen
+  configurados a mano.
 - **El proceso `worker` no está desplegado.** El cierre automático de reclamos
   resueltos lo dispara un workflow diario en su lugar, con una cuenta de
   administrador del Login Federado y no con una cuenta de servicio.
@@ -133,3 +141,4 @@ logs salen en JSON. `GET /health` informa el valor en uso.
 
 - [ADR 0002](../adr/0002-persistencia-supabase.md): Supabase y el pooler.
 - [ADR 0009](../adr/0009-integracion-por-el-gateway.md): integración por el gateway.
+- [ADR 0021](../adr/0021-infraestructura-como-codigo.md): la configuración de Render en el repositorio.

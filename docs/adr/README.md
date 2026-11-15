@@ -25,6 +25,7 @@ el contexto, las opciones que se evaluaron y por qué se descartaron.
 | [0018](0018-actividad-cancelada-o-suspendida.md) | Una actividad cancelada o suspendida deja de relacionar reclamos | Aceptada |
 | [0019](0019-evaluacion-del-clasificador.md) | El clasificador se evalúa, se elige y se vigila con datos | Aceptada |
 | [0020](0020-visibilidad-del-reclamo-por-tipo-de-usuario.md) | Qué ve cada tipo de usuario de un reclamo | Aceptada |
+| [0021](0021-infraestructura-como-codigo.md) | La configuración de Render vive en el repositorio | Aceptada |
 
 ## Cómo agregar uno
 
