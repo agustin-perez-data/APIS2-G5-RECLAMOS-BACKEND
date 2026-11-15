@@ -199,6 +199,14 @@ async def manejar_intervencion_finalizada(raw: dict[str, Any], service: ReclamoS
     """
     evento = parse_envelope(raw, IntervencionFinalizada)
     datos = evento.data
+    if datos.reclamo_id is None:
+        # Not an id we hand out: nothing of ours to close, like an unknown claim.
+        log.warning(
+            "handler.intervencion.reclamo_ajeno",
+            reclamo_id=str((raw.get("data") or {}).get("reclamoId"))[:64],
+            event_id=str(evento.event_id),
+        )
+        return
 
     reclamo = await service.finalizar_por_intervencion(datos.reclamo_id, datos.resultado)
     if reclamo is None:
