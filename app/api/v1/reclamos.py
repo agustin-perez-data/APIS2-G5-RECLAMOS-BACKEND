@@ -22,6 +22,7 @@ from app.schemas.reclamo import (
     AdhesionOut,
     BusquedaSimilares,
     CambioEstado,
+    CierreAutomaticoOut,
     ClasificacionPedido,
     ComentarioCrear,
     ComentarioOut,
@@ -173,6 +174,23 @@ async def correcciones_del_modelo(
 ) -> list[CorreccionDelModelo]:
     reclamos = await service.correcciones_del_modelo(limite)
     return [CorreccionDelModelo.model_validate(reclamo) for reclamo in reclamos]
+
+
+@router.post(
+    "/mantenimiento/cierre-automatico",
+    summary="Cerrar los reclamos resueltos cuyo plazo de respuesta vencio",
+    description=(
+        "Pasa a `CERRADO` los reclamos que llevan mas de `DIAS_CIERRE_AUTOMATICO` "
+        "dias en `RESUELTO` sin respuesta del vecino (US-17). Cada cierre deja su "
+        "entrada en el historial, avisa al vecino y publica el cambio de estado. "
+        "Es idempotente: una segunda llamada no encuentra nada que cerrar. "
+        "Requiere rol `admin`; lo ejecuta una vez por dia el workflow "
+        "`cierre-automatico.yml`."
+    ),
+)
+async def cierre_automatico(_usuario: AdminDep, service: ServiceDep) -> CierreAutomaticoOut:
+    cerrados = await service.cerrar_resueltos_vencidos()
+    return CierreAutomaticoOut(cerrados=len(cerrados), reclamo_ids=[r.id for r in cerrados])
 
 
 @router.post(

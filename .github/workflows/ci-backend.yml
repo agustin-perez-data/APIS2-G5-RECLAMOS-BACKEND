@@ -98,3 +98,45 @@ jobs:
       - uses: actions/checkout@v7
       - name: Build image
         run: docker build -t citypass-reclamos:${{ github.sha }} .
+      # Vulnerabilities in the base image and in the installed packages. Only
+      # the critical ones that already have a fix break the build: those are
+      # the ones a rebuild or a version bump solves. Unfixed ones would turn
+      # the build red with nothing anybody could do about it.
+      - name: Trivy (criticas con arreglo disponible)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: citypass-reclamos:${{ github.sha }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+      # The high ones are listed for whoever reads the run, without failing it.
+      - name: Trivy (altas, solo informe)
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: citypass-reclamos:${{ github.sha }}
+          severity: HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+          format: table
+
+  secretos:
+    name: Secretos (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The whole history: gitleaks reads the commits, not just the tree.
+          fetch-depth: 0
+      # A credential committed by mistake stays in the history of a public
+      # repository for good, so the check runs on every push and pull request.
+      # Reviewed false positives are listed in .gitleaksignore.
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
