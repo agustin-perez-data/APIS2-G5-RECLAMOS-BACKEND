@@ -1,0 +1,29 @@
+categoria	titulo	descripcion	etiqueta_en_produccion	origen_en_produccion
+TRANSITO	Auto estacionado sobre la ciclovia	Un auto quedo estacionado arriba de la bicisenda y obliga a los ciclistas a salir al carril de autos.	TRANSITO	MODELO
+BACHES	Problema en la vía pública reportado por Emergencias	Quedó un pozo profundo en la calzada después de un accidente de tránsito.	BACHES	MODELO
+TRANSITO	Auto estacionado sobre la ciclovia de Avenida Corrientes	Hay un auto arriba de la bicisenda a la altura del 3500 y los ciclistas tienen que salir al carril del medio. Esta asi desde ayer a la tarde.	TRANSITO	MODELO
+TRANSITO	RECLAMO PRUEBA MOVILIDAD	choque en estacion de bicicleta	TRANSITO	MODELO
+ARBOLADO	Arbol caido corta el paso en Palermo	Un arbol se cayo con la tormenta y bloquea el paso de autos y peatones hace dos dias.	ARBOLADO	MODELO
+ALUMBRADO	luminaria rota en la plaza	se rompio una lampara en la plaza	ESPACIOS_PUBLICOS	MODELO
+TRANSITO	Cartel de nombre de calle arrancado	Se arranco el cartel con el nombre de la calle. Los repartos y las ambulancias tienen problemas para orientarse.	TRANSITO	OPERADOR
+ALUMBRADO	Farol titilando toda la noche en la avenida	El farol del poste titila toda la noche. Molesta a los vecinos del frente y ademas debe estar consumiendo el doble de energia.	ALUMBRADO	MODELO
+ARBOLADO	Poda urgente por rama sobre linea electrica	Un arbol viejo tiene una rama grande apoyada sobre el cable de alta tension. Cada vez que hay viento amaga con caerse.	ARBOLADO	MODELO
+RESIDUOS	Basura acumulada hace 4 dias sin recoleccion	En toda la cuadra no pasa el camion de basura desde el lunes. Hay bolsas apiladas contra los arboles y los perros las rompen.	RESIDUOS	MODELO
+BACHES	Baches consecutivos en la mano derecha	Cinco baches seguidos sobre la mano derecha, algunos muy profundos. Los autos hacen zig zag y ya vi dos choques por esquivarlos.	BACHES	MODELO
+AGUA_CLOACAS	Cloaca desbordada en plena vereda	La tapa de la cloaca esta rota y desborda liquidos con muy mal olor. Los vecinos no podemos pasar por esa vereda.	AGUA_CLOACAS	OPERADOR
+SEGURIDAD	Camara de seguridad rota en la esquina	La camara municipal que estaba en el poste esta descolgada y el foco tampoco funciona. La cuadra es zona de robos frecuentes.	SEGURIDAD	MODELO
+ESPACIOS_PUBLICOS	Juegos de la plaza rotos y con hierros expuestos	La hamaca esta rota y el tobogan tiene un hierro cortado que ya lastimo a dos nenes. La plaza es la unica del barrio, necesita mantenimiento.	ESPACIOS_PUBLICOS	MODELO
+RUIDOS	Ruidos molestos del bar hasta las 5 am	El bar de la esquina pone musica a todo volumen y los clientes se quedan gritando en la vereda. No podemos dormir de miercoles a domingo.	RUIDOS	MODELO
+TRANSITO	Semaforo en amarillo intermitente hace una semana	El semaforo del cruce quedo en amarillo intermitente y ya hubo varios roces entre autos. Hace falta que lo revisen urgente porque es una avenida muy transitada.	TRANSITO	MODELO
+AGUA_CLOACAS	Perdida de agua constante en la vereda	Sale agua sin parar desde una tapa de la vereda. Se forma un charco enorme que llega hasta el cordon. Debe ser un cano roto.	AGUA_CLOACAS	MODELO
+ARBOLADO	Rama caida sobre cables de luz	Se cayo una rama grande y quedo apoyada sobre los cables. Cada vez que hay viento chispea. Muy peligroso, sobre todo en dia de tormenta.	ARBOLADO	MODELO
+RESIDUOS	Contenedor de basura volcado y desbordado	El contenedor de la esquina esta tirado hace cuatro dias, la basura se desparrama por la vereda y hay ratas dando vueltas. Necesitamos recoleccion urgente.	RESIDUOS	MODELO
+BACHES	Bache profundo en la mano izquierda de la avenida	Hay un pozo enorme en el carril rapido que ya rompio dos ruedas de vecinos. Cuando llueve no se ve y es un peligro serio para las motos.	BACHES	MODELO
+ALUMBRADO	Luminaria apagada frente a la escuela	Hace tres noches que la luz de la esquina esta apagada. Los chicos salen a las 18 hs y la vereda queda a oscuras. Es peligroso.	ALUMBRADO	MODELO
+ALUMBRADO	Luminaria apagada en la plaza	Esta apagada hace 4 dias	ALUMBRADO	CIUDADANO
+ALUMBRADO	El poste de luz de la esquina no anda hace una semana	El poste de luz de la esquina no anda hace una semana	ALUMBRADO	CIUDADANO
+ALUMBRADO	Luminaria apagada en la plaza	Hace una semana que no funciona el alumbrado de la plaza principal.	BACHES	OPERADOR
+TRANSITO	Semaforo descompuesto en Av. Cabildo	El semaforo de la esquina no funciona hace dos dias, es peligroso cruzar.	TRANSITO	MODELO
+RESIDUOS	Basura acumulada hace dias	Basura acumulada hace dias en Palermo, hace varios dias.	RESIDUOS	MODELO
+BACHES	Bache profundo en la esquina	Bache profundo en la esquina en Caballito, hace varios dias.	BACHES	OPERADOR
+ALUMBRADO	Luminaria apagada en la plaza	Luminaria apagada en la plaza en Palermo, hace varios dias.	ALUMBRADO	MODELO

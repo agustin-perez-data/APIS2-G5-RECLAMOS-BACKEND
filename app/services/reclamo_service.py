@@ -64,7 +64,12 @@ from app.events.producer import EventPublisher
 from app.integrations.tickets import SistemaTickets, TicketNuevo, get_sistema_tickets
 from app.ml import similitud
 from app.repositories.reclamo_repository import FiltroReclamos, ReclamoRepository
-from app.schemas.reclamo import CambioEstado, ReclamoCrear, ReclasificacionPedido
+from app.schemas.reclamo import (
+    CambioEstado,
+    ReclamoCrear,
+    ReclasificacionPedido,
+    SugerenciaClasificacion,
+)
 from app.services.actividad_service import ActividadService
 from app.services.clasificador import Clasificador, get_clasificador
 from app.services.clima_service import ClimaService
@@ -89,6 +94,18 @@ MOTIVO_INTERVENCION: dict[ResultadoIntervencion, str] = {
     ResultadoIntervencion.RESUELTO: "Intervencion finalizada por Espacios Publicos y Cultura",
     ResultadoIntervencion.RECHAZADO: "Espacios Publicos y Cultura no dio curso al reclamo",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class ClasificacionDeAlta:
+    """How a claim being filed ends up classified, and who decided it."""
+
+    categoria: CategoriaReclamo
+    prioridad: PrioridadReclamo
+    origen: OrigenClasificacion
+    confianza: float | None = None
+    estado: EstadoReclamo = EstadoReclamo.RECIBIDO
+    sugerencia: SugerenciaClasificacion | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,6 +248,42 @@ class ReclamoService:
         self.clima = ClimaService(session)
 
     # --- Intake --------------------------------------------------------------
+    def _clasificar_alta(self, datos: ReclamoCrear) -> ClasificacionDeAlta:
+        """Decide category, priority and initial state of a claim being filed."""
+        if datos.categoria is not None and datos.prioridad is not None:
+            return ClasificacionDeAlta(
+                categoria=datos.categoria,
+                prioridad=datos.prioridad,
+                origen=OrigenClasificacion.CIUDADANO,
+            )
+
+        sugerencia = self.clasificador.clasificar(datos.titulo, datos.descripcion)
+        prioridad = datos.prioridad or sugerencia.prioridad
+        # `origen_clasificacion` and the confidence describe the CATEGORY. A
+        # neighbour who chose it and only left the priority out is not a claim
+        # the model classified: its priority came from the urgency rule, and
+        # counting it as MODELO would spoil both the origin that Analytics
+        # reads and the model's accuracy in production.
+        if datos.categoria is not None:
+            return ClasificacionDeAlta(
+                categoria=datos.categoria,
+                prioridad=prioridad,
+                origen=OrigenClasificacion.CIUDADANO,
+                sugerencia=sugerencia,
+            )
+
+        # When the model is unsure, the claim goes to human triage instead of
+        # landing straight in the wrong department's inbox.
+        dudosa = sugerencia.confianza < self.cfg.confianza_minima_clasificador
+        return ClasificacionDeAlta(
+            categoria=sugerencia.categoria,
+            prioridad=prioridad,
+            origen=OrigenClasificacion.MODELO,
+            confianza=sugerencia.confianza,
+            estado=EstadoReclamo.EN_REVISION if dudosa else EstadoReclamo.RECIBIDO,
+            sugerencia=sugerencia,
+        )
+
     async def crear(
         self,
         datos: ReclamoCrear,
@@ -241,23 +294,13 @@ class ReclamoService:
         prioridad_minima: PrioridadReclamo | None = None,
     ) -> Reclamo:
         """File a claim, classifying it when the citizen did not."""
-        sugerencia = None
-        categoria = datos.categoria
-        prioridad = datos.prioridad
-        origen = OrigenClasificacion.CIUDADANO
-        confianza: float | None = None
-        estado = EstadoReclamo.RECIBIDO
-
-        if categoria is None or prioridad is None:
-            sugerencia = self.clasificador.clasificar(datos.titulo, datos.descripcion)
-            categoria = categoria or sugerencia.categoria
-            prioridad = prioridad or sugerencia.prioridad
-            origen = OrigenClasificacion.MODELO
-            confianza = sugerencia.confianza
-            # When the model is unsure, the claim goes to human triage instead
-            # of landing straight in the wrong department's inbox.
-            if confianza < self.cfg.confianza_minima_clasificador:
-                estado = EstadoReclamo.EN_REVISION
+        clasificacion = self._clasificar_alta(datos)
+        sugerencia = clasificacion.sugerencia
+        categoria = clasificacion.categoria
+        prioridad = clasificacion.prioridad
+        origen = clasificacion.origen
+        confianza = clasificacion.confianza
+        estado = clasificacion.estado
 
         # A specific intake may impose a policy floor after the model has
         # classified normally. With no floor, all existing flows are unchanged.
@@ -285,6 +328,13 @@ class ReclamoService:
             objeto_afectado=datos.objeto_afectado,
             origen_clasificacion=origen,
             confianza_clasificacion=confianza,
+            categoria_sugerida=categoria.value if origen is OrigenClasificacion.MODELO else None,
+            confianza_sugerida=confianza,
+            modelo_clasificador=(
+                sugerencia.modelo
+                if sugerencia is not None and origen is OrigenClasificacion.MODELO
+                else None
+            ),
             canal=datos.canal,
             direccion=datos.direccion,
             barrio=datos.barrio,
@@ -459,6 +509,14 @@ class ReclamoService:
 
     async def estadisticas(self) -> dict:
         return await self.repo.estadisticas()
+
+    async def correcciones_del_modelo(self, limite: int = 200) -> list[Reclamo]:
+        """Claims where an operator overruled the model's category.
+
+        These are the most valuable examples to grow the corpus with: the ones
+        the model got wrong, labelled by the person who fixed them.
+        """
+        return await self.repo.correcciones_del_modelo(limite)
 
     # --- Case handling -------------------------------------------------------
     async def cambiar_estado(

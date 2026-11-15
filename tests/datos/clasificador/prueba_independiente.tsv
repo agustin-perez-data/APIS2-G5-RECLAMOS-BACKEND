@@ -1,0 +1,101 @@
+categoria	titulo	descripcion
+ALUMBRADO	No hay luz en toda la cuadra	Desde el martes no prende ninguna farola de la cuadra y de noche no se ve nada.
+ALUMBRADO	Farola quemada frente a mi casa	La lámpara del poste de enfrente se quemó hace diez días y nadie vino a cambiarla.
+ALUMBRADO	Columna de alumbrado inclinada	El poste de la luz quedó torcido después de que lo chocó un camión y la luminaria apunta para cualquier lado.
+ALUMBRADO	Luces prendidas de día	Las luminarias de la avenida quedan encendidas todo el día, se está gastando energía al divino botón.
+ALUMBRADO	Oscuridad total en el pasaje	El pasaje no tiene ni un foco que funcione, a la noche hay que caminar con la linterna del celular.
+ALUMBRADO	Reflector del playón apagado	El reflector que ilumina la canchita dejó de andar y los chicos no pueden jugar cuando oscurece.
+ALUMBRADO	Luminaria que parpadea	El farol de la esquina prende y apaga todo el tiempo, parece una discoteca.
+ALUMBRADO	Falta iluminación en la parada	En la parada del colectivo no hay ninguna luz y a la madrugada da miedo esperar ahí.
+ALUMBRADO	Tapa del poste abierta con cables a la vista	La columna de luz tiene la tapa de abajo abierta y se ven todos los cables del alumbrado.
+ALUMBRADO	Pedido de más luces para la cuadra	Solicitamos que instalen una luminaria más porque el tramo del medio queda muy oscuro.
+BACHES	Pozo gigante en la esquina	Se abrió un pozo en el asfalto justo en la esquina y los autos lo esquivan como pueden.
+BACHES	Calle destrozada después de la lluvia	El pavimento quedó lleno de agujeros desde la última tormenta, es imposible pasar sin romper el tren delantero.
+BACHES	Hundimiento frente al kiosco	El asfalto se hundió casi medio metro frente al kiosco y cada día está más grande.
+BACHES	Vereda rota y levantada	Las baldosas de la vereda están todas rotas y flojas, mi mamá se tropezó y se cayó.
+BACHES	Bache mal tapado	Vinieron a tapar el bache hace un mes pero el parche se deshizo y quedó peor que antes.
+BACHES	Cráter en el carril del colectivo	Hay un cráter en el carril por donde pasan los colectivos y pegan un salto tremendo.
+BACHES	Adoquines flojos	En la cuadra empedrada hay adoquines sueltos y hundidos que hacen ruido cada vez que pasa un auto.
+BACHES	Empresa rompió la calle y no la arregló	La cuadrilla que hizo la zanja para el gas dejó la calzada sin reparar, solo con tierra.
+BACHES	Calle de tierra intransitable	Cuando llueve la calle se llena de barro y pozos y no entra ni la ambulancia.
+BACHES	Rampa de la esquina partida	La rampa para sillas de ruedas está quebrada y tiene un escalón, no se puede subir a la vereda.
+RESIDUOS	Hace una semana que no pasa el recolector	En mi cuadra no levantan la basura desde el lunes pasado y las bolsas se amontonan en la puerta.
+RESIDUOS	Contenedor lleno hasta el tope	El contenedor de la esquina rebalsa y la gente deja las bolsas en el piso alrededor.
+RESIDUOS	Microbasural en el terreno baldío	En el baldío de la vuelta tiran basura todos los días, ya hay una montaña de residuos y mal olor.
+RESIDUOS	Escombros tirados en la vereda	Alguien descargó un volquete de escombros sobre la vereda y lleva tres semanas ahí.
+RESIDUOS	Ramas y bolsas de poda sin retirar	Los vecinos sacaron bolsas con hojas y ramas cortadas y el servicio de recolección nunca las levantó.
+RESIDUOS	Contenedor roto sin tapa	Al contenedor le falta la tapa y una rueda, los perros sacan toda la basura afuera.
+RESIDUOS	No retiran los reciclables	Dejamos el cartón y las botellas separados como piden pero el camión de reciclado no pasa nunca.
+RESIDUOS	Colchones y muebles viejos abandonados	Dejaron dos colchones y un sillón roto en la esquina, hay que pedir el retiro de voluminosos.
+RESIDUOS	Olor nauseabundo por basura acumulada	Las bolsas de residuos llevan días al sol y el olor es insoportable, además hay moscas.
+RESIDUOS	Piden más contenedores	Con un solo contenedor para toda la manzana no alcanza, siempre hay basura en la calle.
+ARBOLADO	Árbol a punto de caerse	El árbol de la vereda está inclinado hacia la calle y la raíz se levantó, puede caerse en cualquier momento.
+ARBOLADO	Ramas que tocan los cables	Las ramas del plátano crecieron tanto que rozan los cables y hacen chispas cuando hay viento.
+ARBOLADO	Pedido de poda	Hace años que no podan el árbol de mi frente y las ramas ya entran por la ventana.
+ARBOLADO	Raíces levantaron toda la vereda	Las raíces del árbol rompieron las baldosas y el cordón, habría que ver si se puede cortar la raíz.
+ARBOLADO	Árbol seco y muerto	El árbol de la esquina está completamente seco, sin hojas, y se le caen pedazos de corteza.
+ARBOLADO	Rama grande caída en la calle	Con el viento de anoche se desprendió un gajo enorme y quedó atravesado en la calzada.
+ARBOLADO	Pasto muy alto en el boulevard	El cantero del boulevard tiene los yuyos de un metro, hace meses que no cortan el pasto.
+ARBOLADO	Solicito que planten un árbol	En mi vereda sacaron el árbol hace dos años y quedó la cazuela vacía, pido que repongan uno.
+ARBOLADO	Árbol tapa el semáforo	El follaje del árbol tapa por completo el semáforo y no se ve la luz hasta estar encima.
+ARBOLADO	Tronco hueco con hongos	El tronco del árbol está hueco y lleno de hongos, se nota que está enfermo.
+AGUA_CLOACAS	Caño roto en la calle	Se rompió un caño y el agua brota del asfalto como una fuente desde ayer a la tarde.
+AGUA_CLOACAS	Aguas servidas en la vereda	Sale líquido cloacal por la tapa de la vereda y corre por el cordón hasta la esquina.
+AGUA_CLOACAS	Sin agua desde el fin de semana	No sale ni una gota de la canilla desde el sábado en todo el edificio.
+AGUA_CLOACAS	Boca de tormenta tapada	El sumidero de la esquina está lleno de hojas y bolsas y cada vez que llueve se inunda la calle.
+AGUA_CLOACAS	Agua marrón en las canillas	El agua sale turbia y con gusto raro, no la podemos usar ni para cocinar.
+AGUA_CLOACAS	Poca presión de agua	El agua llega con tan poca fuerza que no sube al tanque y no nos podemos bañar.
+AGUA_CLOACAS	Olor a cloaca en toda la manzana	Hay un olor a cloaca terrible que sale de las rejillas de la calle, sobre todo a la mañana.
+AGUA_CLOACAS	Pérdida en el medidor	El medidor de agua de la vereda pierde y hay un charco permanente que ya juntó verdín.
+AGUA_CLOACAS	Tapa de cloaca hundida	La tapa de la boca de registro está hundida y se escucha correr el agua abajo.
+AGUA_CLOACAS	Desborde cloacal dentro de las casas	La cloaca está tapada en la red y el agua servida vuelve por las rejillas de los patios.
+TRANSITO	Semáforo apagado en un cruce peligroso	El semáforo no anda desde anoche y los autos pasan sin frenar por la avenida.
+TRANSITO	Autos estacionados en doble fila	Frente al colegio estacionan en doble fila a la entrada y salida y no se puede circular.
+TRANSITO	Camioneta tapando mi garage	Todos los días dejan una camioneta atravesada en la entrada de mi cochera y no puedo sacar el auto.
+TRANSITO	Falta cartel de contramano	Sacaron el cartel que indica el sentido de la calle y muchos entran de contramano.
+TRANSITO	Piden reductor de velocidad	Los autos pasan a toda velocidad por la cuadra de la escuela, hace falta un lomo de burro.
+TRANSITO	Motos circulando por la bicisenda	Las motos de reparto usan la ciclovía a toda hora y ya atropellaron a un ciclista.
+TRANSITO	Auto abandonado hace meses	Hay un auto sin patente y con las gomas desinfladas ocupando un lugar desde el verano.
+TRANSITO	Senda peatonal despintada	Las líneas de la senda peatonal ya no se ven y los conductores no frenan para dejar cruzar.
+TRANSITO	Semáforo con los tiempos mal sincronizados	El verde para cruzar la avenida dura cinco segundos y la gente mayor no llega al otro lado.
+TRANSITO	Colectivos que no respetan la parada	Los colectivos paran en el medio de la calle y cortan todo el tránsito de la avenida.
+RUIDOS	Música fuerte toda la noche	Los vecinos de al lado ponen música a todo volumen hasta la madrugada y no se puede descansar.
+RUIDOS	Boliche sin insonorizar	El local bailable de la vuelta hace vibrar las ventanas todos los sábados hasta las seis.
+RUIDOS	Obra que empieza a las seis de la mañana	En la construcción de enfrente arrancan con la hormigonera antes de que amanezca.
+RUIDOS	Alarma que no para de sonar	La alarma de un comercio cerrado suena desde ayer y nadie viene a apagarla.
+RUIDOS	Perros que ladran día y noche	En el fondo de una casa tienen varios perros que ladran sin parar, es insoportable.
+RUIDOS	Parlantes en la plaza los domingos	Arman una feria con parlantes enormes en la plaza y el ruido se escucha a cinco cuadras.
+RUIDOS	Motos con escape libre	Un grupo de motos pasa todas las noches acelerando con el caño de escape recortado.
+RUIDOS	Ensayos de una banda en un galpón	En el galpón de la esquina ensaya una banda con batería hasta la medianoche.
+RUIDOS	Ruido de un generador	El supermercado tiene un grupo electrógeno en la vereda que hace un ruido infernal todo el día.
+RUIDOS	Bocinazos permanentes	Los remises de la agencia tocan bocina a cualquier hora para llamar a los pasajeros.
+ESPACIOS_PUBLICOS	Juegos de la plaza en mal estado	El tobogán tiene un agujero y las hamacas no tienen asiento, los chicos se pueden lastimar.
+ESPACIOS_PUBLICOS	Bancos rotos en la plaza	A casi todos los bancos de la plaza les faltan las maderas y no hay dónde sentarse.
+ESPACIOS_PUBLICOS	Bebedero sin funcionar	El bebedero del parque no anda desde el verano y en la plaza no hay otro.
+ESPACIOS_PUBLICOS	Plaza abandonada	La plaza del barrio está descuidada, sin mantenimiento, con los canteros destruidos y el arenero sucio.
+ESPACIOS_PUBLICOS	Monumento pintado con aerosol	Escribieron con aerosol todo el monumento de la plaza principal y el mástil.
+ESPACIOS_PUBLICOS	Cancha de básquet sin aros	En el polideportivo municipal sacaron los aros de la cancha y nunca los repusieron.
+ESPACIOS_PUBLICOS	Baños públicos cerrados	Los baños del parque están siempre con candado y no se pueden usar.
+ESPACIOS_PUBLICOS	Gimnasio al aire libre roto	Los aparatos de gimnasia de la plaza están rotos y oxidados, uno directamente se soltó.
+ESPACIOS_PUBLICOS	Cerco del parque caído	El alambrado perimetral del parque está tirado en un tramo largo y entran motos.
+ESPACIOS_PUBLICOS	Pérgola de la plaza por caerse	La pérgola de madera de la plaza tiene los postes podridos y está apuntalada con un palo.
+SEGURIDAD	Robos todas las semanas en la cuadra	En el último mes entraron a robar a cuatro casas de la cuadra, necesitamos presencia policial.
+SEGURIDAD	Arrebatos a la salida del colegio	Les roban los celulares a los chicos cuando salen de la escuela, siempre a la misma hora.
+SEGURIDAD	Cámara municipal que no funciona	El domo de la esquina está roto hace meses y justo ahí asaltaron a un vecino.
+SEGURIDAD	Venta de droga en el pasillo	En el pasillo de la vuelta venden droga a toda hora y hay movimiento de gente rara.
+SEGURIDAD	Casa abandonada usada como aguantadero	La casa vacía de la esquina la ocuparon y desde entonces hay robos en toda la manzana.
+SEGURIDAD	Pedimos un patrullero	No pasa nunca un móvil policial por el barrio, pedimos recorridas a la noche.
+SEGURIDAD	Amenazas a los vecinos	Un grupo se junta en la esquina y amenaza a los que pasan, ya hubo dos peleas con cuchillos.
+SEGURIDAD	Intento de robo de auto	Rompieron el vidrio de mi auto para robarlo y es el tercero de la cuadra este mes.
+SEGURIDAD	Cable de luz cortado colgando	Un cable del tendido eléctrico quedó colgando a la altura de la cabeza, alguien se puede electrocutar.
+SEGURIDAD	Botón antipánico que no responde	El poste con el botón de alerta de la plaza no anda, lo apretamos y no vino nadie.
+OTROS	Consulta por la habilitación de un local	Quiero saber qué papeles tengo que presentar para habilitar un comercio.
+OTROS	No me llegó la boleta	Este mes no recibí la boleta de la tasa de servicios y no sé cuánto tengo que pagar.
+OTROS	Estado de mi expediente	Inicié un trámite hace tres meses y nadie me informa en qué estado está el expediente.
+OTROS	Mal trato en una oficina municipal	La persona de la ventanilla me atendió de mala manera y no me dejó terminar el trámite.
+OTROS	La aplicación se cierra sola	Cuando quiero adjuntar una foto la app se cierra y pierdo todo lo que escribí.
+OTROS	Turno para la licencia de conducir	No encuentro turnos disponibles para renovar el registro, la página siempre dice que no hay.
+OTROS	Información sobre los cursos gratuitos	Me gustaría saber cuándo abre la inscripción a los talleres del centro cultural.
+OTROS	Error en mis datos personales	En el sistema figura mal mi domicilio y no puedo corregirlo desde la web.
+OTROS	Propuesta para el presupuesto participativo	Quiero presentar una idea para el presupuesto participativo y no sé dónde se anota.
+OTROS	Reclamo por una multa mal labrada	Me llegó una infracción de un lugar donde nunca estuve, quiero hacer el descargo.

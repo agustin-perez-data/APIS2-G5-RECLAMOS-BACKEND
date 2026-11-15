@@ -2,8 +2,10 @@
 
 The design is hybrid on purpose:
 
-* **Category** is predicted by a Naive Bayes model trained on the seed corpus.
-  That is the part that learns from data.
+* **Category** is predicted by a Complement Naive Bayes model trained on the
+  corpus in `app/ml/`. That is the part that learns from data. Its
+  configuration was chosen by cross-validation and its quality is measured in
+  `docs/ml/evaluacion-clasificador.md` (ADR 0019).
 * **Priority** is resolved by an explicit rule (urgency lexicon + per-category
   baseline severity). It is a public-policy decision: it must be auditable and
   adjustable by ordinance, not the output of an opaque model.
@@ -19,8 +21,8 @@ from typing import Protocol, runtime_checkable
 
 from app.domain.enums import CategoriaReclamo, PrioridadReclamo, escalar
 from app.ml.corpus import CORPUS, TERMINOS_ALTOS, TERMINOS_CRITICOS
-from app.ml.naive_bayes import MultinomialNaiveBayes
-from app.ml.text import contiene_alguno, tokenizar
+from app.ml.naive_bayes import ComplementNaiveBayes, MultinomialNaiveBayes
+from app.ml.text import contiene_alguno, normalizar, raiz, tokenizar
 from app.schemas.reclamo import SugerenciaClasificacion
 
 # Baseline severity per category: how much the problem hurts by its nature,
@@ -54,22 +56,68 @@ class Clasificador(Protocol):
 
 
 class ClasificadorNaiveBayes:
-    """Default implementation: Naive Bayes plus urgency rules."""
+    """Default implementation: Complement Naive Bayes plus urgency rules."""
 
-    nombre = "naive-bayes-corpus-v1"
+    nombre = "complement-naive-bayes-corpus-v2"
 
-    def __init__(self, corpus: list[tuple[str, CategoriaReclamo]] | None = None) -> None:
+    def __init__(
+        self,
+        corpus: list[tuple[str, CategoriaReclamo]] | None = None,
+        *,
+        alpha: float = 1.0,
+        con_bigramas: bool = True,
+        con_raices: bool = True,
+        complementario: bool = True,
+        temperatura: float = 0.4,
+    ) -> None:
+        """The keyword arguments are the knobs the evaluation compares.
+
+        The defaults are the configuration in production; the report in
+        `docs/ml/` records why each one has the value it has (ADR 0019).
+        """
         datos = corpus if corpus is not None else CORPUS
-        # Low alpha: the corpus is small and we want the terms specific to each
-        # category to actually carry weight.
-        self._modelo = MultinomialNaiveBayes(alpha=0.3).fit(
-            [(tokenizar(texto), categoria.value) for texto, categoria in datos]
+        self._con_bigramas = con_bigramas
+        self._con_raices = con_raices
+        algoritmo = ComplementNaiveBayes if complementario else MultinomialNaiveBayes
+        self._modelo = algoritmo(alpha=alpha, temperatura=temperatura).fit(
+            [(self._tokens_del_modelo(texto), categoria.value) for texto, categoria in datos]
         )
 
-    def clasificar(self, titulo: str, descripcion: str) -> SugerenciaClasificacion:
-        tokens = tokenizar(f"{titulo} {descripcion}")
+    def _tokens_del_modelo(self, texto: str) -> list[str]:
+        return tokenizar(texto, con_bigramas=self._con_bigramas, con_raices=self._con_raices)
 
+    def predecir(self, texto: str) -> tuple[str, float]:
+        """Category and confidence only: what the evaluation needs."""
+        tokens = self._tokens_del_modelo(texto)
         if not tokens:
+            return CategoriaReclamo.OTROS.value, 0.0
+        return self._modelo.predict(tokens)
+
+    def probabilidades(self, texto: str, *, temperatura: float | None = None) -> dict[str, float]:
+        """Posterior per category, optionally at another temperature.
+
+        Changing the temperature does not need retraining, which is what lets
+        the evaluation fit it on out-of-fold predictions.
+        """
+        tokens = self._tokens_del_modelo(texto)
+        if not tokens:
+            return {}
+        original = self._modelo.temperatura
+        if temperatura is not None:
+            self._modelo.temperatura = temperatura
+        try:
+            return self._modelo.predict_proba(tokens)
+        finally:
+            self._modelo.temperatura = original
+
+    def clasificar(self, titulo: str, descripcion: str) -> SugerenciaClasificacion:
+        texto = f"{titulo} {descripcion}"
+        # The urgency lexicon is written with plain words, so priority always
+        # reads the unstemmed tokens, whatever the model itself is fed.
+        tokens = tokenizar(texto)
+        tokens_modelo = self._tokens_del_modelo(texto)
+
+        if not tokens_modelo:
             return SugerenciaClasificacion(
                 categoria=CategoriaReclamo.OTROS,
                 prioridad=PrioridadReclamo.BAJA,
@@ -78,11 +126,12 @@ class ClasificadorNaiveBayes:
                 modelo=self.nombre,
             )
 
-        etiqueta, confianza = self._modelo.predict(tokens)
+        etiqueta, confianza = self._modelo.predict(tokens_modelo)
         categoria = CategoriaReclamo(etiqueta)
 
         prioridad, evidencia_urgencia = self._calcular_prioridad(tokens, categoria)
-        evidencia = self._modelo.tokens_decisivos(tokens, etiqueta) + evidencia_urgencia
+        decisivos = self._modelo.tokens_decisivos(tokens_modelo, etiqueta)
+        evidencia = self._legibles(decisivos, texto) + evidencia_urgencia
 
         return SugerenciaClasificacion(
             categoria=categoria,
@@ -92,6 +141,18 @@ class ClasificadorNaiveBayes:
             evidencia=list(dict.fromkeys(evidencia))[:8],
             modelo=self.nombre,
         )
+
+    def _legibles(self, decisivos: list[str], texto: str) -> list[str]:
+        """Show the operator the words the neighbour wrote, not their stems."""
+        if not self._con_raices:
+            return decisivos
+        originales: dict[str, str] = {}
+        for palabra in normalizar(texto).split():
+            originales.setdefault(raiz(palabra), palabra)
+        return [
+            " ".join(originales.get(parte, parte) for parte in decisivo.split())
+            for decisivo in decisivos
+        ]
 
     def _calcular_prioridad(
         self, tokens: list[str], categoria: CategoriaReclamo

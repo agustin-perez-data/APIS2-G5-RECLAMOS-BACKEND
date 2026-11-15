@@ -177,7 +177,8 @@ Prefijo `/api/v1`.
 | `POST` | `/reclamos/clasificacion` | autenticado | Sugerencia del modelo sin persistir. |
 | `POST` | `/reclamos/similares` | autenticado | Reclamos parecidos al que se está escribiendo, para sumarse en vez de duplicar. |
 | `GET` | `/reclamos/{id}/similares` | autenticado | Posibles duplicados de un reclamo ya cargado. |
-| `GET` | `/reclamos/estadisticas` | **admin** | Métricas agregadas (para el Grupo 8). |
+| `GET` | `/reclamos/estadisticas` | **admin** | Métricas agregadas (para el Grupo 8), con el desempeño del clasificador. |
+| `GET` | `/reclamos/clasificador/correcciones` | **admin** | Reclamos donde un operador corrigió la categoría del modelo ([ADR 0019](docs/adr/0019-evaluacion-del-clasificador.md)). |
 | `GET` | `/notificaciones` | autenticado | Bandeja propia, paginada, con `unread_count`. |
 | `GET` | `/notificaciones/conteo` | autenticado | Solo el contador de no leídas, para la campana. |
 | `PATCH` | `/notificaciones/{id}/leer` | autenticado | Marca una como leída (idempotente). |
@@ -269,8 +270,9 @@ no se pueden procesar. Payloads y ejemplos completos en
 
 Diseño híbrido, deliberado:
 
-- **Categoría** → Naive Bayes multinomial entrenado con el corpus semilla de
-  `app/ml/corpus.py` (unigramas + bigramas, sin tildes, sin stopwords).
+- **Categoría** → Complement Naive Bayes entrenado con las 366 frases de
+  `app/ml/` (raíces + bigramas, sin tildes, sin stopwords), con la confianza
+  calibrada por temperatura.
 - **Prioridad** → regla explícita: léxico de urgencia (`fuga de gas`, `cable
   caído`, `riesgo`…) sobre una criticidad base por categoría. Es una decisión de
   política pública, tiene que ser auditable, no salir de un modelo opaco.
@@ -280,10 +282,28 @@ dispararon). Si la confianza queda por debajo de `CONFIANZA_MINIMA_CLASIFICADOR`
 el reclamo entra en `EN_REVISION` para triage humano en lugar de caer en la
 bandeja del área equivocada.
 
-Para mejorarlo: agregar filas a `app/ml/corpus.py` (los reclamos que un operador
-reclasificó a mano son los ejemplos más valiosos) o implementar el protocolo
-`Clasificador` con otro modelo y cambiar `get_clasificador()`. Ver
-[ADR 0005](docs/adr/0005-clasificacion-automatica.md).
+**Cuánto rinde.** Sobre un conjunto de prueba independiente de 100 reclamos el
+F1 macro es 0,980 (era 0,782 con el modelo anterior), y acierta 28 de 28 textos
+reales de producción. El reporte completo, con sus intervalos de confianza y
+las mediciones más exigentes que acotan ese número, está en
+[`docs/ml/evaluacion-clasificador.md`](docs/ml/evaluacion-clasificador.md); el
+alcance y los límites, en la
+[ficha del modelo](docs/ml/ficha-del-modelo.md).
+
+```bash
+python scripts/evaluar_clasificador.py   # reelige la variante y regenera el reporte
+```
+
+La variante, la temperatura y el umbral salen de esa evaluación, no de una
+suposición, y un test falla si el modelo baja de su piso de calidad
+([ADR 0019](docs/adr/0019-evaluacion-del-clasificador.md)).
+
+**Cómo se vigila y se mejora.** `GET /reclamos/estadisticas` informa a cuántos
+reclamos clasificados por el modelo un operador les cambió la categoría. Esos
+casos son los ejemplos más valiosos para el corpus y se bajan con
+`scripts/exportar_correcciones.py`. También se puede implementar el protocolo
+`Clasificador` con otro modelo y cambiar `get_clasificador()`
+([ADR 0005](docs/adr/0005-clasificacion-automatica.md)).
 
 ---
 

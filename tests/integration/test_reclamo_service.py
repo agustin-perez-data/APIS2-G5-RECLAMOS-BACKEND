@@ -93,8 +93,9 @@ async def test_si_el_ciudadano_clasifica_no_se_publica_clasificado(
 async def test_baja_confianza_manda_el_reclamo_a_revision(
     session, publisher: InMemoryEventPublisher
 ) -> None:
-    # Threshold at 1.0: nothing can clear it, so every claim needs human triage.
-    exigente = settings.model_copy(update={"confianza_minima_clasificador": 1.0})
+    # Threshold above 1: nothing can clear it, so every claim needs human
+    # triage. Not 1.0 itself, which a very sure prediction reaches after rounding.
+    exigente = settings.model_copy(update={"confianza_minima_clasificador": 1.1})
     service = ReclamoService(session, publisher, cfg=exigente)
 
     reclamo = await service.crear(datos_reclamo(), CIUDADANO_ID)
