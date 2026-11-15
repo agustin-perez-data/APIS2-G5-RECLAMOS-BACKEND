@@ -1,0 +1,128 @@
+# Infrastructure of the production API, as code (ADR 0021).
+#
+# This file is the source of truth for the Render service and for every
+# environment variable that is not a secret. It was written from what the
+# Render API reported on 2026-11-15, not from memory.
+#
+# Two things read it:
+#   - `scripts/render_config.py`, run by `.github/workflows/configuracion-render.yml`:
+#     on every change to this file in main it applies the values below to the
+#     service, and once a week it only compares and fails if Render drifted.
+#   - Render itself, if the repository is ever linked as a Blueprint. That is
+#     optional: nothing here depends on it.
+#
+# A variable with `value` is public configuration and is applied from here.
+# A variable with `sync: false` is a secret: only its name is versioned, its
+# value lives in Render and nothing in this repository ever reads or prints it.
+
+services:
+  - type: web
+    name: APIS2-G5-RECLAMOS-BACKEND
+    runtime: docker
+    repo: https://github.com/agustin-perez-data/APIS2-G5-RECLAMOS-BACKEND
+    branch: main
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health/ready
+    # Render never deploys on its own: `cd-backend.yml` does, after the
+    # migrations have run.
+    autoDeployTrigger: "off"
+    envVars:
+      # --- Application ------------------------------------------------------
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: DB_ECHO
+        value: "false"
+
+      # --- Database ---------------------------------------------------------
+      - key: DATABASE_URL
+        sync: false
+
+      # --- Bus: CityPass+ gateway (Group 1) ---------------------------------
+      - key: GATEWAY_ENABLED
+        value: "true"
+      - key: GATEWAY_URL
+        value: https://test.citypass.mrfranco.net.ar
+      - key: GATEWAY_TOKEN_URL
+        value: https://api.citypass-login.pp.ua/oauth/token
+      - key: GATEWAY_CLIENT_ID
+        value: grupo4
+      - key: GATEWAY_CLIENT_SECRET
+        sync: false
+      - key: GATEWAY_WEBHOOK_TOKEN
+        sync: false
+
+      # Our own Kafka is only used locally. The three connection variables are
+      # leftovers that carry no weight with KAFKA_ENABLED=false; they stay
+      # listed so the drift check knows them.
+      - key: KAFKA_ENABLED
+        value: "false"
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        sync: false
+      - key: KAFKA_CLIENT_ID
+        sync: false
+      - key: KAFKA_CONSUMER_GROUP
+        sync: false
+
+      # --- Identity: municipal staff (Group 2's Federated Login) ------------
+      - key: AUTH_ENABLED
+        value: "true"
+      - key: AUTH_DEV_LOGIN_ENABLED
+        value: "false"
+      - key: JWT_ALGORITHM
+        value: RS256
+      - key: JWT_JWKS_URL
+        value: https://api.citypass-login.pp.ua/.well-known/jwks.json
+      - key: JWT_ISSUER
+        value: https://idp.citypass.local
+      - key: JWT_AUDIENCE
+        value: citypass-reclamos-api
+      - key: JWT_ROLES_CLAIM
+        value: groups
+      - key: JWT_TOKEN_USE_ESPERADO
+        value: human
+      - key: JWT_STAFF_ESTRICTO
+        value: "true"
+      - key: JWT_STAFF_GRUPOS_OPERADOR
+        value: '["reclamos-operadores"]'
+      - key: JWT_STAFF_GRUPOS_ADMIN
+        value: '["reclamos-administradores"]'
+      # Unused with RS256 (the key comes from the JWKS), kept as a secret.
+      - key: JWT_SECRET
+        sync: false
+
+      # --- Identity: citizens (issued by this module) -----------------------
+      - key: CIUDADANOS_AUTH_ENABLED
+        value: "true"
+      - key: JWT_CIUDADANOS_ISSUER
+        value: citypass-reclamos
+      - key: JWT_CIUDADANOS_AUDIENCE
+        value: citypass-reclamos-ciudadanos
+      - key: JWT_CIUDADANOS_TTL_HORAS
+        value: "12"
+      - key: JWT_CIUDADANOS_SECRET
+        sync: false
+
+      # --- Rate limiting ----------------------------------------------------
+      - key: RATE_LIMIT_REGISTRO
+        value: 5/hour
+      - key: RATE_LIMIT_WEBHOOK
+        value: 120/minute
+
+      # --- HTTP -------------------------------------------------------------
+      - key: CORS_ORIGINS
+        value: '["https://reclamos-frontend-g5.vercel.app","http://localhost:5173"]'
+
+      # --- Ticketing (Jira) -------------------------------------------------
+      - key: JIRA_ENABLED
+        value: "true"
+      - key: JIRA_URL
+        sync: false
+      - key: JIRA_EMAIL
+        sync: false
+      - key: JIRA_API_TOKEN
+        sync: false

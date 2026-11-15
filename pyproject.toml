@@ -37,6 +37,9 @@ dev = [
     "pytest-cov>=6.0",
     "aiosqlite>=0.20",
     "ruff>=0.8",
+    # Reads render.yaml in scripts/render_config.py and its tests. It already
+    # came with uvicorn[standard]; listed so that does not stay an accident.
+    "pyyaml>=6.0",
 ]
 
 [tool.hatch.build.targets.wheel]
