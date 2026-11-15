@@ -142,6 +142,10 @@ class TipoNotificacion(StrEnum):
 # event, auto-closes, official comments on incidents.
 USUARIO_SISTEMA = "sistema"
 
+# What a neighbour sees in place of a staff member's identity, which is
+# internal: the city answers as one, not as a person (ADR 0020).
+USUARIO_MUNICIPIO = "municipio"
+
 # States that accept no further changes.
 ESTADOS_FINALES: frozenset[EstadoReclamo] = frozenset(
     {EstadoReclamo.CERRADO, EstadoReclamo.RECHAZADO}

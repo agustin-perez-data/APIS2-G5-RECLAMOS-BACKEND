@@ -71,6 +71,7 @@ dependencia que cruza el límite del sistema.
 | --- | --- | --- | --- |
 | Routers REST | `app/api/v1/` | Reciben el pedido, validan con Pydantic, eligen la dependencia de identidad y delegan | No contienen reglas de negocio ni tocan la sesión |
 | Webhook del gateway | `app/api/v1/webhooks.py` | Compara el secreto en tiempo constante, traduce el sobre y ejecuta el handler | No interpreta el evento |
+| Visibilidad | `app/api/visibilidad.py` | Filtra la respuesta según quién pregunta: un vecino no ve la identidad del personal ni identificadores internos ajenos (ADR 0020) | No decide quién puede entrar; eso es de `deps.py` |
 | Identidad y errores | `app/api/deps.py`, `app/api/errors.py` | `UsuarioDep`, `StaffDep` y `AdminDep` autorizan por rol; los manejadores convierten excepciones de dominio en `application/problem+json` | No valida firmas; eso es de `core/security.py` |
 | ReclamoService | `app/services/reclamo_service.py` | Casos de uso del reclamo y dueño de la transacción | No conoce HTTP ni el gateway |
 | Servicios de apoyo | `app/services/` | Avisos, actividades masivas, incidentes viales, alertas climáticas, vecinos y reclamos por emergencia vial | |

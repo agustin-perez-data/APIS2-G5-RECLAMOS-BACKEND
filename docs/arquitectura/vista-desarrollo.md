@@ -83,7 +83,7 @@ app/                 código de la aplicación (ver C4 nivel 3)
 alembic/versions/    13 migraciones, de 0001 a 0013
 tests/unit/          lógica pura: dominio, clasificador, contratos, seguridad
 tests/integration/   API y servicios contra una base real
-docs/adr/            19 decisiones de arquitectura
+docs/adr/            20 decisiones de arquitectura
 docs/arquitectura/   estas vistas
 docs/avro/           esquemas de los cinco eventos publicados
 docs/ml/             evaluación y ficha del clasificador

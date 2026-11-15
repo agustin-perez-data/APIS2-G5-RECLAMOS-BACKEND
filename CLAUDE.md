@@ -264,6 +264,7 @@ supere al anterior:
 | 0016 | `ReclamoCreado` lleva una sola causa para Analítica (gana la climática) y la actividad aparte |
 | 0018 | Una actividad cancelada o suspendida deja de relacionar reclamos nuevos; los ya relacionados quedan |
 | 0019 | El clasificador se elige por validación cruzada, se mide sobre conjuntos apartados y tiene piso de calidad en la suite; tocar el corpus obliga a correr `scripts/evaluar_clasificador.py` |
+| 0020 | Un vecino puede leer cualquier reclamo pero no su lado interno: todo endpoint que devuelva un reclamo, su historial o sus comentarios pasa por `app/api/visibilidad.py` |
 
 ---
 
