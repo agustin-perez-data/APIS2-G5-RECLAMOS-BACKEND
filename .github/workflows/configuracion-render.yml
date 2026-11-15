@@ -1,0 +1,63 @@
+name: Configuracion de Render
+
+# `render.yaml` is the source of truth for the Render service (ADR 0021). This
+# workflow is what makes that true instead of a good intention:
+#
+#   - A change to `render.yaml` that reaches main is applied to the service:
+#     the public variables that differ are written and the service is
+#     redeployed. Secrets are never written from here.
+#   - Once a week, and on demand, it only compares. If somebody changed the
+#     service by hand in the dashboard, the run goes red and says what differs.
+#
+# It prints variable names, never values: these logs are public.
+#
+# GitHub only runs scheduled workflows from the default branch.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - render.yaml
+      - scripts/render_config.py
+  schedule:
+    # Mondays 10:17 UTC, 07:17 in Buenos Aires.
+    - cron: "17 10 * * 1"
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "verificar compara; aplicar ademas escribe los valores publicos y redespliega"
+        type: choice
+        options: [verificar, aplicar]
+        default: verificar
+
+permissions:
+  contents: read
+
+# Same group as the deploy: a configuration change and a code deploy must not
+# restart the service at the same time.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  render:
+    name: Comparar con render.yaml
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Instalar PyYAML
+        run: pip install "pyyaml>=6.0"
+
+      - name: Comparar o aplicar
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+          # A push applies; the schedule only looks; by hand, whatever was chosen.
+          MODO: ${{ github.event_name == 'push' && 'aplicar' || inputs.modo || 'verificar' }}
+        run: python scripts/render_config.py "$MODO"
