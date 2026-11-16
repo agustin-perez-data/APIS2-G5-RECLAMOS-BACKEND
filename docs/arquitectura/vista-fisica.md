@@ -121,7 +121,7 @@ logs salen en JSON. `GET /health` informa el valor en uso.
 | Aspecto | Producción | Local (`docker-compose.yml`) |
 | --- | --- | --- |
 | Bus | Gateway de CityPass+, por HTTPS | Redpanda (Kafka) |
-| Entrada de eventos | Webhook de la API y, con `BUS_KAFKA_ENABLED=true`, un consumidor del Kafka del bus dentro del mismo proceso (ADR 0023) | Proceso `worker` consumiendo de Kafka |
+| Entrada de eventos | Webhook de la API y, para las alertas climáticas, un consumidor del Kafka del bus dentro del mismo proceso (ADR 0023) | Proceso `worker` consumiendo de Kafka |
 | Cierre automático por vencimiento | Workflow diario `cierre-automatico.yml`, que llama al endpoint de mantenimiento | Corre en el `worker` |
 | Base | Supabase | Contenedor `postgres:16-alpine` |
 | Identidad del personal | Login Federado, RS256 | Configurable; login de desarrollo disponible |

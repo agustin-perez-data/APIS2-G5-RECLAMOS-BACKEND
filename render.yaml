@@ -56,6 +56,24 @@ services:
       - key: GATEWAY_WEBHOOK_TOKEN
         sync: false
 
+      # --- Bus: CityPass+ Kafka, read directly (ADR 0023) -------------------
+      # The API also consumes the weather alerts straight from Group 1's
+      # broker: the webhook does not deliver events whose schema has an enum.
+      # The group id and the starting point (the end of the topic) are the
+      # defaults in app/core/config.py.
+      - key: BUS_KAFKA_ENABLED
+        value: "true"
+      - key: BUS_KAFKA_BOOTSTRAP_SERVERS
+        value: test.citypass.mrfranco.net.ar:9092
+      - key: BUS_KAFKA_TOKEN_URL
+        value: https://test.citypass.mrfranco.net.ar/auth/oauth/token
+      - key: BUS_KAFKA_SCHEMA_REGISTRY_URL
+        value: https://test.citypass.mrfranco.net.ar/api/v1
+      - key: BUS_KAFKA_CLIENT_ID
+        value: grupo4
+      - key: BUS_KAFKA_CLIENT_SECRET
+        sync: false
+
       # Our own Kafka is only used locally. The three connection variables are
       # leftovers that carry no weight with KAFKA_ENABLED=false; they stay
       # listed so the drift check knows them.
