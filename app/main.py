@@ -57,20 +57,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         tarea_bus = asyncio.create_task(BusConsumer(publisher).run(), name="bus-citypass")
 
+    # Auto-close of resolved claims, on a clock of our own (ADR 0024).
+    tarea_cierre: asyncio.Task[None] | None = None
+    if settings.cierre_automatico_en_api:
+        from app.services.cierre_periodico import cierre_automatico_periodico
+
+        tarea_cierre = asyncio.create_task(
+            cierre_automatico_periodico(
+                publisher,
+                espera_inicial_segundos=settings.cierre_automatico_espera_inicial_segundos,
+                intervalo_segundos=settings.intervalo_cierre_automatico_segundos,
+            ),
+            name="cierre-automatico",
+        )
+
     log.info(
         "app.iniciada",
         environment=settings.environment,
         kafka=settings.kafka_enabled,
         bus_kafka=settings.bus_kafka_enabled,
+        cierre_automatico=settings.cierre_automatico_en_api,
         version=__version__,
     )
     try:
         yield
     finally:
-        if tarea_bus is not None:
-            tarea_bus.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await tarea_bus
+        for tarea in (tarea_bus, tarea_cierre):
+            if tarea is not None:
+                tarea.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await tarea
         await publisher.stop()
         await cerrar_engine()
         log.info("app.detenida")

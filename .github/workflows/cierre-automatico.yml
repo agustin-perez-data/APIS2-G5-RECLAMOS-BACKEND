@@ -6,15 +6,14 @@ name: Cierre automatico de reclamos
 # worker loop (`app/worker.py`). Production deploys the API and nothing else,
 # so in production it never ran.
 #
-# This workflow is the trigger production was missing: once a day it logs in as
-# an administrator and calls the maintenance endpoint. The endpoint is
-# idempotent, so a repeated or a manual run closes nothing twice.
+# This workflow was the trigger production was missing: it logs in as an
+# administrator and calls the maintenance endpoint. The endpoint is idempotent,
+# so a repeated or a manual run closes nothing twice.
 #
-# Why a scheduled workflow and not a second service: Render's free plan has no
-# background workers, and one HTTP call a day does not justify one.
-#
-# GitHub only runs scheduled workflows from the default branch, so this starts
-# working once it reaches main.
+# It is no longer the mechanism (ADR 0024). GitHub drops most scheduled runs of
+# this repository -- on its first day this one never started -- so the API now
+# closes what is due by itself, hourly. This stays as a manual trigger and as a
+# second, best-effort clock: when its schedule does fire it finds nothing left.
 
 on:
   schedule:

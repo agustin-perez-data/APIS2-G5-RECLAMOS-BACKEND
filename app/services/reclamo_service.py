@@ -1307,10 +1307,10 @@ class ReclamoService:
         """Auto-close claims sitting in RESUELTO past the response window (US-17).
 
         A citizen who never responds is not expected to keep a claim open
-        forever. Two things trigger it, and both run this same code: the worker
-        loop where there is one (`app/worker.py`, local environment), and the
-        maintenance endpoint called by a scheduled workflow in production,
-        where only the API is deployed.
+        forever. What calls this is a loop inside the running process
+        (`app/services/cierre_periodico.py`, ADR 0024): the API in production,
+        the worker locally. The maintenance endpoint runs the same code by
+        hand.
         """
         limite = datetime.now(UTC) - timedelta(days=self.cfg.dias_cierre_automatico)
         candidatos = await self.repo.resueltos_antes_de(limite)
