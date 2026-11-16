@@ -57,7 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         tarea_bus = asyncio.create_task(BusConsumer(publisher).run(), name="bus-citypass")
 
-    # Auto-close of resolved claims, on a clock of our own (ADR 0024).
+    # Auto-close of resolved claims, on a clock of our own (ADR 0025).
     tarea_cierre: asyncio.Task[None] | None = None
     if settings.cierre_automatico_en_api:
         from app.services.cierre_periodico import cierre_automatico_periodico

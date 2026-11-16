@@ -185,7 +185,7 @@ async def correcciones_del_modelo(
         "dias en `RESUELTO` sin respuesta del vecino (US-17). Cada cierre deja su "
         "entrada en el historial, avisa al vecino y publica el cambio de estado. "
         "Es idempotente: una segunda llamada no encuentra nada que cerrar. "
-        "Requiere rol `admin`. La API ya lo hace sola cada hora (ADR 0024); "
+        "Requiere rol `admin`. La API ya lo hace sola cada hora (ADR 0025); "
         "este endpoint queda para dispararlo a mano."
     ),
 )

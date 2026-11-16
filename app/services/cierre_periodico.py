@@ -1,4 +1,4 @@
-"""Periodic auto-close of resolved claims (US-17, ADR 0024).
+"""Periodic auto-close of resolved claims (US-17, ADR 0025).
 
 `ReclamoService.cerrar_resueltos_vencidos` decides what closes. This is only
 the clock that calls it: a loop that runs inside whichever process is up, the

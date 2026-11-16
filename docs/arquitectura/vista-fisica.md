@@ -122,7 +122,7 @@ logs salen en JSON. `GET /health` informa el valor en uso.
 | --- | --- | --- |
 | Bus | Gateway de CityPass+, por HTTPS | Redpanda (Kafka) |
 | Entrada de eventos | Webhook de la API y, para las alertas climáticas, un consumidor del Kafka del bus dentro del mismo proceso (ADR 0023) | Proceso `worker` consumiendo de Kafka |
-| Cierre automático por vencimiento | Un ciclo dentro de la API, al arrancar y cada hora (ADR 0024). El workflow `cierre-automatico.yml` queda de respaldo | El mismo ciclo, en el `worker` |
+| Cierre automático por vencimiento | Un ciclo dentro de la API, al arrancar y cada hora (ADR 0025). El workflow `cierre-automatico.yml` queda de respaldo | El mismo ciclo, en el `worker` |
 | Base | Supabase | Contenedor `postgres:16-alpine` |
 | Identidad del personal | Login Federado, RS256 | Configurable; login de desarrollo disponible |
 
@@ -133,7 +133,7 @@ logs salen en JSON. `GET /health` informa el valor en uso.
   contra `render.yaml` pero se cambian a mano. Supabase y Vercel siguen
   configurados a mano.
 - **El proceso `worker` no está desplegado.** Lo que hacía corre dentro de la
-  API: el consumo del bus (ADR 0023) y el cierre automático (ADR 0024).
+  API: el consumo del bus (ADR 0023) y el cierre automático (ADR 0025).
 - **Los workflows programados no son un reloj confiable.** GitHub descarta la
   mayoría de sus disparos en este repositorio: el keepalive de Render, cada 10
   minutos en el papel, corre cada 4 a 8 horas. El servicio se duerme, y una

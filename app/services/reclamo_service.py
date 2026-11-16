@@ -1308,7 +1308,7 @@ class ReclamoService:
 
         A citizen who never responds is not expected to keep a claim open
         forever. What calls this is a loop inside the running process
-        (`app/services/cierre_periodico.py`, ADR 0024): the API in production,
+        (`app/services/cierre_periodico.py`, ADR 0025): the API in production,
         the worker locally. The maintenance endpoint runs the same code by
         hand.
         """

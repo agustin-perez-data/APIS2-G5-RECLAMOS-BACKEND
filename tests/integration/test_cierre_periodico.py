@@ -1,4 +1,4 @@
-"""The auto-close loop that runs inside the process (US-17, ADR 0024).
+"""The auto-close loop that runs inside the process (US-17, ADR 0025).
 
 What `cerrar_resueltos_vencidos` closes is covered through the maintenance
 endpoint (`test_cierre_automatico_api.py`). Here it is the clock: that it does
