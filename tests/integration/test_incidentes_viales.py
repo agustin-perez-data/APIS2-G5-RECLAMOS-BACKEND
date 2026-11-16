@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from app.db.models import ActividadMasiva, EventoClimatico
 from app.domain.enums import (
     USUARIO_SISTEMA,
     CanalOrigen,
@@ -22,6 +23,7 @@ from app.domain.enums import (
     PrioridadReclamo,
 )
 from app.events import topics
+from app.events.gateway import traducir
 from app.events.handlers import manejar_incidente_actualizado, manejar_incidente_creado
 from app.schemas.reclamo import ReclamoCrear
 from app.services.emergencia_via_service import TITULO_RECLAMO_VIAL
@@ -196,6 +198,9 @@ async def test_a5_crea_reclamo_sin_incidente_interno_previo(
     publicado = publisher.eventos_de(topics.RECLAMO_CREADO)[0]
     assert publicado.data.reclamo_id == reclamo.id
     assert publicado.data.prioridad is reclamo.prioridad
+    assert publicado.data.causa_id == "EMG-1"
+    assert publicado.data.causa_tipo is CausaTipo.EMERGENCIA
+    assert publicado.correlation_id == "corr-emergencia-a5"
 
 
 @pytest.mark.asyncio
@@ -229,6 +234,22 @@ async def test_a5_reentregado_con_otro_event_id_no_duplica(
     assert await service.repo.obtener_por_evento_origen("emergencia:EMG-1") is not None
     assert len(publisher.eventos_de(topics.RECLAMO_CREADO)) == 1
     assert len(publisher.eventos_de(topics.RECLAMO_CLASIFICADO)) == 1
+    assert causa_publicada(publisher) == ("EMG-1", CausaTipo.EMERGENCIA)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("correlacion", ["corr-emergencia-a5", None])
+async def test_a5_conserva_correlation_id_en_el_gateway(
+    service: ReclamoService, publisher, correlacion: str | None
+) -> None:
+    await manejar_incidente_actualizado(evento_a5(correlationId=correlacion), service)
+
+    publicado = publisher.eventos_de(topics.RECLAMO_CREADO)[0]
+    _, datos = traducir(topics.RECLAMO_CREADO, publicado)
+    assert publicado.correlation_id == correlacion
+    assert datos["correlationId"] == correlacion
+    assert datos["causaId"] == "EMG-1"
+    assert datos["causaTipo"] == "EMERGENCIA"
 
 
 @pytest.mark.asyncio
@@ -315,9 +336,55 @@ async def test_con_alerta_climatica_gana_la_alerta(
 
 
 @pytest.mark.asyncio
-async def test_el_incidente_viaja_al_gateway_como_causa(service: ReclamoService, publisher) -> None:
-    from app.events.gateway import traducir
+async def test_a5_prioriza_su_emergencia_sin_perder_alerta_actividad_ni_incidente(
+    service: ReclamoService, publisher, session
+) -> None:
+    from app.domain.enums import EstadoEventoClimatico, NivelCriticidad
 
+    ahora = datetime.now(UTC)
+    alerta = EventoClimatico(
+        alerta_id=uuid.uuid4(),
+        nivel=NivelCriticidad.ALTA,
+        fenomeno="TORMENTA_FUERTE",
+        barrios=["SAN NICOLAS"],
+        ubicaciones=[],
+        vigencia_desde=ahora - timedelta(hours=1),
+        vigencia_hasta=ahora + timedelta(hours=4),
+        estado=EstadoEventoClimatico.ACTIVA,
+    )
+    actividad = ActividadMasiva(
+        actividad_origen_id="ACT-1",
+        titulo="Festival cercano",
+        capacidad=5000,
+        latitud=OBELISCO[0],
+        longitud=OBELISCO[1],
+        inicio=ahora - timedelta(hours=1),
+        fin=ahora + timedelta(hours=2),
+        estado="PROGRAMADA",
+    )
+    session.add_all([alerta, actividad])
+    await session.commit()
+    await manejar_incidente_creado(evento_creado(emergenciaId="EMG-OTRA"), service)
+
+    await manejar_incidente_actualizado(evento_a5(), service)
+
+    reclamo = await service.repo.obtener_por_evento_origen("emergencia:EMG-1")
+    assert reclamo is not None
+    assert reclamo.alerta_id == alerta.alerta_id
+    assert reclamo.actividad_id == actividad.id
+    assert reclamo.incidente is not None
+    assert reclamo.incidente.incidente_origen_id == "EMG-OTRA"
+    assert causa_publicada(publisher) == ("EMG-1", CausaTipo.EMERGENCIA)
+    publicado = publisher.eventos_de(topics.RECLAMO_CREADO)[0]
+    _, datos = traducir(topics.RECLAMO_CREADO, publicado)
+    assert datos["alertaId"] == str(alerta.alerta_id)
+    assert datos["actividadId"] == "ACT-1"
+    assert datos["causaId"] == "EMG-1"
+    assert datos["causaTipo"] == "EMERGENCIA"
+
+
+@pytest.mark.asyncio
+async def test_el_incidente_viaja_al_gateway_como_causa(service: ReclamoService, publisher) -> None:
     await manejar_incidente_creado(evento_creado(), service)
     await service.crear(reclamo_en(*OBELISCO), str(uuid.uuid4()))
 

@@ -432,18 +432,41 @@ incidente— y Espacios Públicos —para avisar a los inscriptos de un evento
 cercano—. La misma regla se expone en nuestra API como `afecta_circulacion`, así
 que el frontend no necesita reimplementarla.
 
-`causaId`, `causaTipo` y `actividadId` son para el tablero de Analítica (ADR 0016) y
-van al final del schema, con `null` por defecto:
+`causaId`, `causaTipo` y `actividadId` son para el tablero de Analítica
+([ADR 0016](adr/0016-causa-del-reclamo-para-analitica.md) y
+[ADR 0024](adr/0024-emergencia-de-origen-como-causa-de-a5.md)). Van al final
+del schema, con `null` por defecto:
 
 | Campo | Cuándo viene |
 | --- | --- |
-| `causaTipo` / `causaId` | Qué originó el reclamo, en este orden de precedencia: **`EVENTO_CLIMATICO`** con el `alertaId` de Espacios (alerta vigente al dar de alta, ADR 0014), **`INCIDENTE_VIAL`** con el `emergenciaId` de Emergencias (incidente abierto a 300 m o menos, ADR 0017), y **`EVENTO_PUBLICO`** con el `actividadId` de Espacios (actividad masiva, ADR 0013). `null` en el flujo normal. |
+| `causaTipo` / `causaId` | Para un reclamo creado automáticamente por A5 desde `EmergenciaActualizada`: **`EMERGENCIA`** y el `emergenciaId` original, sin el prefijo interno `emergencia:`. Para todos los demás reclamos se mantiene la precedencia **`EVENTO_CLIMATICO`** (con `alertaId`), **`INCIDENTE_VIAL`** (con el `emergenciaId` de un incidente abierto a 300 m o menos, ADR 0017) y **`EVENTO_PUBLICO`** (con `actividadId`). Ambos campos son `null` cuando no hay causa externa. |
 | `actividadId` | El `actividadId` de `ActividadCreada` de la actividad masiva relacionada, o `null`. |
 
-Un reclamo tiene **una sola causa**: si cae en una alerta climática y cerca de un
-festival, gana la alerta. Por eso la actividad viaja también en `actividadId`, y
-los reclamos relacionados con un evento masivo se cuentan por ese campo, no por
-`causaTipo`.
+Un reclamo tiene **una sola causa**. En A5 gana siempre la emergencia que originó
+el alta, incluso si el reclamo cae bajo una alerta climática, cerca de otro
+incidente vial abierto o junto a una actividad masiva. `alertaId` y `actividadId`
+siguen viajando por separado cuando corresponden; esas relaciones y su
+persistencia no cambian. Para los reclamos ajenos a A5, la alerta sigue ganando
+sobre el incidente vial y la actividad. Los reclamos relacionados con un evento
+masivo se cuentan por `actividadId`, no solo por `causaTipo`.
+
+Ejemplo de campos relevantes de `ReclamoCreado` generado por A5. Si
+`EmergenciaActualizada` trajo `emergenciaId = "EMG-1"` y
+`correlationId = "corr-emergencia-a5"`, este último conserva ese valor; no se
+reemplaza por `EMG-1` ni por la clave interna `emergencia:EMG-1`:
+
+```json
+{
+  "canal": "EVENTO",
+  "causaId": "EMG-1",
+  "causaTipo": "EMERGENCIA",
+  "correlationId": "corr-emergencia-a5",
+  "alertaId": "11111111-2222-3333-4444-555555555555",
+  "actividadId": "ACT-1"
+}
+```
+
+Si el evento de Emergencias no trae `correlationId`, se sigue publicando `null`.
 
 ```json
 {
