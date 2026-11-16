@@ -356,6 +356,11 @@ secciones 2 y 3 sigue siendo nuestro contrato interno; esta sección es lo que v
 los otros equipos. El porqué está en el
 [ADR 0009](adr/0009-integracion-por-el-gateway.md).
 
+Los dos eventos de alerta climática se leen además directo del Kafka del bus,
+porque el webhook no entrega eventos cuyo esquema Avro tenga un `enum`
+([ADR 0023](adr/0023-consumo-directo-del-kafka-del-bus.md)). El sobre es el
+mismo por los dos caminos, y un evento repetido se descarta por su `eventId`.
+
 Diferencias con nuestro contrato interno, para que no sorprendan:
 
 - Los nombres son los del catálogo del gateway: `com.citypass.reclamos.ReclamoCreado`.

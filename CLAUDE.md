@@ -265,6 +265,7 @@ supere al anterior:
 | 0018 | Una actividad cancelada o suspendida deja de relacionar reclamos nuevos; los ya relacionados quedan |
 | 0019 | El clasificador se elige por validación cruzada, se mide sobre conjuntos apartados y tiene piso de calidad en la suite; tocar el corpus obliga a correr `scripts/evaluar_clasificador.py` |
 | 0020 | Un vecino puede leer cualquier reclamo pero no su lado interno: todo endpoint que devuelva un reclamo, su historial o sus comentarios pasa por `app/api/visibilidad.py` |
+| 0023 | Los eventos de clima se leen del Kafka del bus (`app/events/bus.py`, dentro de la API, apagado por defecto); webhook y Kafka comparten traducción y handlers. Una alerta vencida no marca ni avisa |
 
 ---
 
@@ -272,7 +273,7 @@ supere al anterior:
 
 | Grupo | Qué nos da / qué le damos |
 | --- | --- |
-| 1 — EDA | Define el bus, la convención de topics y el **gateway HTTP** por el que se integran los módulos (ADR 0009). |
+| 1 — EDA | Define el bus, la convención de topics y el **gateway HTTP** por el que se integran los módulos (ADR 0009). Los eventos de clima se leen directo de su Kafka (ADR 0023). |
 | 2 — Login Federado | Emite los JWT **del personal municipal**. Su IdP no autentica ciudadanos: eso es nuestro. |
 | 4 — Residuos | Consumimos `residuos.contenedor.desbordado` → alta automática. |
 | 6 — Emergencias | Consumimos `emergencias.incidente.creado` → re-priorización por zona. |
