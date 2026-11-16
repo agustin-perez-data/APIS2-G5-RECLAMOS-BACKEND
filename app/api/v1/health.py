@@ -16,12 +16,13 @@ from app.core.config import settings
 
 router = APIRouter(tags=["health"])
 
-# HEAD as well as GET: uptime monitors and some load balancers probe with HEAD,
-# and answering 405 to them reads as "down" while the service is fine.
-_SONDEO = ["GET", "HEAD"]
+# The two health routes answer HEAD as well as GET: uptime monitors and some
+# load balancers probe with HEAD, and a 405 reads as "down" while the service
+# is fine. HEAD stays out of the OpenAPI schema: it is the same operation.
 
 
-@router.api_route("/health", methods=_SONDEO, summary="Liveness: el proceso esta vivo")
+@router.head("/health", include_in_schema=False)
+@router.get("/health", summary="Liveness: el proceso esta vivo")
 async def health() -> dict:
     return {
         "status": "ok",
@@ -31,7 +32,8 @@ async def health() -> dict:
     }
 
 
-@router.api_route("/health/ready", methods=_SONDEO, summary="Readiness: hay conexion con la base")
+@router.head("/health/ready", include_in_schema=False)
+@router.get("/health/ready", summary="Readiness: hay conexion con la base")
 async def ready(session: SessionDep, response: Response) -> dict:
     # Without a database we cannot serve anything useful, so readiness has to
     # fail and let the load balancer pull the instance out of rotation.
