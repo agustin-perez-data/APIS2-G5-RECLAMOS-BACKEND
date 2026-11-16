@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -46,15 +48,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "seguridad.auth_deshabilitada", detalle="AUTH_ENABLED=false, solo para desarrollo"
         )
 
+    # The bus consumer shares the process (ADR 0023): a worker of its own is a
+    # second paid service. It reconnects by itself and never raises, so a broker
+    # that is down costs events arriving late, not the API.
+    tarea_bus: asyncio.Task[None] | None = None
+    if settings.bus_kafka_enabled:
+        from app.events.bus import BusConsumer
+
+        tarea_bus = asyncio.create_task(BusConsumer(publisher).run(), name="bus-citypass")
+
     log.info(
         "app.iniciada",
         environment=settings.environment,
         kafka=settings.kafka_enabled,
+        bus_kafka=settings.bus_kafka_enabled,
         version=__version__,
     )
     try:
         yield
     finally:
+        if tarea_bus is not None:
+            tarea_bus.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await tarea_bus
         await publisher.stop()
         await cerrar_engine()
         log.info("app.detenida")
