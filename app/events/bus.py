@@ -45,7 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, settings
 from app.core.logging import get_logger
-from app.core.metrics import EVENTOS_DEL_BUS
+from app.core.metrics import BUS_CONECTADO, EVENTOS_DEL_BUS
 from app.db.session import session_scope
 from app.events import topics
 from app.events.entrada import a_sobre_interno
@@ -80,6 +80,21 @@ def _contexto_tls() -> ssl.SSLContext:
     contexto.verify_mode = ssl.CERT_REQUIRED
     contexto.load_verify_locations(cafile=certifi.where())
     return contexto
+
+
+async def _probar(paso: Any) -> str:
+    """Run one step of reaching the broker and say how it went, in a few words.
+
+    Only the outcome comes back, never what the step returned: one of them is
+    the access token.
+    """
+    try:
+        resultado = await asyncio.wait_for(paso, timeout=10)
+    except Exception as exc:  # noqa: BLE001 - the outcome is the point
+        return f"{type(exc).__name__}: {exc}"[:200]
+    if isinstance(resultado, tuple):  # (reader, writer) of an open connection
+        resultado[1].close()
+    return "ok"
 
 
 class MensajeIlegible(ValueError):
@@ -204,12 +219,14 @@ class BusConsumer:
         handlers: dict[str, Handler] | None = None,
         registro: RegistroDeEsquemas | None = None,
         sesiones: Sesiones = session_scope,
+        token: AbstractTokenProvider | None = None,
     ) -> None:
         self._cfg = cfg or settings
         self._publisher = publisher
         self._handlers = handlers if handlers is not None else HANDLERS
         self._registro = registro or RegistroDeEsquemas(self._cfg.bus_kafka_schema_registry_url)
         self._sesiones = sesiones
+        self._token = token or TokenDelBus(self._cfg)
         self._consumer: Any = None
 
         desconocidos = sorted(set(self._cfg.bus_kafka_topics) - set(topics.GATEWAY_A_TOPIC))
@@ -300,7 +317,7 @@ class BusConsumer:
             client_id=f"{self._cfg.kafka_client_id}-bus",
             security_protocol="SASL_SSL",
             sasl_mechanism="OAUTHBEARER",
-            sasl_oauth_token_provider=TokenDelBus(self._cfg),
+            sasl_oauth_token_provider=self._token,
             ssl_context=_contexto_tls(),
             # Manual commit: only once the message has been handled.
             enable_auto_commit=False,
@@ -339,13 +356,67 @@ class BusConsumer:
             except Exception:  # noqa: BLE001 - closing a connection that is already broken
                 log.warning("bus.cierre_fallido")
 
+    async def _diagnosticar(self) -> dict[str, str]:
+        """Which step of reaching the broker fails: the network, TLS or the token.
+
+        The client reports a failed connection without its cause, and from
+        outside the three look the same. Each step is tried on its own so the
+        log says which one it is. Never raises.
+        """
+        try:
+            servidor = self._cfg.bus_kafka_bootstrap_servers.split(",")[0].strip()
+            host, _, puerto = servidor.rpartition(":")
+            return {
+                "tcp": await _probar(asyncio.open_connection(host, int(puerto))),
+                "tls": await _probar(
+                    asyncio.open_connection(
+                        host, int(puerto), ssl=_contexto_tls(), server_hostname=host
+                    )
+                ),
+                "token": await _probar(self._token.token()),
+            }
+        except Exception as exc:  # noqa: BLE001 - a diagnosis must not add a failure
+            return {"diagnostico": f"{type(exc).__name__}: {exc}"[:200]}
+
+    def _espera(self, fallos: int) -> float:
+        """Seconds before the next attempt: doubles with each failure in a row.
+
+        A broker that is unreachable stays that way for hours, not seconds:
+        retrying at a fixed pace would fill the log without connecting sooner.
+        """
+        base = self._cfg.bus_kafka_reconexion_segundos
+        return min(base * 2 ** min(max(fallos - 1, 0), 10), self._tope_de_espera())
+
+    def _tope_de_espera(self) -> float:
+        return max(
+            self._cfg.bus_kafka_reconexion_maxima_segundos,
+            self._cfg.bus_kafka_reconexion_segundos,
+        )
+
+    async def _registrar_caida(self, exc: Exception, fallos: int) -> None:
+        if fallos == 1:
+            # Once, with everything: the trace and which step fails.
+            log.error("bus.conexion_caida", intento=fallos, exc_info=exc)
+            log.warning("bus.diagnostico", **await self._diagnosticar())
+            return
+        # After that one line per attempt is enough: the cause was already said.
+        log.warning(
+            "bus.conexion_caida",
+            intento=fallos,
+            error=type(exc).__name__,
+            proximo_intento_en_segundos=self._espera(fallos),
+        )
+
     async def run(self) -> None:
         """Read until cancelled, reconnecting after any failure."""
+        fallos = 0
         try:
             while True:
                 try:
                     await self._conectar()
                     await self._fijar_posicion()
+                    fallos = 0
+                    BUS_CONECTADO.set(1)
                     async for mensaje in self._consumer:
                         await self.manejar(
                             mensaje.value, origen=mensaje.topic, offset=mensaje.offset
@@ -355,11 +426,14 @@ class BusConsumer:
                         await self._consumer.commit()
                 except asyncio.CancelledError:
                     raise
-                except Exception:  # noqa: BLE001 - the broker must not take the API down
-                    log.exception("bus.conexion_caida")
+                except Exception as exc:  # noqa: BLE001 - the broker must not take the API down
+                    fallos += 1
+                    BUS_CONECTADO.set(0)
+                    await self._registrar_caida(exc, fallos)
                 finally:
+                    BUS_CONECTADO.set(0)
                     await self._desconectar()
-                await asyncio.sleep(self._cfg.bus_kafka_reconexion_segundos)
+                await asyncio.sleep(self._espera(fallos))
         finally:
             await self._registro.cerrar()
             log.info("bus.detenido")

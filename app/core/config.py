@@ -87,6 +87,8 @@ class Settings(BaseSettings):
     bus_kafka_espera_segundos: float = 2.0
     # Wait before reconnecting after the connection to the broker drops.
     bus_kafka_reconexion_segundos: float = 30.0
+    # It doubles with every failure in a row, up to this.
+    bus_kafka_reconexion_maxima_segundos: float = 600.0
 
     # --- Security: municipal staff ------------------------------------------
     # Group 2's Federated Login (LDAP + JWT) issues these and we only validate

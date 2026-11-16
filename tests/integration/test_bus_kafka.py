@@ -596,6 +596,12 @@ def kafka(monkeypatch):
     _KafkaDeMentira.conexiones = []
     _KafkaDeMentira.instancias = []
     monkeypatch.setattr(aiokafka, "AIOKafkaConsumer", _KafkaDeMentira)
+
+    async def sin_red(self) -> dict[str, str]:
+        return {}
+
+    # The diagnosis opens real connections: not in a test.
+    monkeypatch.setattr(BusConsumer, "_diagnosticar", sin_red)
     return _KafkaDeMentira
 
 
@@ -664,3 +670,80 @@ async def test_el_registro_caido_deja_el_mensaje_sin_commitear(publisher, sesion
 
     # Only the pinned position: the message itself was never committed.
     assert kafka.instancias[0].commits == [{aiokafka.TopicPartition(CONFIRMADA, 0): 28}]
+
+
+# --- When the broker cannot be reached ---------------------------------------------
+
+
+def test_la_espera_entre_reintentos_crece_hasta_un_tope(publisher) -> None:
+    bus = BusConsumer(
+        publisher,
+        _cfg(bus_kafka_reconexion_segundos=30.0, bus_kafka_reconexion_maxima_segundos=600.0),
+    )
+
+    assert [bus._espera(fallos) for fallos in (0, 1, 2, 3, 4, 5, 6, 50)] == [
+        30.0,
+        30.0,
+        60.0,
+        120.0,
+        240.0,
+        480.0,
+        600.0,
+        600.0,
+    ]
+
+
+class _TokenFijo:
+    async def token(self) -> str:
+        return "un-token-que-no-debe-aparecer"
+
+
+async def test_el_diagnostico_dice_que_paso_falla_y_no_muestra_el_token(
+    publisher, monkeypatch
+) -> None:
+    """From outside, a blocked port, a cut handshake and a bad token look alike."""
+
+    async def conexion(host, puerto, **opciones):
+        if "ssl" in opciones:
+            # What an event loop raises when the far end hangs up mid-handshake.
+            raise ConnectionResetError()
+
+        class _Escritor:
+            def close(self) -> None:
+                pass
+
+        return object(), _Escritor()
+
+    monkeypatch.setattr(asyncio, "open_connection", conexion)
+    bus = BusConsumer(publisher, _cfg(), token=_TokenFijo())
+
+    pasos = await bus._diagnosticar()
+
+    assert pasos == {"tcp": "ok", "tls": "ConnectionResetError: ", "token": "ok"}
+
+
+async def test_el_diagnostico_nunca_suma_una_falla(publisher) -> None:
+    bus = BusConsumer(publisher, _cfg(bus_kafka_bootstrap_servers="sin-puerto"), token=_TokenFijo())
+
+    assert list(await bus._diagnosticar()) == ["diagnostico"]
+
+
+async def test_la_primera_caida_se_diagnostica_y_las_siguientes_no(
+    publisher, sesiones, kafka, monkeypatch
+) -> None:
+    diagnosticos = 0
+
+    async def contar(self) -> dict[str, str]:
+        nonlocal diagnosticos
+        diagnosticos += 1
+        return {"tcp": "ok"}
+
+    monkeypatch.setattr(BusConsumer, "_diagnosticar", contar)
+    bus = BusConsumer(publisher, _cfg(), registro=_registro(), sesiones=sesiones)
+    kafka.conexiones = [[ConnectionError("x")], [ConnectionError("x")], [ConnectionError("x")], []]
+
+    tarea = asyncio.create_task(bus.run())
+    await _hasta(lambda: len(kafka.instancias) == 4)
+    await _detener(tarea)
+
+    assert diagnosticos == 1
