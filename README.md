@@ -261,6 +261,11 @@ nombres del catálogo del gateway (`com.citypass.reclamos.ReclamoCreado` y
 `POST /api/v1/webhooks/citypass`, que ejecuta los mismos handlers que el worker.
 Kafka y Redpanda quedan para desarrollo local.
 
+Los eventos de alerta climática entran además por el **Kafka del bus**
+(ver [ADR 0023](docs/adr/0023-consumo-directo-del-kafka-del-bus.md)): con
+`BUS_KAFKA_ENABLED=true` la API lee esos tópicos y ejecuta los mismos handlers.
+El webhook del gateway no entrega eventos cuyo esquema tenga un `enum`.
+
 Garantías: *at-least-once* con commit manual del offset, idempotencia por
 `evento_origen_id` (UNIQUE en base) y DLQ (`reclamos.dlq`) para los mensajes que
 no se pueden procesar. Payloads y ejemplos completos en

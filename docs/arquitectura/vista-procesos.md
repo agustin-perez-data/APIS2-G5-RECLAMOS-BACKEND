@@ -145,9 +145,14 @@ reacción usa la clave natural que ya tiene.
 | `espacios.CriticidadClimaticaConfirmada` y `Finalizada` | Aplica y levanta la alerta | Tabla `eventos_procesados`, escrita antes del trabajo y dentro de la misma transacción |
 | `espacios.ActividadCreada`, `ActividadModificada`, `EventoComunitarioPublicado` | Registra o actualiza la actividad | `actividad_origen_id` |
 
-El mismo conjunto de handlers atiende los dos caminos de entrada: el webhook en
-producción y el consumidor de Kafka (`app/worker.py`) en el entorno local. En el
-segundo, un mensaje que no se puede procesar va al tópico `reclamos.dlq`.
+El mismo conjunto de handlers atiende los tres caminos de entrada: el webhook y
+el consumidor del Kafka del bus (`app/events/bus.py`, ADR 0023) en producción, y
+el consumidor de nuestro Kafka (`app/worker.py`) en el entorno local. En el
+último, un mensaje que no se puede procesar va al tópico `reclamos.dlq`; en el
+del bus se registra, se cuenta en `reclamos_eventos_bus_total` y se saltea.
+
+Una alerta cuya vigencia ya terminó se guarda pero no marca reclamos ni avisa a
+nadie, llegue por donde llegue.
 
 ## 3. Validación de identidad en cada pedido
 

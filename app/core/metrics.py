@@ -59,6 +59,17 @@ EVENTOS_RECIBIDOS = Counter(
     ["topic", "resultado"],
 )
 
+# The same events, read straight from the bus' Kafka (ADR 0023). A counter of
+# its own so the two roads can be told apart while both are open.
+# resultado: procesado | ignorado (a type we do not handle) | ilegible (does
+# not decode) | invalido (decodes, but breaks the contract) | error (the
+# handler kept failing and the event was skipped)
+EVENTOS_DEL_BUS = Counter(
+    "reclamos_eventos_bus_total",
+    "Eventos de otros modulos leidos del Kafka del bus, por topico y resultado",
+    ["topic", "resultado"],
+)
+
 TIPO_DE_CONTENIDO = CONTENT_TYPE_LATEST
 
 

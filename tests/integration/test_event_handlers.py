@@ -450,3 +450,45 @@ async def test_un_mensaje_roto_va_a_la_dlq(publisher: InMemoryEventPublisher) ->
     fallidos = publisher.eventos_de(topics.DLQ)
     assert len(fallidos) == 1
     assert fallidos[0].data.topic_original == "residuos.contenedor.desbordado"
+
+
+async def test_un_mensaje_ilegible_no_detiene_al_worker(
+    publisher: InMemoryEventPublisher,
+) -> None:
+    """It used to be decoded by the client, outside the per-message handling:
+    one unreadable message stopped the worker, on every restart."""
+
+    class _Mensaje:
+        topic = topics.RESIDUOS_CONTENEDOR_DESBORDADO
+        offset = 7
+
+        def __init__(self, valor: bytes) -> None:
+            self.value = valor
+
+    class _Kafka:
+        def __init__(self) -> None:
+            self.pendientes = [_Mensaje(b"\x82SNAPPY no es json"), _Mensaje(b"[1, 2]")]
+            self.commits = 0
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self.pendientes:
+                raise StopAsyncIteration
+            return self.pendientes.pop(0)
+
+        async def commit(self) -> None:
+            self.commits += 1
+
+        async def stop(self) -> None:
+            pass
+
+    consumer = EventConsumer(publisher)
+    kafka = consumer._consumer = _Kafka()
+
+    await consumer.run()
+
+    # Both were committed and both went to the DLQ: the partition moved on.
+    assert kafka.commits == 2
+    assert len(publisher.eventos_de(topics.DLQ)) == 2

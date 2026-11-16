@@ -72,7 +72,7 @@ from app.schemas.reclamo import (
 )
 from app.services.actividad_service import ActividadService
 from app.services.clasificador import Clasificador, get_clasificador
-from app.services.clima_service import ClimaService
+from app.services.clima_service import ClimaService, esta_vencida
 from app.services.incidente_service import IncidenteService
 from app.services.notificacion_service import NotificacionService
 
@@ -1075,10 +1075,14 @@ class ReclamoService:
         An alert that was confirmed but whose window has not opened yet does not
         count: Public Spaces can announce a storm for tonight, and a claim filed
         this morning is not under it.
+
+        Neither does one whose window is over, even if `Finalizada` never
+        arrived: without this a lost closing event would keep marking every new
+        claim in the area for ever.
         """
         ahora = datetime.now(UTC)
         for alerta in await self.clima.repo.activas():
-            if _con_zona(alerta.vigencia_desde) > ahora:
+            if _con_zona(alerta.vigencia_desde) > ahora or esta_vencida(alerta, ahora):
                 continue
             if alerta.barrios:
                 if barrio_afectado(reclamo.barrio, alerta.barrios):
