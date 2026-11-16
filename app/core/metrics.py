@@ -17,7 +17,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, Info, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    Counter,
+    Gauge,
+    Histogram,
+    Info,
+    generate_latest,
+)
 
 from app import __version__
 from app.core.config import settings
@@ -68,6 +75,13 @@ EVENTOS_DEL_BUS = Counter(
     "reclamos_eventos_bus_total",
     "Eventos de otros modulos leidos del Kafka del bus, por topico y resultado",
     ["topic", "resultado"],
+)
+
+# 1 while the consumer holds a connection to the bus' broker. With the flag
+# on, a 0 that lasts means events are not being read.
+BUS_CONECTADO = Gauge(
+    "reclamos_bus_conectado",
+    "1 si el consumidor del Kafka del bus esta conectado, 0 si no",
 )
 
 TIPO_DE_CONTENIDO = CONTENT_TYPE_LATEST
