@@ -28,6 +28,7 @@ el contexto, las opciones que se evaluaron y por qué se descartaron.
 | [0021](0021-infraestructura-como-codigo.md) | La configuración de Render vive en el repositorio | Aceptada |
 | [0022](0022-despliegue-condicionado-y-observabilidad.md) | El deploy espera al CI, vuelve atrás solo y avisa cuando falla | Aceptada |
 | [0023](0023-consumo-directo-del-kafka-del-bus.md) | Los eventos de otros módulos se leen del Kafka del bus; el webhook queda de respaldo | Aceptada |
+| [0024](0024-cierre-automatico-dentro-de-la-api.md) | El cierre automático corre dentro de la API, no en un workflow programado | Aceptada |
 | [0024](0024-emergencia-de-origen-como-causa-de-a5.md) | La emergencia de origen es la causa publicada para los reclamos A5 | Aceptada |
 
 ## Cómo agregar uno
