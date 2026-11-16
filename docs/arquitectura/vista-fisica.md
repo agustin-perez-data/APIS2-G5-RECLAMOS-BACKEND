@@ -135,6 +135,12 @@ logs salen en JSON. `GET /health` informa el valor en uso.
 - **El proceso `worker` no está desplegado.** El cierre automático de reclamos
   resueltos lo dispara un workflow diario en su lugar, con una cuenta de
   administrador del Login Federado y no con una cuenta de servicio.
+- **El broker del bus corta de a ratos las conexiones que salen de Render.** El
+  puerto abre, pero el saludo TLS se interrumpe del otro lado; minutos después
+  la misma conexión entra (observado el 16/11/2026; desde otras redes no
+  pasa). El consumidor reintenta con espera creciente hasta dos minutos y no
+  pierde eventos, porque retoma desde su posición, pero una alerta puede
+  llegar tarde. `reclamos_bus_conectado` en `/metrics` dice si está conectado.
 - **Punto único de falla**: una instancia de la API, sin réplica.
 
 ## Decisiones relacionadas
