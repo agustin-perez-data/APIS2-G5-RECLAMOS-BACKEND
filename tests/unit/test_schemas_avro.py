@@ -13,11 +13,14 @@ import json
 import pathlib
 import uuid
 from datetime import UTC, datetime
+from io import BytesIO
 
+import fastavro
 import pytest
 
 from app.domain.enums import (
     CategoriaReclamo,
+    CausaTipo,
     EstadoReclamo,
     PrioridadReclamo,
 )
@@ -131,3 +134,19 @@ def test_los_campos_opcionales_traen_default_nulo(topic, armar, nombre) -> None:
     for campo in _esquema(nombre)["fields"]:
         if isinstance(campo["type"], list) and "null" in campo["type"]:
             assert campo.get("default", "falta") is None, f"'{campo['name']}' sin default nulo"
+
+
+def test_causa_emergencia_se_serializa_con_el_avro_local() -> None:
+    sobre = _minimo_creado()
+    sobre.data.causa_id = "EMG-1"
+    sobre.data.causa_tipo = CausaTipo.EMERGENCIA
+    _, datos = traducir(topics.RECLAMO_CREADO, sobre)
+    esquema = fastavro.parse_schema(_esquema("ReclamoCreado"))
+    salida = BytesIO()
+
+    fastavro.schemaless_writer(salida, esquema, datos)
+    salida.seek(0)
+
+    decodificado = fastavro.schemaless_reader(salida, esquema)
+    assert decodificado["causaId"] == "EMG-1"
+    assert decodificado["causaTipo"] == "EMERGENCIA"
