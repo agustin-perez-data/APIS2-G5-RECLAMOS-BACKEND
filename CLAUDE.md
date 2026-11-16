@@ -266,7 +266,7 @@ supere al anterior:
 | 0019 | El clasificador se elige por validación cruzada, se mide sobre conjuntos apartados y tiene piso de calidad en la suite; tocar el corpus obliga a correr `scripts/evaluar_clasificador.py` |
 | 0020 | Un vecino puede leer cualquier reclamo pero no su lado interno: todo endpoint que devuelva un reclamo, su historial o sus comentarios pasa por `app/api/visibilidad.py` |
 | 0023 | Los eventos de clima se leen del Kafka del bus (`app/events/bus.py`, dentro de la API, apagado por defecto); webhook y Kafka comparten traducción y handlers. Una alerta vencida no marca ni avisa |
-| 0024 | El cierre automático de reclamos resueltos corre en un ciclo dentro de la API (`app/services/cierre_periodico.py`); los workflows programados de GitHub no son un reloj confiable |
+| 0025 | El cierre automático de reclamos resueltos corre en un ciclo dentro de la API (`app/services/cierre_periodico.py`); los workflows programados de GitHub no son un reloj confiable |
 
 ---
 

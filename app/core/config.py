@@ -188,7 +188,7 @@ class Settings(BaseSettings):
     dias_cierre_automatico: int = 7
     # How often the loop checks for claims to auto-close.
     intervalo_cierre_automatico_segundos: int = 3600
-    # Runs that loop inside the API process (ADR 0024). Off by default; on in
+    # Runs that loop inside the API process (ADR 0025). Off by default; on in
     # production, where there is no worker and a scheduled workflow proved
     # unreliable as a clock.
     cierre_automatico_en_api: bool = False

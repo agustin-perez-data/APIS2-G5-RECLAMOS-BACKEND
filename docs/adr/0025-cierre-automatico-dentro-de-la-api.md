@@ -1,4 +1,4 @@
-# ADR 0024 — El cierre automático corre dentro de la API
+# ADR 0025 — El cierre automático corre dentro de la API
 
 - **Estado:** Aceptada
 - **Fecha:** 2026-11-16

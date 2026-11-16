@@ -10,7 +10,7 @@ name: Cierre automatico de reclamos
 # administrator and calls the maintenance endpoint. The endpoint is idempotent,
 # so a repeated or a manual run closes nothing twice.
 #
-# It is no longer the mechanism (ADR 0024). GitHub drops most scheduled runs of
+# It is no longer the mechanism (ADR 0025). GitHub drops most scheduled runs of
 # this repository -- on its first day this one never started -- so the API now
 # closes what is due by itself, hourly. This stays as a manual trigger and as a
 # second, best-effort clock: when its schedule does fire it finds nothing left.
