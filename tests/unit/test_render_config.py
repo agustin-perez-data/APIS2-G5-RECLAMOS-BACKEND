@@ -160,7 +160,7 @@ def test_ningun_secreto_esta_escrito_en_el_archivo(real):
     sospechosas = ("SECRET", "TOKEN", "PASSWORD", "API_KEY", "DATABASE_URL", "EMAIL")
 
     # An address and the name of a claim: they contain the word, not a credential.
-    no_son_credenciales = {"GATEWAY_TOKEN_URL", "JWT_TOKEN_USE_ESPERADO"}
+    no_son_credenciales = {"GATEWAY_TOKEN_URL", "BUS_KAFKA_TOKEN_URL", "JWT_TOKEN_USE_ESPERADO"}
 
     en_claro = [
         clave
@@ -169,7 +169,12 @@ def test_ningun_secreto_esta_escrito_en_el_archivo(real):
     ]
 
     assert en_claro == []
-    assert {"DATABASE_URL", "JWT_CIUDADANOS_SECRET", "GATEWAY_WEBHOOK_TOKEN"} <= real.secretas
+    assert {
+        "DATABASE_URL",
+        "JWT_CIUDADANOS_SECRET",
+        "GATEWAY_WEBHOOK_TOKEN",
+        "BUS_KAFKA_CLIENT_SECRET",
+    } <= real.secretas
 
 
 def test_la_configuracion_declarada_arranca_en_produccion(real, monkeypatch):
@@ -192,6 +197,10 @@ def test_la_configuracion_declarada_arranca_en_produccion(real, monkeypatch):
     assert not cfg.is_local
     assert cfg.auth_dev_login_enabled is False
     assert cfg.jwt_staff_estricto is True
+    # The bus consumer is on, complete, and starts at the end of the topic.
+    assert cfg.bus_kafka_enabled is True
+    assert cfg.bus_kafka_desde == "latest"
+    assert cfg.bus_kafka_group_id.startswith(cfg.gateway_namespace)
     assert cfg.jwt_staff_grupos_admin == ["reclamos-administradores"]
     assert "https://reclamos-frontend-g5.vercel.app" in cfg.cors_origins
 
