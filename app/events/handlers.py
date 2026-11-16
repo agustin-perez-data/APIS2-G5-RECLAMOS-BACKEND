@@ -30,6 +30,7 @@ from app.events.contracts import (
     parse_envelope,
 )
 from app.schemas.reclamo import ReclamoCrear
+from app.services.clima_service import esta_vencida
 from app.services.emergencia_via_service import crear_reclamo_por_emergencia_vial
 from app.services.reclamo_service import ReclamoService
 
@@ -359,6 +360,18 @@ async def manejar_criticidad_confirmada(raw: dict[str, Any], service: ReclamoSer
         barrios=len(alerta.barrios),
         ubicaciones=len(alerta.ubicaciones),
     )
+
+    if esta_vencida(alerta):
+        # Stored, because it is history and a later `Finalizada` refers to it,
+        # but it marks nothing and tells nobody: warning a neighbour today about
+        # a storm that ended is worse than saying nothing. Nothing is published
+        # either: `CriticidadClimaticaAplicada` says the alert was applied.
+        log.info(
+            "handler.clima.alerta_vencida",
+            alerta_id=str(alerta.alerta_id),
+            vigencia_hasta=alerta.vigencia_hasta.isoformat(),
+        )
+        return
 
     # Stage 1: mark the claims already open in the area and tell their owners.
     resumen = await service.escalar_por_alerta_climatica(alerta)

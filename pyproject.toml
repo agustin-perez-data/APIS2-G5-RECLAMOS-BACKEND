@@ -21,6 +21,12 @@ dependencies = [
     "asyncpg>=0.30",
     "alembic>=1.14",
     "aiokafka>=0.12",
+    # Decodes the Avro records of the CityPass+ bus (ADR 0023). aiokafka reads
+    # the bytes; this turns them into the event, against the registry's schema.
+    "fastavro>=1.9",
+    # CA bundle for the TLS connection to the bus' broker. It already came with
+    # httpx; listed because `app/events/bus.py` imports it directly.
+    "certifi>=2024.2",
     "pyjwt[crypto]>=2.10",
     "python-multipart>=0.0.17",
     "structlog>=24.4",

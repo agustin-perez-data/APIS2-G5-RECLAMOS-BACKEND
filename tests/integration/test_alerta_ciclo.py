@@ -96,6 +96,28 @@ async def test_un_reclamo_nuevo_del_area_queda_bajo_la_alerta(session, publisher
 
 
 @pytest.mark.asyncio
+async def test_una_alerta_vencida_no_cubre_a_un_reclamo_nuevo(session, publisher) -> None:
+    """Its `Finalizada` never arrived, but its own window is over (ADR 0023)."""
+    alerta = _alerta(barrios=["PALERMO"])
+    alerta.vigencia_desde = datetime.now(UTC) - timedelta(days=2)
+    alerta.vigencia_hasta = datetime.now(UTC) - timedelta(days=1)
+    session.add(alerta)
+    await session.commit()
+
+    reclamo = await ReclamoService(session, publisher).crear(
+        ReclamoCrear(
+            titulo="Se cayo una rama grande",
+            descripcion="Una rama bloquea la vereda por el temporal",
+            categoria=CategoriaReclamo.ARBOLADO,
+            barrio="palermo",
+        ),
+        ciudadano_id=str(uuid.uuid4()),
+    )
+
+    assert reclamo.alerta_id is None
+
+
+@pytest.mark.asyncio
 async def test_el_evento_de_alta_lleva_la_alerta(session, publisher) -> None:
     # Analytics cross-references claims against alerts reading `ReclamoCreado`
     # alone -- the mark on our table is of no use to them. The claim is tied to

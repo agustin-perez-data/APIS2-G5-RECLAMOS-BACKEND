@@ -51,6 +51,17 @@ def _con_zona(momento: datetime) -> datetime:
     return momento if momento.tzinfo is not None else momento.replace(tzinfo=UTC)
 
 
+def esta_vencida(alerta: EventoClimatico, ahora: datetime | None = None) -> bool:
+    """True once the alert's own window is over, whether or not it was closed.
+
+    Public Spaces closes an alert with `CriticidadClimaticaFinalizada`, but that
+    event can be lost or simply never sent, and a confirmation can reach us
+    late: read from the bus after the service slept, or replayed. `vigencia_hasta`
+    is their own statement of when it ends, so past it the alert does nothing.
+    """
+    return _con_zona(alerta.vigencia_hasta) <= (ahora or datetime.now(UTC))
+
+
 def _normalizar_barrios(barrios: list[str]) -> list[str]:
     """Normalise the alert's side once, when it is stored.
 
