@@ -16,7 +16,12 @@ from app.core.config import settings
 
 router = APIRouter(tags=["health"])
 
+# The two health routes answer HEAD as well as GET: uptime monitors and some
+# load balancers probe with HEAD, and a 405 reads as "down" while the service
+# is fine. HEAD stays out of the OpenAPI schema: it is the same operation.
 
+
+@router.head("/health", include_in_schema=False)
 @router.get("/health", summary="Liveness: el proceso esta vivo")
 async def health() -> dict:
     return {
@@ -27,6 +32,7 @@ async def health() -> dict:
     }
 
 
+@router.head("/health/ready", include_in_schema=False)
 @router.get("/health/ready", summary="Readiness: hay conexion con la base")
 async def ready(session: SessionDep, response: Response) -> dict:
     # Without a database we cannot serve anything useful, so readiness has to

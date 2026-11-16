@@ -28,6 +28,15 @@ async def crear_reclamo(client: AsyncClient, headers: dict, **overrides) -> dict
 
 
 # --- Health ------------------------------------------------------------------
+async def test_los_sondeos_de_salud_responden_a_head(client: AsyncClient) -> None:
+    """Uptime monitors probe with HEAD; a 405 would read as the service being down."""
+    for ruta in ("/health", "/health/ready"):
+        respuesta = await client.head(ruta)
+
+        assert respuesta.status_code == 200
+        assert respuesta.content == b""
+
+
 async def test_health_no_requiere_token(client: AsyncClient) -> None:
     respuesta = await client.get("/health")
     assert respuesta.status_code == 200
