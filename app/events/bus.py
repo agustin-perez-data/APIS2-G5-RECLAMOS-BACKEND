@@ -66,6 +66,22 @@ _SIN_TOPIC = "otro"
 Sesiones = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 
 
+def _contexto_tls() -> ssl.SSLContext:
+    """TLS for the broker: its certificate and its host name are both checked.
+
+    certifi's bundle, the same one httpx trusts, because the system store is
+    not the same on every machine this runs on. The two checks are already
+    what a client context does; they are spelled out so that weakening them
+    takes a visible change.
+    """
+    contexto = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    contexto.minimum_version = ssl.TLSVersion.TLSv1_2
+    contexto.check_hostname = True
+    contexto.verify_mode = ssl.CERT_REQUIRED
+    contexto.load_verify_locations(cafile=certifi.where())
+    return contexto
+
+
 class MensajeIlegible(ValueError):
     """The message will never decode: retrying it cannot help."""
 
@@ -285,9 +301,7 @@ class BusConsumer:
             security_protocol="SASL_SSL",
             sasl_mechanism="OAUTHBEARER",
             sasl_oauth_token_provider=TokenDelBus(self._cfg),
-            # certifi's bundle, the same one httpx trusts: the system store is
-            # not the same on every machine this runs on.
-            ssl_context=ssl.create_default_context(cafile=certifi.where()),
+            ssl_context=_contexto_tls(),
             # Manual commit: only once the message has been handled.
             enable_auto_commit=False,
             # Only for a group with no position yet; see `_fijar_posicion`.

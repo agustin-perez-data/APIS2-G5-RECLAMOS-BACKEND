@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import ssl
 import struct
 import uuid
 from contextlib import asynccontextmanager
@@ -40,6 +41,7 @@ from app.events.bus import (
     MensajeIlegible,
     RegistroDeEsquemas,
     TokenDelBus,
+    _contexto_tls,
     a_json,
     decodificar,
 )
@@ -325,8 +327,10 @@ def test_a_json_convierte_los_tipos_logicos_de_avro_en_cualquier_nivel() -> None
     ],
 )
 async def test_un_mensaje_que_no_decodifica_es_ilegible_y_no_otra_cosa(crudo) -> None:
+    registro = _registro()
+
     with pytest.raises(MensajeIlegible):
-        await decodificar(crudo, _registro())
+        await decodificar(crudo, registro)
 
 
 async def test_el_esquema_se_pide_una_sola_vez() -> None:
@@ -341,8 +345,10 @@ async def test_el_esquema_se_pide_una_sola_vez() -> None:
 
 async def test_el_registro_caido_no_es_un_mensaje_ilegible() -> None:
     """It may come back: the message must be read again, not thrown away."""
+    mensaje, registro = confirmada(), _registro(caido=True)
+
     with pytest.raises(httpx.HTTPStatusError):
-        await decodificar(confirmada(), _registro(caido=True))
+        await decodificar(mensaje, registro)
 
 
 # --- One message ---------------------------------------------------------------
@@ -474,6 +480,13 @@ async def test_un_tipo_sin_handler_se_ignora(publisher, sesiones) -> None:
     assert await bus.manejar(confirmada()) == "ignorado"
 
 
+def test_la_conexion_al_broker_valida_el_certificado_y_el_host() -> None:
+    contexto = _contexto_tls()
+
+    assert contexto.verify_mode is ssl.CERT_REQUIRED
+    assert contexto.check_hostname is True
+
+
 # --- Configuration -------------------------------------------------------------
 
 
@@ -498,8 +511,10 @@ def test_apagado_no_pide_nada() -> None:
 
 
 def test_un_topic_que_nadie_traduce_no_se_acepta(publisher) -> None:
+    cfg = _cfg(bus_kafka_topics=["com.citypass.otro.Evento"])
+
     with pytest.raises(ValueError, match="sin handler"):
-        BusConsumer(publisher, _cfg(bus_kafka_topics=["com.citypass.otro.Evento"]))
+        BusConsumer(publisher, cfg)
 
 
 # --- The broker's token ----------------------------------------------------------
