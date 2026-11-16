@@ -199,6 +199,7 @@ def test_la_configuracion_declarada_arranca_en_produccion(real, monkeypatch):
     assert cfg.jwt_staff_estricto is True
     # The bus consumer is on, complete, and starts at the end of the topic.
     assert cfg.bus_kafka_enabled is True
+    assert cfg.cierre_automatico_en_api is True
     assert cfg.bus_kafka_desde == "latest"
     assert cfg.bus_kafka_group_id.startswith(cfg.gateway_namespace)
     assert cfg.jwt_staff_grupos_admin == ["reclamos-administradores"]

@@ -12,6 +12,7 @@ import pytest
 from app.core.config import Settings
 from app.domain.enums import (
     CategoriaReclamo,
+    CausaTipo,
     EstadoReclamo,
     ObjetoAfectado,
     PrioridadReclamo,
@@ -62,6 +63,18 @@ def test_reclamo_creado_lleva_los_campos_del_contrato() -> None:
     assert datos["correlationId"] == "corr-1"
     # Analytics reads createdAt as epoch millis.
     assert datos["createdAt"] == int(CREADO_AT.timestamp() * 1000)
+
+
+def test_causa_emergencia_viaja_con_el_id_original_y_la_correlacion() -> None:
+    sobre = sobre_creado()
+    sobre.data.causa_id = "EMG-1"
+    sobre.data.causa_tipo = CausaTipo.EMERGENCIA
+
+    _, datos = traducir(topics.RECLAMO_CREADO, sobre)
+
+    assert datos["causaId"] == "EMG-1"
+    assert datos["causaTipo"] == "EMERGENCIA"
+    assert datos["correlationId"] == "corr-1"
 
 
 def test_el_alta_lleva_el_objeto_afectado() -> None:

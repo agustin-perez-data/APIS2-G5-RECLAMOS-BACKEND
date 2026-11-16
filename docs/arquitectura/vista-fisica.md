@@ -28,7 +28,7 @@ flowchart TB
         cicd["CI y CD"]
         keepR["keepalive-render<br/>cada 10 min"]
         keepS["keepalive-supabase<br/>cada 12 h"]
-        cierre["cierre-automatico<br/>una vez por día"]
+        cierre["cierre-automatico<br/>respaldo, a mano"]
     end
 
     subgraph externos["Infraestructura de otros grupos"]
@@ -122,7 +122,7 @@ logs salen en JSON. `GET /health` informa el valor en uso.
 | --- | --- | --- |
 | Bus | Gateway de CityPass+, por HTTPS | Redpanda (Kafka) |
 | Entrada de eventos | Webhook de la API y, para las alertas climáticas, un consumidor del Kafka del bus dentro del mismo proceso (ADR 0023) | Proceso `worker` consumiendo de Kafka |
-| Cierre automático por vencimiento | Workflow diario `cierre-automatico.yml`, que llama al endpoint de mantenimiento | Corre en el `worker` |
+| Cierre automático por vencimiento | Un ciclo dentro de la API, al arrancar y cada hora (ADR 0025). El workflow `cierre-automatico.yml` queda de respaldo | El mismo ciclo, en el `worker` |
 | Base | Supabase | Contenedor `postgres:16-alpine` |
 | Identidad del personal | Login Federado, RS256 | Configurable; login de desarrollo disponible |
 
@@ -132,9 +132,12 @@ logs salen en JSON. `GET /health` informa el valor en uso.
   variables se aplican solas: el plan, la región y el health check se verifican
   contra `render.yaml` pero se cambian a mano. Supabase y Vercel siguen
   configurados a mano.
-- **El proceso `worker` no está desplegado.** El cierre automático de reclamos
-  resueltos lo dispara un workflow diario en su lugar, con una cuenta de
-  administrador del Login Federado y no con una cuenta de servicio.
+- **El proceso `worker` no está desplegado.** Lo que hacía corre dentro de la
+  API: el consumo del bus (ADR 0023) y el cierre automático (ADR 0025).
+- **Los workflows programados no son un reloj confiable.** GitHub descarta la
+  mayoría de sus disparos en este repositorio: el keepalive de Render, cada 10
+  minutos en el papel, corre cada 4 a 8 horas. El servicio se duerme, y una
+  alerta climática se lee recién cuando algo lo despierta.
 - **El broker del bus corta de a ratos las conexiones que salen de Render.** El
   puerto abre, pero el saludo TLS se interrumpe del otro lado; minutos después
   la misma conexión entra (observado el 16/11/2026; desde otras redes no

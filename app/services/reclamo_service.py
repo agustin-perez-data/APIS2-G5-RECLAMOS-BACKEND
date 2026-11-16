@@ -50,6 +50,7 @@ from app.domain.enums import (
     escalar,
     puede_transicionar,
 )
+from app.domain.origen_evento import PREFIJO_ORIGEN_EMERGENCIA
 from app.events import topics
 from app.events.contracts import (
     ReclamoAdherido,
@@ -434,6 +435,10 @@ class ReclamoService:
     def _causa_de(reclamo: Reclamo) -> tuple[str | None, CausaTipo | None]:
         """The claim's external cause at filing time, most explanatory first.
 
+        A5 has a known originating emergency, which takes precedence over
+        proximity-based causes. Its stable deduplication key retains the original
+        emergency id after the namespace prefix.
+
         A claim can be under a weather alert **and** next to a mass activity at
         the same time, and ADR 0016 lets only one cause travel. The alert wins:
         it explains *why* the claim exists -- the storm brought the branch down
@@ -448,6 +453,11 @@ class ReclamoService:
         neighbourhood, so the alert still wins when both apply. `RESERVA`
         belongs here the day Public Spaces puts a location on its event.
         """
+        origen = reclamo.evento_origen_id
+        if origen is not None and origen.startswith(PREFIJO_ORIGEN_EMERGENCIA):
+            emergencia_id = origen[len(PREFIJO_ORIGEN_EMERGENCIA) :]
+            if emergencia_id:
+                return emergencia_id, CausaTipo.EMERGENCIA
         if reclamo.alerta_id is not None:
             return str(reclamo.alerta_id), CausaTipo.EVENTO_CLIMATICO
         if reclamo.incidente is not None:
@@ -1297,10 +1307,10 @@ class ReclamoService:
         """Auto-close claims sitting in RESUELTO past the response window (US-17).
 
         A citizen who never responds is not expected to keep a claim open
-        forever. Two things trigger it, and both run this same code: the worker
-        loop where there is one (`app/worker.py`, local environment), and the
-        maintenance endpoint called by a scheduled workflow in production,
-        where only the API is deployed.
+        forever. What calls this is a loop inside the running process
+        (`app/services/cierre_periodico.py`, ADR 0025): the API in production,
+        the worker locally. The maintenance endpoint runs the same code by
+        hand.
         """
         limite = datetime.now(UTC) - timedelta(days=self.cfg.dias_cierre_automatico)
         candidatos = await self.repo.resueltos_antes_de(limite)

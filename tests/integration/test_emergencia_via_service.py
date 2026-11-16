@@ -9,6 +9,7 @@ from app.domain.enums import (
     USUARIO_SISTEMA,
     CanalOrigen,
     CategoriaReclamo,
+    CausaTipo,
     OrigenClasificacion,
     PrioridadReclamo,
 )
@@ -98,6 +99,8 @@ async def test_a5_persiste_clasifica_publica_y_no_duplica_por_event_id_distinto(
     publicado = publisher.eventos_de(topics.RECLAMO_CREADO)[0]
     assert publicado.data.ciudadano_id == USUARIO_SISTEMA
     assert publicado.data.canal == CanalOrigen.EVENTO
+    assert publicado.data.causa_id == datos.incidente_id
+    assert publicado.data.causa_tipo is CausaTipo.EMERGENCIA
     assert publicado.correlation_id == "corr-emergencia-a5"
 
 
@@ -161,3 +164,6 @@ async def test_el_piso_de_a5_no_afecta_ciudadanos_ni_otros_eventos(
     assert ciudadano.origen_clasificacion is OrigenClasificacion.MODELO
     assert otro_evento.origen_clasificacion is OrigenClasificacion.MODELO
     assert len(clasificador.llamadas) == 2
+    for publicado in publisher.eventos_de(topics.RECLAMO_CREADO):
+        assert publicado.data.causa_id is None
+        assert publicado.data.causa_tipo is None

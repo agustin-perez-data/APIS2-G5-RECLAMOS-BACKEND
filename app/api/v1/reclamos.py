@@ -185,8 +185,8 @@ async def correcciones_del_modelo(
         "dias en `RESUELTO` sin respuesta del vecino (US-17). Cada cierre deja su "
         "entrada en el historial, avisa al vecino y publica el cambio de estado. "
         "Es idempotente: una segunda llamada no encuentra nada que cerrar. "
-        "Requiere rol `admin`; lo ejecuta una vez por dia el workflow "
-        "`cierre-automatico.yml`."
+        "Requiere rol `admin`. La API ya lo hace sola cada hora (ADR 0025); "
+        "este endpoint queda para dispararlo a mano."
     ),
 )
 async def cierre_automatico(_usuario: AdminDep, service: ServiceDep) -> CierreAutomaticoOut:

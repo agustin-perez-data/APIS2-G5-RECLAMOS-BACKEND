@@ -12,24 +12,12 @@ import signal
 
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
-from app.db.session import cerrar_engine, session_scope
+from app.db.session import cerrar_engine
 from app.events.consumer import EventConsumer
-from app.events.producer import EventPublisher, crear_publisher
-from app.services.reclamo_service import ReclamoService
+from app.events.producer import crear_publisher
+from app.services.cierre_periodico import cierre_automatico_periodico
 
 log = get_logger(__name__)
-
-
-async def _job_cierre_automatico(publisher: EventPublisher) -> None:
-    """Periodically closes RESUELTO claims once the response window expires (US-17)."""
-    while True:
-        await asyncio.sleep(settings.intervalo_cierre_automatico_segundos)
-        try:
-            async with session_scope() as session:
-                service = ReclamoService(session, publisher)
-                await service.cerrar_resueltos_vencidos()
-        except Exception:  # noqa: BLE001 - one bad run must not kill the worker
-            log.exception("worker.cierre_automatico.error")
 
 
 async def main() -> None:
@@ -54,7 +42,13 @@ async def main() -> None:
             loop.add_signal_handler(sig, parar.set)
 
     tarea = asyncio.create_task(consumer.run())
-    tarea_cierre = asyncio.create_task(_job_cierre_automatico(publisher))
+    tarea_cierre = asyncio.create_task(
+        cierre_automatico_periodico(
+            publisher,
+            espera_inicial_segundos=settings.cierre_automatico_espera_inicial_segundos,
+            intervalo_segundos=settings.intervalo_cierre_automatico_segundos,
+        )
+    )
     log.info(
         "worker.iniciado",
         topics=consumer.topics,

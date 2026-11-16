@@ -183,11 +183,18 @@ class Settings(BaseSettings):
     # routed, unreviewed claims under 5% of all claims (ADR 0019). It belongs
     # to the current model and its temperature; retraining means re-reading it.
     confianza_minima_clasificador: float = 0.65
-    # Days a claim can sit in RESUELTO before the worker closes it on its own
-    # (US-17: no response from the citizen).
+    # Days a claim can sit in RESUELTO before it is closed on its own (US-17:
+    # no response from the citizen).
     dias_cierre_automatico: int = 7
-    # How often the worker checks for claims to auto-close.
+    # How often the loop checks for claims to auto-close.
     intervalo_cierre_automatico_segundos: int = 3600
+    # Runs that loop inside the API process (ADR 0025). Off by default; on in
+    # production, where there is no worker and a scheduled workflow proved
+    # unreliable as a clock.
+    cierre_automatico_en_api: bool = False
+    # First pass this long after start-up, not one interval later: the service
+    # sleeps when idle and may never stay up for a whole interval.
+    cierre_automatico_espera_inicial_segundos: int = 60
 
     # --- Similar claims (ADR 0007) --------------------------------------------
     # Only open claims of the same category, filed within the window and, when

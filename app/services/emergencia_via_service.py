@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.logging import get_logger
 from app.db.models import Reclamo
 from app.domain.enums import USUARIO_SISTEMA, PrioridadReclamo
+from app.domain.origen_evento import PREFIJO_ORIGEN_EMERGENCIA
 from app.events.contracts import IncidenteActualizado
 from app.schemas.reclamo import ReclamoCrear
 from app.services.reclamo_service import ReclamoService
@@ -17,7 +18,6 @@ from app.services.reclamo_service import ReclamoService
 log = get_logger(__name__)
 
 TITULO_RECLAMO_VIAL = "Problema en la vía pública reportado por Emergencias"
-PREFIJO_ORIGEN_EMERGENCIA = "emergencia:"
 LARGO_MAXIMO_ORIGEN = 64  # reclamos.evento_origen_id
 INDICE_UNICO_ORIGEN = "ix_reclamos_evento_origen_id"
 

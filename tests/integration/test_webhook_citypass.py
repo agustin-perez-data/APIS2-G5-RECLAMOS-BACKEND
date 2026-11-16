@@ -314,3 +314,6 @@ async def test_emergencia_actualizada_crea_a5_por_webhook_sin_incidente_previo(
     creado = publisher.eventos_de(topics.RECLAMO_CREADO)
     assert len(creado) == 1
     assert creado[0].data.reclamo_id == reclamo.id
+    assert creado[0].data.causa_id == emergencia_id
+    assert creado[0].data.causa_tipo == "EMERGENCIA"
+    assert creado[0].correlation_id == "corr-a5-webhook"

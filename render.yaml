@@ -37,6 +37,10 @@ services:
         value: "false"
       - key: DB_ECHO
         value: "false"
+      # The API closes resolved claims past their response window by itself,
+      # shortly after start-up and then hourly (ADR 0025).
+      - key: CIERRE_AUTOMATICO_EN_API
+        value: "true"
 
       # --- Database ---------------------------------------------------------
       - key: DATABASE_URL
