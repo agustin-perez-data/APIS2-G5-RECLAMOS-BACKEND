@@ -381,8 +381,8 @@ class BusConsumer:
     def _espera(self, fallos: int) -> float:
         """Seconds before the next attempt: doubles with each failure in a row.
 
-        A broker that is unreachable stays that way for hours, not seconds:
-        retrying at a fixed pace would fill the log without connecting sooner.
+        Enough to keep a broker that is down from filling the log, and capped
+        low because it can also come back within minutes.
         """
         base = self._cfg.bus_kafka_reconexion_segundos
         return min(base * 2 ** min(max(fallos - 1, 0), 10), self._tope_de_espera())
