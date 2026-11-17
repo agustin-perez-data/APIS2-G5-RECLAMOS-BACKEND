@@ -43,6 +43,9 @@ ESTADOS_CERRADOS = frozenset(
         "CANCELADO",
         "ANULADA",
         "ANULADO",
+        # Emergencies' word for one their dispatcher dismissed.
+        "DESCARTADA",
+        "DESCARTADO",
         "RESOLVED",
         "CLOSED",
     }

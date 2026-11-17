@@ -212,6 +212,11 @@ class IncidenteCreado(BaseModel):
     afecta_circulacion: bool | None = Field(
         default=None, validation_alias=AliasChoices("afecta_circulacion", "afectaCirculacion")
     )
+    # What the emergency was opened because of: RECLAMO when it is their
+    # response to one of our own claims, EVENTO_CLIMATICO for a weather one.
+    causa_tipo: str | None = Field(
+        default=None, validation_alias=AliasChoices("causa_tipo", "causaTipo")
+    )
     latitud: float | None = Field(default=None, validation_alias=AliasChoices("latitud", "lat"))
     longitud: float | None = Field(
         default=None, validation_alias=AliasChoices("longitud", "lng", "lon")

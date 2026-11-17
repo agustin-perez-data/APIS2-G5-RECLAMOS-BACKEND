@@ -258,6 +258,8 @@ async def test_a5_conserva_correlation_id_en_el_gateway(
     [
         evento_cerrado("CERRADA", causasRelacionadas=["VIA"]),
         evento_cerrado("RESUELTA", causasRelacionadas=["RESIDUOS"]),
+        # Dismissed by their dispatcher: it must stop attracting claims too.
+        evento_cerrado("DESCARTADA"),
     ],
 )
 async def test_estado_final_o_causa_sin_a5_solo_cierra_incidente(
@@ -404,3 +406,38 @@ async def test_el_incidente_guardado_conserva_lo_que_vino(service: ReclamoServic
     assert incidente.barrio == "Centro"
     assert incidente.latitud == pytest.approx(OBELISCO[0])
     assert incidente.fin is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "campos",
+    [
+        # Their response to one of our own claims.
+        {"categoria": "TRANSITO", "causaTipo": "RECLAMO", "causaId": str(uuid.uuid4())},
+        # A coverage scheduled ahead of an event: nothing happened yet.
+        {"categoria": "PREVENTIVA", "causaTipo": "EVENTO_CLIMATICO"},
+    ],
+)
+async def test_una_emergencia_que_no_es_un_incidente_propio_no_escala_ni_se_guarda(
+    service: ReclamoService, publisher, campos: dict
+) -> None:
+    """Asked by Emergencies: both raised the neighbourhood to CRITICA."""
+    reclamo = await service.crear(reclamo_en(*OBELISCO), ciudadano_id=str(uuid.uuid4()))
+    prioridad = reclamo.prioridad
+    publicados = len(publisher.publicados)
+
+    await manejar_incidente_creado(evento_creado(barrio="San Nicolas", **campos), service)
+
+    await service.session.refresh(reclamo)
+    assert reclamo.prioridad is prioridad
+    assert await service.incidentes.repo.obtener_por_origen("EMG-1") is None
+    assert len(publisher.publicados) == publicados
+
+
+@pytest.mark.asyncio
+async def test_una_emergencia_con_otra_causa_sigue_siendo_un_incidente(
+    service: ReclamoService,
+) -> None:
+    await manejar_incidente_creado(evento_creado(causaTipo="EVENTO_PUBLICO"), service)
+
+    assert await service.incidentes.repo.obtener_por_origen("EMG-1") is not None

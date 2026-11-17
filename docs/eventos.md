@@ -340,6 +340,10 @@ si no viene). Ese id se propaga al `correlation_id` de los eventos y se bindea a
 todos los logs estructurados, así una operación se puede seguir de punta a punta
 aunque atraviese varios módulos.
 
+El alta de un reclamo guarda ese id, y lo llevan todos los eventos posteriores
+del mismo reclamo. Los reclamos creados antes del 17/11/2026 por la API no lo
+tienen: salían con `correlationId` en `null`.
+
 ---
 
 ## 6. Integración por el gateway de CityPass+ (CU-INT-01)
@@ -550,7 +554,7 @@ cabecera `X-Webhook-Token` (preferido) o por `?token=...`. Las entregas son
 | Tipo del gateway | Qué hacemos |
 | --- | --- |
 | `com.citypass.residuos.AlertaGenerada` | Si `tipoAlerta = SATURACION`, abre un reclamo de RESIDUOS. Las de incendio se ignoran. |
-| `com.citypass.emergencias.EmergenciaCreada` | Eleva la prioridad de los reclamos abiertos del barrio. No escala si la severidad es baja ni si `afectaCirculacion` es falso. Emergencias manda las coordenadas cifradas: si no se pueden leer como número, se toman como ausentes y escala por `barrio`. |
+| `com.citypass.emergencias.EmergenciaCreada` | Eleva la prioridad de los reclamos abiertos del barrio. No escala si la severidad es baja ni si `afectaCirculacion` es falso. Tampoco escala ni registra el incidente si `causaTipo` es `RECLAMO` (es la respuesta de Emergencias a un reclamo nuestro) o si `categoria` es `PREVENTIVA` (una cobertura programada: todavía no pasó nada). Emergencias manda las coordenadas cifradas: si no se pueden leer como número, se toman como ausentes y escala por `barrio`. |
 | `com.citypass.espacios.EventoComunitarioPublicado` | Con cupo ≥ 100, eleva a `MEDIA` los reclamos abiertos de la zona. Los `CANCELLED` se ignoran. |
 | `com.citypass.espacios.IntervencionFinalizada` | **Cierra el reclamo.** Con `resultado: RESUELTO` pasa a RESUELTO; con `RECHAZADO`, a RECHAZADO. Ver abajo. |
 | `com.citypass.espacios.ActividadCreada` | Squad 3. Guarda la actividad masiva; los reclamos que se carguen cerca mientras dura quedan relacionados con ella. Ver abajo. |

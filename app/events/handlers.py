@@ -95,6 +95,25 @@ async def manejar_contenedor_desbordado(raw: dict[str, Any], service: ReclamoSer
         )
 
 
+def _motivo_para_ignorar(datos: IncidenteCreado) -> str | None:
+    """Why this emergency is not an incident of its own, or `None` when it is.
+
+    Emergencies asked for both (16/11/2026), after seeing what they triggered:
+
+    * `causaTipo = RECLAMO` is their response to one of **our** claims. Treating
+      it as a new incident raised that very claim and the neighbourhood around
+      it to CRITICA, told every owner, and left a road incident that related the
+      next claims of the area to it: a claim escalating itself.
+    * `categoria = PREVENTIVA` is a coverage they schedule ahead of an event.
+      Nothing has happened in the street yet.
+    """
+    if (datos.causa_tipo or "").strip().upper() == "RECLAMO":
+        return "es la respuesta a un reclamo nuestro"
+    if (datos.tipo or "").strip().upper() == "PREVENTIVA":
+        return "es una cobertura preventiva"
+    return None
+
+
 async def manejar_incidente_creado(raw: dict[str, Any], service: ReclamoService) -> None:
     """`emergencias.incidente.creado` -> re-prioritise the affected area.
 
@@ -107,6 +126,13 @@ async def manejar_incidente_creado(raw: dict[str, Any], service: ReclamoService)
     # CU-INT-01: only incidents that cut circulation reorder the area's claims.
     # A medical emergency concerns one person, not the neighbourhood's potholes.
     if datos.afecta_circulacion is False:
+        return
+
+    motivo = _motivo_para_ignorar(datos)
+    if motivo is not None:
+        log.info(
+            "handler.incidente_creado.ignorado", incidente_id=datos.incidente_id, motivo=motivo
+        )
         return
 
     severidad = (datos.severidad or "").lower()
