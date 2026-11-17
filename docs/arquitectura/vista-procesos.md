@@ -139,7 +139,7 @@ reacción usa la clave natural que ya tiene.
 | Evento entrante | Reacción | Qué la hace idempotente |
 | --- | --- | --- |
 | `residuos.AlertaGenerada` | Abre un reclamo | Índice único sobre `reclamos.evento_origen_id` |
-| `emergencias.EmergenciaCreada` | Escala reclamos cercanos y registra el incidente | `incidente_origen_id`; escalar nunca baja una prioridad |
+| `emergencias.EmergenciaCreada` | Escala reclamos cercanos y registra el incidente, salvo que sea la respuesta a un reclamo nuestro o una cobertura preventiva | `incidente_origen_id`; escalar nunca baja una prioridad |
 | `emergencias.EmergenciaActualizada` | Cierra el incidente; si es `RESUELTA` con causa `VIA`, abre un reclamo | Un incidente ya cerrado no se vuelve a cerrar; el reclamo usa `evento_origen_id` con prefijo `emergencia:` |
 | `espacios.IntervencionFinalizada` | Lleva el reclamo a su estado final | Si ya está en ese estado o en uno final, no hace nada |
 | `espacios.CriticidadClimaticaConfirmada` y `Finalizada` | Aplica y levanta la alerta | Tabla `eventos_procesados`, escrita antes del trabajo y dentro de la misma transacción |

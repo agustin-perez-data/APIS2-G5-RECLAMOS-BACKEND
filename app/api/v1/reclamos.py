@@ -74,7 +74,13 @@ def _a_similar(parecido: ReclamoParecido) -> ReclamoSimilar:
 async def crear_reclamo(
     request: Request, datos: ReclamoCrear, usuario: UsuarioDep, service: ServiceDep
 ) -> ReclamoOut:
-    reclamo = await service.crear(datos, ciudadano_id=usuario.id)
+    # The id travels in every event of this claim: other modules use it to tie
+    # their own work to it. Without it `correlationId` went out as null.
+    reclamo = await service.crear(
+        datos,
+        ciudadano_id=usuario.id,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
     return ReclamoOut.model_validate(reclamo)
 
 

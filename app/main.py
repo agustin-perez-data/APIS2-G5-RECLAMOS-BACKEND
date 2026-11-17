@@ -138,6 +138,9 @@ async def correlacion_middleware(request: Request, call_next):
         method=request.method,
     )
 
+    # Read by the endpoints that start something other modules follow.
+    request.state.correlation_id = correlation_id
+
     respuesta = await call_next(request)
     respuesta.headers[CABECERA_CORRELACION] = correlation_id
     return respuesta
