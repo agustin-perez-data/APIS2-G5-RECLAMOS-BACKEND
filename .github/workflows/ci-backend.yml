@@ -40,16 +40,43 @@ jobs:
   browser-analitica:
     name: Iframe de Analitica en navegadores reales
     runs-on: ubuntu-latest
+    # Normally under two minutes. Without a limit a hung step holds the job for
+    # six hours, the workflow never completes, and the deploy that waits for it
+    # (cd-backend.yml) never starts: it happened on main on 2026-11-18.
+    timeout-minutes: 15
+    env:
+      # apt must never stop to ask a question nobody is there to answer.
+      DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: Install test dependencies and browsers
+      - name: Install test dependencies
+        run: pip install -e ".[dev,browser]"
+      # The step that hung: `--with-deps` runs apt-get on the runner, and that
+      # one time it stalled after reading the package lists. Each attempt gets
+      # four minutes; a stalled apt is killed and its locks cleared before the
+      # next one, so one bad mirror does not fail the build.
+      - name: Install browsers and their system libraries
+        timeout-minutes: 14
         run: |
-          pip install -e ".[dev,browser]"
-          python -m playwright install --with-deps chromium firefox webkit
+          for intento in 1 2 3; do
+            if timeout --kill-after=10 240 \
+                python -m playwright install --with-deps chromium firefox webkit; then
+              exit 0
+            fi
+            echo "::warning::La instalacion de navegadores fallo o se colgo (intento $intento de 3)"
+            sudo pkill -9 -x apt-get || true
+            sudo pkill -9 -x dpkg || true
+            sudo rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend
+            sudo dpkg --configure -a || true
+            sleep 10
+          done
+          echo "::error::No se pudieron instalar los navegadores en tres intentos"
+          exit 1
       - name: HTTPS iframe tests
+        timeout-minutes: 5
         run: pytest --no-cov tests/browser
 
   migrations:
