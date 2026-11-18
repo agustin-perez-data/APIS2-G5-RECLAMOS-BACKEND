@@ -124,6 +124,23 @@ async def test_admin_federado_recibe_html_y_se_reenvia_el_jwt_original(entorno) 
     assert cliente.tokens == [token]
 
 
+async def test_la_ruta_con_barra_final_responde_el_tablero_sin_redirigir(entorno) -> None:
+    """The frontend's proxy adds the slash. A redirect here sends the iframe to
+    this service's own host, away from the origin its session cookie lives on."""
+    cfg, clave, app, cliente = entorno
+    token = token_staff(cfg, clave)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+        respuesta = await http.get(RUTA + "/", headers={"Authorization": f"Bearer {token}"})
+        sin_credencial = await http.get(RUTA + "/")
+
+    assert respuesta.status_code == 200
+    assert "location" not in respuesta.headers
+    assert respuesta.content == cliente.tablero.html
+    # Same door, same lock.
+    assert sin_credencial.status_code == 401
+
+
 @pytest.mark.parametrize(
     ("claims", "codigo"),
     [
