@@ -9,7 +9,7 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -57,6 +57,16 @@ class Settings(BaseSettings):
     # subscription URL (?token=...). Empty = the webhook rejects everything.
     gateway_webhook_token: str = ""
     gateway_timeout_seconds: float = 5.0
+
+    # --- Analytics dashboard (Group 8) -------------------------------------
+    # Forwards the validated human token; no service credentials are needed.
+    analitica_enabled: bool = False
+    analitica_url: str | None = None
+    analitica_timeout_seconds: float = Field(default=10.0, gt=0)
+    # Required by the session service, not by the existing Bearer-only proxy.
+    analitica_session_key: SecretStr | None = None
+    analitica_session_ttl_seconds: int = Field(default=300, gt=0, le=300)
+    analitica_frontend_origins: list[str] = []
 
     # --- CityPass+ bus, straight from its Kafka (ADR 0023) ------------------
     # Group 1 asks modules to read events from the bus' Kafka and keeps the
@@ -340,6 +350,22 @@ class Settings(BaseSettings):
                 f"JWT_ALGORITHM='{self.jwt_algorithm}' apunta al IdP real: "
                 "AUTH_DEV_LOGIN_ENABLED tiene que estar en false, sus tokens ya no validan"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _analitica_requiere_identidad_federada(self) -> Settings:
+        """The proxy must never forward a development or unvalidated token."""
+        if not self.analitica_enabled:
+            return self
+        url = urlsplit(self.analitica_url or "")
+        if url.scheme != "https" or not url.netloc or url.query or url.fragment:
+            raise ValueError("ANALITICA_URL debe ser una URL base HTTPS")
+        if not self.auth_enabled or self.jwt_algorithm != "RS256":
+            raise ValueError("ANALITICA_ENABLED requiere AUTH_ENABLED=true y JWT_ALGORITHM=RS256")
+        if not self.jwt_jwks_url or not self.jwt_staff_estricto:
+            raise ValueError("ANALITICA_ENABLED requiere JWKS y JWT_STAFF_ESTRICTO=true")
+        if self.jwt_token_use_esperado != "human" or not self.jwt_staff_grupos_admin:
+            raise ValueError("ANALITICA_ENABLED requiere token_use=human y grupo ADMIN")
         return self
 
     @model_validator(mode="after")
