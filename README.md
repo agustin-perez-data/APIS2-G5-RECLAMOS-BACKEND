@@ -156,6 +156,11 @@ Para scripts y pruebas manuales sigue estando el generador de tokens:
 ```bash
 python scripts/dev_token.py --sub vecino-1 --roles ciudadano
 python scripts/dev_token.py --sub operador-1 --roles operador
+
+# ensayar una alerta climática sin el bus (solo contra una base local)
+python scripts/ensayar_alerta.py semilla
+python scripts/ensayar_alerta.py confirmar --nivel ALTA --barrios "Palermo,Belgrano"
+python scripts/ensayar_alerta.py finalizar
 ```
 
 ---
@@ -180,6 +185,7 @@ Prefijo `/api/v1`.
 | `GET` | `/reclamos/estadisticas` | **admin** | Métricas agregadas (para el Grupo 8), con el desempeño del clasificador. |
 | `GET` | `/admin/analitica` | **admin federado de Reclamos** | Proxy del tablero HTML de Analítica; solo con `ANALITICA_ENABLED=true`. |
 | `POST` | `/reclamos/mantenimiento/cierre-automatico` | **admin** | Cierra los reclamos resueltos con el plazo de respuesta vencido. La API ya lo hace sola cada hora (ADR 0025); queda para dispararlo a mano. |
+| `GET` | `/alertas-climaticas/activas` | staff | Alertas climáticas en vigencia: iniciadas, sin vencer y sin finalizar (ADR 0014). |
 | `GET` | `/reclamos/clasificador/correcciones` | **admin** | Reclamos donde un operador corrigió la categoría del modelo ([ADR 0019](docs/adr/0019-evaluacion-del-clasificador.md)). |
 | `GET` | `/notificaciones` | autenticado | Bandeja propia, paginada, con `unread_count`. |
 | `GET` | `/notificaciones/conteo` | autenticado | Solo el contador de no leídas, para la campana. |
