@@ -220,6 +220,11 @@ pytest
 # token de desarrollo
 python scripts/dev_token.py --sub vecino-1 --roles ciudadano
 python scripts/dev_token.py --sub operador-1 --roles operador
+
+# ensayar una alerta climática sin el bus (solo contra una base local)
+python scripts/ensayar_alerta.py semilla
+python scripts/ensayar_alerta.py confirmar --nivel ALTA --barrios "Palermo,Belgrano"
+python scripts/ensayar_alerta.py finalizar
 ```
 
 ### Slash commands de Claude Code
