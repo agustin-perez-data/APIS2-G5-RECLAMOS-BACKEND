@@ -136,6 +136,12 @@ def get_analitica_client(request: Request) -> AnaliticaClient:
     return request.app.state.analitica
 
 
+# Also with a trailing slash. The frontend's reverse proxy rewrites
+# `/api/v1/admin/analitica` to `.../analitica/`, and the default answer to that
+# is a 307 to this service's own host. The iframe followed it and left the
+# frontend's origin, where its SameSite=Strict cookie is not sent and the
+# navigation is no longer same-origin: the dashboard never loaded.
+@router.get("/analitica/", response_class=HTMLResponse, include_in_schema=False)
 @router.get(
     "/analitica",
     response_class=HTMLResponse,
