@@ -37,6 +37,21 @@ jobs:
           path: coverage.xml
           if-no-files-found: ignore
 
+  browser-analitica:
+    name: Iframe de Analitica en navegadores reales
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install test dependencies and browsers
+        run: |
+          pip install -e ".[dev,browser]"
+          python -m playwright install --with-deps chromium firefox webkit
+      - name: HTTPS iframe tests
+        run: pytest --no-cov tests/browser
+
   migrations:
     name: Alembic against PostgreSQL
     runs-on: ubuntu-latest

@@ -28,6 +28,8 @@ dependencies = [
     # httpx; listed because `app/events/bus.py` imports it directly.
     "certifi>=2024.2",
     "pyjwt[crypto]>=2.10",
+    # Authenticated encryption of the human JWT held by Analytics sessions.
+    "cryptography>=43",
     "python-multipart>=0.0.17",
     "structlog>=24.4",
     # HTTP client for the Jira integration; it already came with the dev extras
@@ -50,6 +52,8 @@ dev = [
     # came with uvicorn[standard]; listed so that does not stay an accident.
     "pyyaml>=6.0",
 ]
+
+browser = ["playwright>=1.50"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

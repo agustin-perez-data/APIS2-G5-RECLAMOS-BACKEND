@@ -178,6 +178,7 @@ Prefijo `/api/v1`.
 | `POST` | `/reclamos/similares` | autenticado | Reclamos parecidos al que se está escribiendo, para sumarse en vez de duplicar. |
 | `GET` | `/reclamos/{id}/similares` | autenticado | Posibles duplicados de un reclamo ya cargado. |
 | `GET` | `/reclamos/estadisticas` | **admin** | Métricas agregadas (para el Grupo 8), con el desempeño del clasificador. |
+| `GET` | `/admin/analitica` | **admin federado de Reclamos** | Proxy del tablero HTML de Analítica; solo con `ANALITICA_ENABLED=true`. |
 | `POST` | `/reclamos/mantenimiento/cierre-automatico` | **admin** | Cierra los reclamos resueltos con el plazo de respuesta vencido. La API ya lo hace sola cada hora (ADR 0025); queda para dispararlo a mano. |
 | `GET` | `/reclamos/clasificador/correcciones` | **admin** | Reclamos donde un operador corrigió la categoría del modelo ([ADR 0019](docs/adr/0019-evaluacion-del-clasificador.md)). |
 | `GET` | `/notificaciones` | autenticado | Bandeja propia, paginada, con `unread_count`. |
@@ -205,6 +206,26 @@ Los errores siguen **RFC 7807**:
   "instance": "/api/v1/reclamos/6f1c.../estado"
 }
 ```
+
+### Tablero de Analítica (Grupo 8)
+
+El backend integra el contrato oficial `GET /embed/reclamos` con un único
+Bearer humano de administrador federado. Incluye sesiones temporales PostgreSQL
+con JWT cifrado, cookie HttpOnly, CSRF y aislamiento del iframe; no utiliza las
+credenciales de EDA. Conserva el HTML y las cabeceras del Grupo 8 y agrega
+`no-store` y la restricción CSP `sandbox allow-scripts`.
+
+La [guía para frontend y DevOps](docs/integraciones/analitica-frontend.md)
+detalla los cuatro endpoints, ejemplos React, errores y responsabilidades.
+`render.yaml` declara `ANALITICA_URL`, `ANALITICA_TIMEOUT_SECONDS`,
+`ANALITICA_SESSION_TTL_SECONDS`, `ANALITICA_SESSION_KEY` (secreto) y
+`ANALITICA_FRONTEND_ORIGINS`. `ANALITICA_ENABLED=false` mantiene las rutas
+apagadas hasta provisionar la clave Fernet, aplicar las migraciones existentes
+y configurar HTTPS con proxy del mismo origen del frontend.
+
+La implementación está cubierta por pruebas automatizadas. Queda pendiente la
+validación con credenciales reales del Grupo 2, el servicio del Grupo 8 y el
+proxy efectivo del frontend; no se afirma verificación en producción.
 
 ### Máquina de estados
 

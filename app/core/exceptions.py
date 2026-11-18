@@ -85,3 +85,21 @@ class CredencialesInvalidas(DomainError):
     status_code = 401
     title = "Email o contrasena incorrectos"
     code = "credenciales_invalidas"
+
+
+class AnaliticaAccesoDenegado(DomainError):
+    status_code = 403
+    title = "Requiere administrador federado del namespace de Reclamos"
+    code = "analitica_acceso_denegado"
+
+
+class SesionAnaliticaInvalida(DomainError):
+    status_code = 401
+    title = "Sesion de Analitica invalida, revocada o vencida"
+    code = "analitica_sesion_invalida"
+
+
+class SesionAnaliticaConflicto(DomainError):
+    status_code = 409
+    title = "La sesion de Analitica cambio o no corresponde al usuario"
+    code = "analitica_sesion_conflicto"

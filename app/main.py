@@ -23,6 +23,7 @@ from app.core.metrics import DURACION, PEDIDOS, plantilla_de_ruta
 from app.core.rate_limit import limiter
 from app.db.session import cerrar_engine
 from app.events.producer import crear_publisher
+from app.integrations.analitica import AnaliticaClient
 
 log = get_logger(__name__)
 
@@ -42,6 +43,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     publisher = crear_publisher()
     await publisher.start()
     app.state.publisher = publisher
+
+    analitica = None
+    if settings.analitica_enabled:
+        analitica = AnaliticaClient(
+            settings.analitica_url or "",
+            timeout_seconds=settings.analitica_timeout_seconds,
+        )
+        await analitica.start()
+        app.state.analitica = analitica
 
     if not settings.auth_enabled:
         log.warning(
@@ -79,14 +89,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         cierre_automatico=settings.cierre_automatico_en_api,
         version=__version__,
     )
+    tarea_analitica = None
+    if settings.analitica_enabled and settings.analitica_session_key is not None:
+        from app.services.limpieza_analitica import limpiar_sesiones_periodicamente
+
+        tarea_analitica = asyncio.create_task(limpiar_sesiones_periodicamente(settings))
     try:
         yield
     finally:
-        for tarea in (tarea_bus, tarea_cierre):
+        for tarea in (tarea_bus, tarea_cierre, tarea_analitica):
             if tarea is not None:
                 tarea.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await tarea
+        if analitica is not None:
+            await analitica.stop()
         await publisher.stop()
         await cerrar_engine()
         log.info("app.detenida")
