@@ -207,60 +207,25 @@ Los errores siguen **RFC 7807**:
 }
 ```
 
-### Tablero de Analítica (Grupo 8, contrato provisional)
+### Tablero de Analítica (Grupo 8)
 
-Esta integración **no está verificada en producción**. El contrato acordado
-provisionalmente es la Alternativa A: el frontend de Reclamos solicita
-`GET /api/v1/admin/analitica` a este backend; este valida el JWT del administrador
-y solicita `GET {ANALITICA_URL}/embed/reclamos` al backend de Analítica. Devuelve
-el HTML recibido sin consultar la API JSON `/analytics/reclamos`. Los datos
-agregados e informes de IA se generarían del lado de Analítica.
+El backend integra el contrato oficial `GET /embed/reclamos` con un único
+Bearer humano de administrador federado. Incluye sesiones temporales PostgreSQL
+con JWT cifrado, cookie HttpOnly, CSRF y aislamiento del iframe; no utiliza las
+credenciales de EDA. Conserva el HTML y las cabeceras del Grupo 8 y agrega
+`no-store` y la restricción CSP `sandbox allow-scripts`.
 
-La ruta requiere `Authorization: Bearer <JWT humano>` emitido por Login Federado
-(Grupo 2), con firma RS256 válida, emisor y audiencia configurados, `token_use=human`,
-grupo LDAP mapeado a `admin` y `module=reclamos`. Reenvía ese JWT original en
-`X-Usuario-Token`. Para la llamada saliente obtiene otro JWT mediante
-`client_credentials`, usando las mismas `GATEWAY_TOKEN_URL`,
-`GATEWAY_CLIENT_ID` y `GATEWAY_CLIENT_SECRET` que ya usa el backend con EDA;
-lo envía como `Authorization: Bearer` y lo conserva en memoria hasta antes de
-su vencimiento. Este backend no inserta tokens en el HTML ni en sus errores.
+La [guía para frontend y DevOps](docs/integraciones/analitica-frontend.md)
+detalla los cuatro endpoints, ejemplos React, errores y responsabilidades.
+`render.yaml` declara `ANALITICA_URL`, `ANALITICA_TIMEOUT_SECONDS`,
+`ANALITICA_SESSION_TTL_SECONDS`, `ANALITICA_SESSION_KEY` (secreto) y
+`ANALITICA_FRONTEND_ORIGINS`. `ANALITICA_ENABLED=false` mantiene las rutas
+apagadas hasta provisionar la clave Fernet, aplicar las migraciones existentes
+y configurar HTTPS con proxy del mismo origen del frontend.
 
-La integración está apagada por defecto (`ANALITICA_ENABLED=false`): la ruta ni
-siquiera se monta. Para habilitarla se necesita `ANALITICA_URL` (base HTTPS),
-`ANALITICA_TIMEOUT_SECONDS` (por defecto 10), las credenciales `GATEWAY_*`
-vigentes y la configuración federada `JWT_ALGORITHM=RS256`, `JWT_JWKS_URL`,
-`JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_ROLES_CLAIM=groups`,
-`JWT_STAFF_ESTRICTO=true`, `JWT_TOKEN_USE_ESPERADO=human` y
-`JWT_STAFF_GRUPOS_ADMIN`. `AUTH_ENABLED` debe seguir en `true` y
-`AUTH_DEV_LOGIN_ENABLED` en `false`. Una configuración incompleta impide el
-arranque; deshabilitarla solo requiere volver a `ANALITICA_ENABLED=false`.
-El login ciudadano no cambia.
-
-En un 200 se entrega `Content-Type`, `Content-Security-Policy` si viene del
-Grupo 8 y `Cache-Control: no-store` como mínimo. Los rechazos locales son 401
-o 403; un 403 de Analítica sigue siendo 403 y otros fallos externos se presentan
-como 502 sin exponer el cuerpo remoto.
-
-Pruebas locales, con Analítica y JWKS simulados y sin llamadas externas:
-
-```bash
-pytest tests/unit/test_analitica.py tests/integration/test_analitica.py
-pytest tests/unit/test_gateway.py tests/unit/test_emisores_jwt.py
-pytest
-ruff check app tests
-ruff format --check app tests
-```
-
-**Pendiente con Grupo 8:** confirmar que exista y se despliegue
-`GET /embed/reclamos`, la URL base, el alta del clientId de servicio actual,
-la audiencia aceptada para su JWT, los headers y el HTML autocontenido.
-En la revisión de su rama `main` solo se encontró `GET /analytics/reclamos`
-(JSON) y documentación que aún no acredita la validación de ambos JWT.
-**Pendiente con Grupo 2:** verificar con un JWT real de administrador de Reclamos
-los claims y grupo configurados y que el token de servicio actual sirva para
-Analítica. **Pendiente con frontend:** un iframe con `src` no envía el header
-Bearer; debe acordar cómo pedir y mostrar el HTML en un iframe aislado y cómo
-aplicar la CSP. Estas dependencias impiden dar por terminada la prueba real.
+La implementación está cubierta por pruebas automatizadas. Queda pendiente la
+validación con credenciales reales del Grupo 2, el servicio del Grupo 8 y el
+proxy efectivo del frontend; no se afirma verificación en producción.
 
 ### Máquina de estados
 

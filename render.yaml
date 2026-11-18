@@ -129,6 +129,22 @@ services:
       - key: JWT_CIUDADANOS_SECRET
         sync: false
 
+      # --- Analytics (Group 8) ----------------------------------------------
+      # Enable only after provisioning the key, migration and same-origin proxy.
+      - key: ANALITICA_ENABLED
+        value: "false"
+      - key: ANALITICA_URL
+        value: https://citypass-backend-prod-becqetepcjbqa8c7.brazilsouth-01.azurewebsites.net
+      - key: ANALITICA_TIMEOUT_SECONDS
+        value: "10"
+      - key: ANALITICA_SESSION_TTL_SECONDS
+        value: "300"
+      - key: ANALITICA_SESSION_KEY
+        sync: false
+      # Existing frontend origin; confirm its reverse proxy before enabling.
+      - key: ANALITICA_FRONTEND_ORIGINS
+        value: '["https://reclamos-frontend-g5.vercel.app"]'
+
       # --- Rate limiting ----------------------------------------------------
       - key: RATE_LIMIT_REGISTRO
         value: 5/hour
