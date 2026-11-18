@@ -30,6 +30,8 @@ from app.events.contracts import (
     parse_envelope,
 )
 from app.schemas.reclamo import ReclamoCrear
+from app.services.clima_service import esta_vencida
+from app.services.emergencia_via_service import crear_reclamo_por_emergencia_vial
 from app.services.reclamo_service import ReclamoService
 
 log = get_logger(__name__)
@@ -93,6 +95,25 @@ async def manejar_contenedor_desbordado(raw: dict[str, Any], service: ReclamoSer
         )
 
 
+def _motivo_para_ignorar(datos: IncidenteCreado) -> str | None:
+    """Why this emergency is not an incident of its own, or `None` when it is.
+
+    Emergencies asked for both (16/11/2026), after seeing what they triggered:
+
+    * `causaTipo = RECLAMO` is their response to one of **our** claims. Treating
+      it as a new incident raised that very claim and the neighbourhood around
+      it to CRITICA, told every owner, and left a road incident that related the
+      next claims of the area to it: a claim escalating itself.
+    * `categoria = PREVENTIVA` is a coverage they schedule ahead of an event.
+      Nothing has happened in the street yet.
+    """
+    if (datos.causa_tipo or "").strip().upper() == "RECLAMO":
+        return "es la respuesta a un reclamo nuestro"
+    if (datos.tipo or "").strip().upper() == "PREVENTIVA":
+        return "es una cobertura preventiva"
+    return None
+
+
 async def manejar_incidente_creado(raw: dict[str, Any], service: ReclamoService) -> None:
     """`emergencias.incidente.creado` -> re-prioritise the affected area.
 
@@ -105,6 +126,13 @@ async def manejar_incidente_creado(raw: dict[str, Any], service: ReclamoService)
     # CU-INT-01: only incidents that cut circulation reorder the area's claims.
     # A medical emergency concerns one person, not the neighbourhood's potholes.
     if datos.afecta_circulacion is False:
+        return
+
+    motivo = _motivo_para_ignorar(datos)
+    if motivo is not None:
+        log.info(
+            "handler.incidente_creado.ignorado", incidente_id=datos.incidente_id, motivo=motivo
+        )
         return
 
     severidad = (datos.severidad or "").lower()
@@ -198,6 +226,14 @@ async def manejar_intervencion_finalizada(raw: dict[str, Any], service: ReclamoS
     """
     evento = parse_envelope(raw, IntervencionFinalizada)
     datos = evento.data
+    if datos.reclamo_id is None:
+        # Not an id we hand out: nothing of ours to close, like an unknown claim.
+        log.warning(
+            "handler.intervencion.reclamo_ajeno",
+            reclamo_id=str((raw.get("data") or {}).get("reclamoId"))[:64],
+            event_id=str(evento.event_id),
+        )
+        return
 
     reclamo = await service.finalizar_por_intervencion(datos.reclamo_id, datos.resultado)
     if reclamo is None:
@@ -212,11 +248,11 @@ async def manejar_intervencion_finalizada(raw: dict[str, Any], service: ReclamoS
 
 
 async def manejar_incidente_actualizado(raw: dict[str, Any], service: ReclamoService) -> None:
-    """`emergencias.incidente.actualizado` -> close the incident when it ends.
+    """Close the internal incident and, when A5 applies, file a road claim.
 
-    Only the closing matters to us: while an incident is open, a claim filed
-    next to it is caused by it (ADR 0017), and that has to stop when the street
-    is cleared. The intermediate states are Emergencies' business.
+    The incident closes first, so the new claim cannot be related by proximity
+    to a road incident that has just ended. A5 also runs when we never stored
+    that incident (for example, when its creation lacked usable coordinates).
 
     A state we do not recognise as final leaves the incident open on purpose --
     closing on a word we are unsure about would silently stop relating claims
@@ -231,15 +267,23 @@ async def manejar_incidente_actualizado(raw: dict[str, Any], service: ReclamoSer
         estado_nuevo=datos.estado_nuevo,
         cerrado_at=datos.resuelto_at,
     )
-    if incidente is None:
-        return
+    if incidente is not None:
+        log.info(
+            "handler.incidente_actualizado.cerrado",
+            id=str(incidente.id),
+            incidente_id=datos.incidente_id,
+            estado=datos.estado_nuevo,
+        )
 
-    log.info(
-        "handler.incidente_actualizado.cerrado",
-        id=str(incidente.id),
-        incidente_id=datos.incidente_id,
-        estado=datos.estado_nuevo,
+    reclamo = await crear_reclamo_por_emergencia_vial(
+        datos, service, correlation_id=evento.correlation_id
     )
+    if reclamo is not None:
+        log.info(
+            "handler.incidente_actualizado.reclamo_creado",
+            reclamo_id=str(reclamo.id),
+            emergencia_id=datos.incidente_id,
+        )
 
 
 async def manejar_actividad_creada(raw: dict[str, Any], service: ReclamoService) -> None:
@@ -342,6 +386,18 @@ async def manejar_criticidad_confirmada(raw: dict[str, Any], service: ReclamoSer
         barrios=len(alerta.barrios),
         ubicaciones=len(alerta.ubicaciones),
     )
+
+    if esta_vencida(alerta):
+        # Stored, because it is history and a later `Finalizada` refers to it,
+        # but it marks nothing and tells nobody: warning a neighbour today about
+        # a storm that ended is worse than saying nothing. Nothing is published
+        # either: `CriticidadClimaticaAplicada` says the alert was applied.
+        log.info(
+            "handler.clima.alerta_vencida",
+            alerta_id=str(alerta.alerta_id),
+            vigencia_hasta=alerta.vigencia_hasta.isoformat(),
+        )
+        return
 
     # Stage 1: mark the claims already open in the area and tell their owners.
     resumen = await service.escalar_por_alerta_climatica(alerta)

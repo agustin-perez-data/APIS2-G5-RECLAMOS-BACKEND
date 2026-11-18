@@ -326,7 +326,10 @@ contrato.
   `PLAZA_PARQUE` · `MOBILIARIO_URBANO` · `EDIFICIO_PUBLICO` · `OTRO`
   (opcional: puede venir en `null`)
 - **Canal:** `APP` · `WEB` · `TELEFONO` · `PRESENCIAL` · `EVENTO`
-- **Origen de clasificación:** `CIUDADANO` · `MODELO` · `OPERADOR`
+- **Origen de clasificación:** `CIUDADANO` · `MODELO` · `OPERADOR`. Dice quién
+  eligió la **categoría**. Si la eligió el vecino y solo faltaba la prioridad,
+  el origen es `CIUDADANO` aunque la prioridad la haya calculado la regla de
+  urgencia (ADR 0019).
 
 ---
 
@@ -336,6 +339,10 @@ Todo request HTTP acepta y devuelve el header `X-Correlation-Id` (se genera uno
 si no viene). Ese id se propaga al `correlation_id` de los eventos y se bindea a
 todos los logs estructurados, así una operación se puede seguir de punta a punta
 aunque atraviese varios módulos.
+
+El alta de un reclamo guarda ese id, y lo llevan todos los eventos posteriores
+del mismo reclamo. Los reclamos creados antes del 17/11/2026 por la API no lo
+tienen: salían con `correlationId` en `null`.
 
 ---
 
@@ -352,6 +359,11 @@ por ahí que entran y salen los eventos del caso de uso integrado. Todo lo de la
 secciones 2 y 3 sigue siendo nuestro contrato interno; esta sección es lo que ven
 los otros equipos. El porqué está en el
 [ADR 0009](adr/0009-integracion-por-el-gateway.md).
+
+Los dos eventos de alerta climática se leen además directo del Kafka del bus,
+porque el webhook no entrega eventos cuyo esquema Avro tenga un `enum`
+([ADR 0023](adr/0023-consumo-directo-del-kafka-del-bus.md)). El sobre es el
+mismo por los dos caminos, y un evento repetido se descarta por su `eventId`.
 
 Diferencias con nuestro contrato interno, para que no sorprendan:
 
@@ -424,18 +436,41 @@ incidente— y Espacios Públicos —para avisar a los inscriptos de un evento
 cercano—. La misma regla se expone en nuestra API como `afecta_circulacion`, así
 que el frontend no necesita reimplementarla.
 
-`causaId`, `causaTipo` y `actividadId` son para el tablero de Analítica (ADR 0016) y
-van al final del schema, con `null` por defecto:
+`causaId`, `causaTipo` y `actividadId` son para el tablero de Analítica
+([ADR 0016](adr/0016-causa-del-reclamo-para-analitica.md) y
+[ADR 0024](adr/0024-emergencia-de-origen-como-causa-de-a5.md)). Van al final
+del schema, con `null` por defecto:
 
 | Campo | Cuándo viene |
 | --- | --- |
-| `causaTipo` / `causaId` | Qué originó el reclamo, en este orden de precedencia: **`EVENTO_CLIMATICO`** con el `alertaId` de Espacios (alerta vigente al dar de alta, ADR 0014), **`INCIDENTE_VIAL`** con el `emergenciaId` de Emergencias (incidente abierto a 300 m o menos, ADR 0017), y **`EVENTO_PUBLICO`** con el `actividadId` de Espacios (actividad masiva, ADR 0013). `null` en el flujo normal. |
+| `causaTipo` / `causaId` | Para un reclamo creado automáticamente por A5 desde `EmergenciaActualizada`: **`EMERGENCIA`** y el `emergenciaId` original, sin el prefijo interno `emergencia:`. Para todos los demás reclamos se mantiene la precedencia **`EVENTO_CLIMATICO`** (con `alertaId`), **`INCIDENTE_VIAL`** (con el `emergenciaId` de un incidente abierto a 300 m o menos, ADR 0017) y **`EVENTO_PUBLICO`** (con `actividadId`). Ambos campos son `null` cuando no hay causa externa. |
 | `actividadId` | El `actividadId` de `ActividadCreada` de la actividad masiva relacionada, o `null`. |
 
-Un reclamo tiene **una sola causa**: si cae en una alerta climática y cerca de un
-festival, gana la alerta. Por eso la actividad viaja también en `actividadId`, y
-los reclamos relacionados con un evento masivo se cuentan por ese campo, no por
-`causaTipo`.
+Un reclamo tiene **una sola causa**. En A5 gana siempre la emergencia que originó
+el alta, incluso si el reclamo cae bajo una alerta climática, cerca de otro
+incidente vial abierto o junto a una actividad masiva. `alertaId` y `actividadId`
+siguen viajando por separado cuando corresponden; esas relaciones y su
+persistencia no cambian. Para los reclamos ajenos a A5, la alerta sigue ganando
+sobre el incidente vial y la actividad. Los reclamos relacionados con un evento
+masivo se cuentan por `actividadId`, no solo por `causaTipo`.
+
+Ejemplo de campos relevantes de `ReclamoCreado` generado por A5. Si
+`EmergenciaActualizada` trajo `emergenciaId = "EMG-1"` y
+`correlationId = "corr-emergencia-a5"`, este último conserva ese valor; no se
+reemplaza por `EMG-1` ni por la clave interna `emergencia:EMG-1`:
+
+```json
+{
+  "canal": "EVENTO",
+  "causaId": "EMG-1",
+  "causaTipo": "EMERGENCIA",
+  "correlationId": "corr-emergencia-a5",
+  "alertaId": "11111111-2222-3333-4444-555555555555",
+  "actividadId": "ACT-1"
+}
+```
+
+Si el evento de Emergencias no trae `correlationId`, se sigue publicando `null`.
 
 ```json
 {
@@ -519,7 +554,7 @@ cabecera `X-Webhook-Token` (preferido) o por `?token=...`. Las entregas son
 | Tipo del gateway | Qué hacemos |
 | --- | --- |
 | `com.citypass.residuos.AlertaGenerada` | Si `tipoAlerta = SATURACION`, abre un reclamo de RESIDUOS. Las de incendio se ignoran. |
-| `com.citypass.emergencias.EmergenciaCreada` | Eleva la prioridad de los reclamos abiertos del barrio. No escala si la severidad es baja ni si `afectaCirculacion` es falso. Emergencias manda las coordenadas cifradas: si no se pueden leer como número, se toman como ausentes y escala por `barrio`. |
+| `com.citypass.emergencias.EmergenciaCreada` | Eleva la prioridad de los reclamos abiertos del barrio. No escala si la severidad es baja ni si `afectaCirculacion` es falso. Tampoco escala ni registra el incidente si `causaTipo` es `RECLAMO` (es la respuesta de Emergencias a un reclamo nuestro) o si `categoria` es `PREVENTIVA` (una cobertura programada: todavía no pasó nada). Emergencias manda las coordenadas cifradas: si no se pueden leer como número, se toman como ausentes y escala por `barrio`. |
 | `com.citypass.espacios.EventoComunitarioPublicado` | Con cupo ≥ 100, eleva a `MEDIA` los reclamos abiertos de la zona. Los `CANCELLED` se ignoran. |
 | `com.citypass.espacios.IntervencionFinalizada` | **Cierra el reclamo.** Con `resultado: RESUELTO` pasa a RESUELTO; con `RECHAZADO`, a RECHAZADO. Ver abajo. |
 | `com.citypass.espacios.ActividadCreada` | Squad 3. Guarda la actividad masiva; los reclamos que se carguen cerca mientras dura quedan relacionados con ella. Ver abajo. |
@@ -554,6 +589,14 @@ que Analitica pueda medir cuanto tardo la intervencion.
 **Idempotencia:** si el reclamo ya esta en ese estado, o ya esta cerrado o
 rechazado, el evento no hace nada. Una reentrega del gateway es inofensiva.
 
+**Reclamos que no son nuestros:** un `reclamoId` que no existe se ignora. Uno
+que ni siquiera es un UUID (por ejemplo `"reclamo-grua-4"`, de las pruebas de
+Espacios) también se ignora y responde 204: todos los ids que damos son UUID,
+así que no puede ser un reclamo nuestro. Para que el reclamo se cierre, el
+evento tiene que traer el `reclamoId` tal como lo publicamos. Si falta el campo,
+el evento sí falla y queda en la cola de fallidos del bus, porque eso es un
+contrato roto.
+
 
 El barrio se compara **sin distinguir mayúsculas**, así que da igual si mandan
 `Palermo`, `PALERMO` o `palermo`.
@@ -565,6 +608,13 @@ Públicos al crear una actividad. Al recibirlo **no cambia ningún reclamo**:
 guardamos la actividad y, desde ahí, cada reclamo nuevo que se carga cerca
 mientras dura queda relacionado con ella. El porqué está en el
 [ADR 0013](adr/0013-reclamos-relacionados-con-actividades-masivas.md).
+
+**Suscripción al tópico `.v3`.** Desde el 14/11 Espacios publica la versión 3
+del contrato (schemaId 91) en `com.citypass.espacios.ActividadCreada.v3`, y los
+tópicos de la v1 y la v2 ya no reciben eventos. La suscripción del webhook
+tiene que apuntar a ese tópico. El `eventType` que llega sigue siendo
+`com.citypass.espacios.ActividadCreada`, así que el código no cambia. El campo
+nuevo `organizadorTipo` (`CIUDAD` o `CIUDADANO`) no lo usamos.
 
 ```json
 {

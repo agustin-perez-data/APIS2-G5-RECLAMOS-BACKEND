@@ -16,32 +16,16 @@ import math
 from collections import Counter
 from collections.abc import Sequence
 
-from app.ml.text import tokenizar
+# The stemmer lives with the tokenizer since the classifier started using it
+# too; it is re-exported here because this is where it was first introduced.
+from app.ml.text import LARGO_MINIMO_RAIZ, raiz, tokenizar
 
-# Below this length stripping an ending destroys the word ("gas" -> "ga").
-LARGO_MINIMO_RAIZ = 4
-
-
-def raiz(palabra: str) -> str:
-    """Crude Spanish stemmer: plural, then gender/verb vowel.
-
-    postes -> post, poste -> post; apagada -> apagad, apagado -> apagad;
-    fugas -> fuga, fuga -> fuga (too short to strip further).
-    """
-    if len(palabra) > LARGO_MINIMO_RAIZ and palabra.endswith("es"):
-        palabra = palabra[:-2]
-    elif len(palabra) > LARGO_MINIMO_RAIZ and palabra.endswith("s"):
-        palabra = palabra[:-1]
-    if len(palabra) >= LARGO_MINIMO_RAIZ and palabra[-1] in "aoe":
-        palabra = palabra[:-1]
-    return palabra
+__all__ = ["LARGO_MINIMO_RAIZ", "raiz", "similitudes", "terminos_en_comun", "tokens"]
 
 
 def tokens(texto: str) -> list[str]:
     """Stemmed unigrams plus bigrams of the stems."""
-    raices = [raiz(p) for p in tokenizar(texto, con_bigramas=False)]
-    bigramas = [f"{a}_{b}" for a, b in zip(raices, raices[1:], strict=False)]
-    return raices + bigramas
+    return tokenizar(texto, con_raices=True)
 
 
 def _vector(documento: Sequence[str], idf: dict[str, float]) -> dict[str, float]:

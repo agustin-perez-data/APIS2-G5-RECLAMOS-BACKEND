@@ -27,6 +27,7 @@ import httpx
 
 from app.core.config import Settings, settings
 from app.core.logging import get_logger
+from app.core.metrics import EVENTOS_PUBLICADOS
 from app.domain.enums import CATEGORIAS_QUE_AFECTAN_CIRCULACION, CategoriaReclamo
 from app.events import topics
 from app.events.contracts import (
@@ -201,11 +202,13 @@ class GatewayEventPublisher(EventPublisher):
                 log.info(
                     "evento.publicado.gateway", tipo=fqn, key=key, event_id=str(envelope.event_id)
                 )
+                EVENTOS_PUBLICADOS.labels(nombre, "publicado").inc()
                 return
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code in (400, 404):
                     # Contract violation or unknown type: retrying gives the same answer.
                     log.error("evento.rechazado.gateway", tipo=fqn, detalle=exc.response.text)
+                    EVENTOS_PUBLICADOS.labels(nombre, "rechazado").inc()
                     return
                 if exc.response.status_code == 401:
                     self._token = None
@@ -217,6 +220,7 @@ class GatewayEventPublisher(EventPublisher):
                 await asyncio.sleep(_ESPERA_BASE_SEGUNDOS * 2 ** (intento - 1))
 
         log.error("evento.no_publicado.gateway", tipo=fqn, key=key, error=error)
+        EVENTOS_PUBLICADOS.labels(nombre, "fallido").inc()
 
     async def _post(self, fqn: str, datos: dict[str, Any]) -> None:
         if self._client is None:

@@ -107,6 +107,7 @@ class CausaTipo(StrEnum):
     """
 
     EVENTO_CLIMATICO = "EVENTO_CLIMATICO"
+    EMERGENCIA = "EMERGENCIA"
     INCIDENTE_VIAL = "INCIDENTE_VIAL"
     EVENTO_PUBLICO = "EVENTO_PUBLICO"
     RESERVA = "RESERVA"
@@ -141,6 +142,10 @@ class TipoNotificacion(StrEnum):
 # Author of what the module does on its own: claims opened by another module's
 # event, auto-closes, official comments on incidents.
 USUARIO_SISTEMA = "sistema"
+
+# What a neighbour sees in place of a staff member's identity, which is
+# internal: the city answers as one, not as a person (ADR 0020).
+USUARIO_MUNICIPIO = "municipio"
 
 # States that accept no further changes.
 ESTADOS_FINALES: frozenset[EstadoReclamo] = frozenset(

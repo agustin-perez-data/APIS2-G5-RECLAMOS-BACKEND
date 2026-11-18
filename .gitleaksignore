@@ -1,0 +1,8 @@
+# Findings reviewed by a person and accepted. One fingerprint per line:
+# <commit>:<file>:<rule>:<line>
+#
+# Sample response of the old development login, pasted into a document on
+# 2026-08-21. It is a token signed with the development secret, valid for eight
+# hours at the time; the development login was removed and that issuer is no
+# longer accepted. It stays in the history, so it has to be listed here.
+cacf50d8b2d5bbb0bf95b31b707496ad03199ac8:docs/frontend-entrega-1.md:generic-api-key:32

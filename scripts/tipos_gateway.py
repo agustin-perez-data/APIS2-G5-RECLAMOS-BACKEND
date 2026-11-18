@@ -50,9 +50,15 @@ def traducir(esquema: dict) -> dict:
                 f"{esquema['name']}.{campo['name']}: el bus no acepta el tipo "
                 f"{json.dumps(campo['type'])}"
             )
-        # Only `name` and `type`: `default` and `doc` are not part of the
-        # documented body. The union with "null" is what makes it optional.
-        campos.append({"name": campo["name"], "type": campo["type"]})
+        # `default` travels: verified against the bus on 2026-11-13. Adding a
+        # field that carries one answers `breaking: false` and keeps the type on
+        # its topic; the same field without it answers `breaking: true`, opens a
+        # `.vN` topic and leaves every subscriber on the old one. That is what
+        # `ReclamoCreado` cost us. `doc` is dropped: it is not part of the body.
+        traducido = {"name": campo["name"], "type": campo["type"]}
+        if "default" in campo:
+            traducido["default"] = campo["default"]
+        campos.append(traducido)
     return {"name": esquema["name"], "fields": campos}
 
 
@@ -77,8 +83,12 @@ def main() -> int:
         payload = json.dumps(cuerpo, separators=(",", ":"), ensure_ascii=False)
 
         opcionales = sum(1 for c in cuerpo["fields"] if isinstance(c["type"], list))
+        sin_default = [c["name"] for c in cuerpo["fields"] if "default" not in c]
         print(f"# {esquema['namespace']}.{esquema['name']}")
         print(f"#   {len(cuerpo['fields'])} campos, {opcionales} opcionales")
+        # Worth seeing before pasting the call: if any of these is new, this
+        # registration opens a `.vN` topic and the subscribers stay behind.
+        print(f"#   sin default: {', '.join(sin_default) or 'ninguno'}")
         print(f"curl -X POST {GATEWAY}/api/v1/event-types \\")
         print('  -H "Authorization: Bearer $TOKEN" \\')
         print("  -H 'Content-Type: application/json' \\")

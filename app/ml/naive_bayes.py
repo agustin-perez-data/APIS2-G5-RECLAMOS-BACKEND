@@ -13,12 +13,32 @@ import math
 from collections import Counter, defaultdict
 from collections.abc import Sequence
 
+# Two classes closer than this are tied. Their order would otherwise hang on
+# the last bit of a float, and `math.log` does not round that bit the same way
+# on every platform: the same claim could get a different category on a
+# laptop and on the server.
+TOLERANCIA_EMPATE = 1e-9
+
+
+def mas_probable(probabilidades: dict[str, float]) -> tuple[str, float]:
+    """The winning class; ties go to the first one in alphabetical order."""
+    tope = max(probabilidades.values())
+    clase = next(c for c in sorted(probabilidades) if tope - probabilidades[c] <= TOLERANCIA_EMPATE)
+    return clase, probabilidades[clase]
+
 
 class MultinomialNaiveBayes:
     """Bag-of-tokens text classifier with Laplace smoothing."""
 
-    def __init__(self, alpha: float = 1.0) -> None:
+    def __init__(self, alpha: float = 1.0, temperatura: float = 1.0) -> None:
+        if temperatura <= 0:
+            raise ValueError("La temperatura tiene que ser positiva")
         self.alpha = alpha
+        # Temperature scaling (Guo et al., 2017). Naive Bayes multiplies many
+        # token probabilities as if they were independent, which pushes the
+        # posterior towards 0 or 1. Dividing the log-scores by a temperature
+        # above 1 softens it without changing which class wins.
+        self.temperatura = temperatura
         self.clases: list[str] = []
         self.vocabulario: set[str] = set()
         self._log_prior: dict[str, float] = {}
@@ -74,16 +94,16 @@ class MultinomialNaiveBayes:
         if not self.entrenado:
             raise RuntimeError("El modelo no fue entrenado")
 
-        scores = self._log_scores(tokens)
+        scores = {
+            clase: score / self.temperatura for clase, score in self._log_scores(tokens).items()
+        }
         maximo = max(scores.values())
         exponenciales = {clase: math.exp(score - maximo) for clase, score in scores.items()}
         total = sum(exponenciales.values())
         return {clase: valor / total for clase, valor in exponenciales.items()}
 
     def predict(self, tokens: Sequence[str]) -> tuple[str, float]:
-        probabilidades = self.predict_proba(tokens)
-        clase = max(probabilidades, key=probabilidades.__getitem__)
-        return clase, probabilidades[clase]
+        return mas_probable(self.predict_proba(tokens))
 
     def tokens_decisivos(self, tokens: Sequence[str], clase: str, limite: int = 5) -> list[str]:
         """Tokens that pushed hardest towards `clase`.
@@ -107,3 +127,47 @@ class MultinomialNaiveBayes:
 
         puntajes.sort(reverse=True)
         return [token.replace("_", " ") for score, token in puntajes[:limite] if score > 0]
+
+
+class ComplementNaiveBayes(MultinomialNaiveBayes):
+    """Complement Naive Bayes (Rennie et al., 2003).
+
+    Each class is described by the tokens of every OTHER class, and a document
+    goes to the class whose complement it resembles least. With few examples
+    per class the complement has several times more data than the class
+    itself, so the estimates are steadier.
+
+    It reuses the parent's scoring by storing the negated complement
+    log-probability as the token weight: higher still means "more this class",
+    so `predict_proba` and `tokens_decisivos` work unchanged. The class prior
+    is left out, as in the original formulation.
+    """
+
+    def fit(self, documentos: Sequence[tuple[Sequence[str], str]]) -> ComplementNaiveBayes:
+        if not documentos:
+            raise ValueError("El corpus de entrenamiento esta vacio")
+
+        conteo_tokens: dict[str, Counter[str]] = defaultdict(Counter)
+        total: Counter[str] = Counter()
+        for tokens, etiqueta in documentos:
+            conteo_tokens[etiqueta].update(tokens)
+            total.update(tokens)
+            self.vocabulario.update(tokens)
+
+        self.clases = sorted(conteo_tokens)
+        tamano_vocab = len(self.vocabulario)
+        total_tokens = sum(total.values())
+
+        for clase in self.clases:
+            self._log_prior[clase] = 0.0
+            total_complemento = total_tokens - sum(conteo_tokens[clase].values())
+            denominador = total_complemento + self.alpha * (tamano_vocab + 1)
+            self._log_verosimilitud[clase] = {
+                token: -math.log(
+                    (total[token] - conteo_tokens[clase][token] + self.alpha) / denominador
+                )
+                for token in self.vocabulario
+            }
+            self._log_desconocido[clase] = -math.log(self.alpha / denominador)
+
+        return self

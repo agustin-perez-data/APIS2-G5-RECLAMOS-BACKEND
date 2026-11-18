@@ -28,6 +28,15 @@ async def crear_reclamo(client: AsyncClient, headers: dict, **overrides) -> dict
 
 
 # --- Health ------------------------------------------------------------------
+async def test_los_sondeos_de_salud_responden_a_head(client: AsyncClient) -> None:
+    """Uptime monitors probe with HEAD; a 405 would read as the service being down."""
+    for ruta in ("/health", "/health/ready"):
+        respuesta = await client.head(ruta)
+
+        assert respuesta.status_code == 200
+        assert respuesta.content == b""
+
+
 async def test_health_no_requiere_token(client: AsyncClient) -> None:
     respuesta = await client.get("/health")
     assert respuesta.status_code == 200
@@ -152,6 +161,38 @@ async def test_crear_reclamo_invalido_devuelve_problem_detail(
     cuerpo = respuesta.json()
     assert cuerpo["title"] == "Datos de entrada invalidos"
     assert {error["campo"] for error in cuerpo["errors"]} == {"descripcion"}
+
+
+async def test_el_correlation_id_del_pedido_viaja_en_el_evento_del_alta(
+    client: AsyncClient, auth, token_ciudadano, publisher
+) -> None:
+    """Other modules tie their own work to it; it used to go out as null."""
+    cabeceras = {**auth(token_ciudadano), "X-Correlation-Id": "req-demo-ciclovia"}
+
+    respuesta = await client.post(
+        "/api/v1/reclamos",
+        json={"titulo": "Auto sobre la ciclovia", "descripcion": "Bloquea el paso de las bicis"},
+        headers=cabeceras,
+    )
+
+    assert respuesta.status_code == 201
+    assert respuesta.json()["correlation_id"] == "req-demo-ciclovia"
+    assert publisher.eventos_de(topics.RECLAMO_CREADO)[-1].correlation_id == "req-demo-ciclovia"
+
+
+async def test_sin_cabecera_el_alta_igual_lleva_un_correlation_id(
+    client: AsyncClient, auth, token_ciudadano, publisher
+) -> None:
+    respuesta = await client.post(
+        "/api/v1/reclamos",
+        json={"titulo": "Auto sobre la ciclovia", "descripcion": "Bloquea el paso de las bicis"},
+        headers=auth(token_ciudadano),
+    )
+
+    generado = respuesta.headers["X-Correlation-Id"]
+    assert generado
+    assert respuesta.json()["correlation_id"] == generado
+    assert publisher.eventos_de(topics.RECLAMO_CREADO)[-1].correlation_id == generado
 
 
 async def test_el_response_trae_correlation_id(client: AsyncClient, auth, token_ciudadano) -> None:

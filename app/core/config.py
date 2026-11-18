@@ -6,6 +6,7 @@ Everything comes from environment variables (12-factor). See `.env.example`.
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator, model_validator
@@ -62,6 +63,40 @@ class Settings(BaseSettings):
     analitica_enabled: bool = False
     analitica_url: str | None = None
     analitica_timeout_seconds: float = Field(default=10.0, gt=0)
+
+    # --- CityPass+ bus, straight from its Kafka (ADR 0023) ------------------
+    # Group 1 asks modules to read events from the bus' Kafka and keeps the
+    # webhook as a fallback. Off by default: with it on, the API process also
+    # runs a consumer (`app.events.bus`). It is not the Kafka above, which is
+    # our own and only exists locally: another broker, with other credentials.
+    bus_kafka_enabled: bool = False
+    bus_kafka_bootstrap_servers: str = ""
+    # The broker rejects a group outside the module's namespace.
+    bus_kafka_group_id: str = "com.citypass.reclamos.worker"
+    # Topics are named after the event type. Only what is listed is read; the
+    # rest keeps arriving by webhook.
+    bus_kafka_topics: list[str] = [
+        "com.citypass.espacios.CriticidadClimaticaConfirmada",
+        "com.citypass.espacios.CriticidadClimaticaFinalizada",
+    ]
+    bus_kafka_token_url: str = ""
+    bus_kafka_client_id: str = ""
+    bus_kafka_client_secret: str = ""
+    bus_kafka_schema_registry_url: str = ""
+    # Where a group with no position starts. `latest` on purpose: `earliest`
+    # would replay the whole history of the topic, test events included, over
+    # real claims the first time this is turned on.
+    bus_kafka_desde: Literal["latest", "earliest"] = "latest"
+    # Attempts per message when the handler fails for something that may fix
+    # itself, and the wait between them (multiplied by the attempt number).
+    bus_kafka_intentos: int = 3
+    bus_kafka_espera_segundos: float = 2.0
+    # Wait before reconnecting after the connection to the broker drops.
+    bus_kafka_reconexion_segundos: float = 30.0
+    # It doubles with every failure in a row, up to this. Kept short: from
+    # Render the broker hangs up on some TLS handshakes and accepts others
+    # minutes later, so a long wait would miss the moments it does get in.
+    bus_kafka_reconexion_maxima_segundos: float = 120.0
 
     # --- Security: municipal staff ------------------------------------------
     # Group 2's Federated Login (LDAP + JWT) issues these and we only validate
@@ -150,12 +185,22 @@ class Settings(BaseSettings):
     # priority (see `ReclamoService.adherir`).
     adhesiones_para_escalar: int = 10
     # Minimum classifier confidence to accept a suggestion without human triage.
-    confianza_minima_clasificador: float = 0.35
-    # Days a claim can sit in RESUELTO before the worker closes it on its own
-    # (US-17: no response from the citizen).
+    # Read off the risk/coverage curve: the lowest threshold that keeps wrongly
+    # routed, unreviewed claims under 5% of all claims (ADR 0019). It belongs
+    # to the current model and its temperature; retraining means re-reading it.
+    confianza_minima_clasificador: float = 0.65
+    # Days a claim can sit in RESUELTO before it is closed on its own (US-17:
+    # no response from the citizen).
     dias_cierre_automatico: int = 7
-    # How often the worker checks for claims to auto-close.
+    # How often the loop checks for claims to auto-close.
     intervalo_cierre_automatico_segundos: int = 3600
+    # Runs that loop inside the API process (ADR 0025). Off by default; on in
+    # production, where there is no worker and a scheduled workflow proved
+    # unreliable as a clock.
+    cierre_automatico_en_api: bool = False
+    # First pass this long after start-up, not one interval later: the service
+    # sleeps when idle and may never stay up for a whole interval.
+    cierre_automatico_espera_inicial_segundos: int = 60
 
     # --- Similar claims (ADR 0007) --------------------------------------------
     # Only open claims of the same category, filed within the window and, when
@@ -330,6 +375,36 @@ class Settings(BaseSettings):
             raise ValueError(
                 "JWT_CIUDADANOS_SECRET sigue siendo el valor de ejemplo con "
                 f"ENVIRONMENT='{self.environment}': cualquiera podria firmar tokens"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _bus_kafka_completo(self) -> Settings:
+        """With the bus consumer on, a missing value should stop the boot.
+
+        Otherwise the service comes up healthy and the consumer fails in a loop
+        in the background, where nobody is looking.
+        """
+        if not self.bus_kafka_enabled:
+            return self
+        faltan = [
+            nombre
+            for nombre, valor in (
+                ("BUS_KAFKA_BOOTSTRAP_SERVERS", self.bus_kafka_bootstrap_servers),
+                ("BUS_KAFKA_TOKEN_URL", self.bus_kafka_token_url),
+                ("BUS_KAFKA_CLIENT_ID", self.bus_kafka_client_id),
+                ("BUS_KAFKA_CLIENT_SECRET", self.bus_kafka_client_secret),
+                ("BUS_KAFKA_SCHEMA_REGISTRY_URL", self.bus_kafka_schema_registry_url),
+                ("BUS_KAFKA_TOPICS", self.bus_kafka_topics),
+            )
+            if not valor
+        ]
+        if faltan:
+            raise ValueError(f"BUS_KAFKA_ENABLED=true pero faltan: {', '.join(faltan)}")
+        if not self.bus_kafka_group_id.startswith(self.gateway_namespace):
+            raise ValueError(
+                f"BUS_KAFKA_GROUP_ID='{self.bus_kafka_group_id}' tiene que empezar con "
+                f"'{self.gateway_namespace}': el broker rechaza cualquier otro grupo"
             )
         return self
 

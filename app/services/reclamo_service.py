@@ -50,6 +50,7 @@ from app.domain.enums import (
     escalar,
     puede_transicionar,
 )
+from app.domain.origen_evento import PREFIJO_ORIGEN_EMERGENCIA
 from app.events import topics
 from app.events.contracts import (
     ReclamoAdherido,
@@ -64,10 +65,15 @@ from app.events.producer import EventPublisher
 from app.integrations.tickets import SistemaTickets, TicketNuevo, get_sistema_tickets
 from app.ml import similitud
 from app.repositories.reclamo_repository import FiltroReclamos, ReclamoRepository
-from app.schemas.reclamo import CambioEstado, ReclamoCrear, ReclasificacionPedido
+from app.schemas.reclamo import (
+    CambioEstado,
+    ReclamoCrear,
+    ReclasificacionPedido,
+    SugerenciaClasificacion,
+)
 from app.services.actividad_service import ActividadService
 from app.services.clasificador import Clasificador, get_clasificador
-from app.services.clima_service import ClimaService
+from app.services.clima_service import ClimaService, esta_vencida
 from app.services.incidente_service import IncidenteService
 from app.services.notificacion_service import NotificacionService
 
@@ -89,6 +95,18 @@ MOTIVO_INTERVENCION: dict[ResultadoIntervencion, str] = {
     ResultadoIntervencion.RESUELTO: "Intervencion finalizada por Espacios Publicos y Cultura",
     ResultadoIntervencion.RECHAZADO: "Espacios Publicos y Cultura no dio curso al reclamo",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class ClasificacionDeAlta:
+    """How a claim being filed ends up classified, and who decided it."""
+
+    categoria: CategoriaReclamo
+    prioridad: PrioridadReclamo
+    origen: OrigenClasificacion
+    confianza: float | None = None
+    estado: EstadoReclamo = EstadoReclamo.RECIBIDO
+    sugerencia: SugerenciaClasificacion | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,6 +249,42 @@ class ReclamoService:
         self.clima = ClimaService(session)
 
     # --- Intake --------------------------------------------------------------
+    def _clasificar_alta(self, datos: ReclamoCrear) -> ClasificacionDeAlta:
+        """Decide category, priority and initial state of a claim being filed."""
+        if datos.categoria is not None and datos.prioridad is not None:
+            return ClasificacionDeAlta(
+                categoria=datos.categoria,
+                prioridad=datos.prioridad,
+                origen=OrigenClasificacion.CIUDADANO,
+            )
+
+        sugerencia = self.clasificador.clasificar(datos.titulo, datos.descripcion)
+        prioridad = datos.prioridad or sugerencia.prioridad
+        # `origen_clasificacion` and the confidence describe the CATEGORY. A
+        # neighbour who chose it and only left the priority out is not a claim
+        # the model classified: its priority came from the urgency rule, and
+        # counting it as MODELO would spoil both the origin that Analytics
+        # reads and the model's accuracy in production.
+        if datos.categoria is not None:
+            return ClasificacionDeAlta(
+                categoria=datos.categoria,
+                prioridad=prioridad,
+                origen=OrigenClasificacion.CIUDADANO,
+                sugerencia=sugerencia,
+            )
+
+        # When the model is unsure, the claim goes to human triage instead of
+        # landing straight in the wrong department's inbox.
+        dudosa = sugerencia.confianza < self.cfg.confianza_minima_clasificador
+        return ClasificacionDeAlta(
+            categoria=sugerencia.categoria,
+            prioridad=prioridad,
+            origen=OrigenClasificacion.MODELO,
+            confianza=sugerencia.confianza,
+            estado=EstadoReclamo.EN_REVISION if dudosa else EstadoReclamo.RECIBIDO,
+            sugerencia=sugerencia,
+        )
+
     async def crear(
         self,
         datos: ReclamoCrear,
@@ -238,25 +292,21 @@ class ReclamoService:
         *,
         correlation_id: str | None = None,
         evento_origen_id: str | None = None,
+        prioridad_minima: PrioridadReclamo | None = None,
     ) -> Reclamo:
         """File a claim, classifying it when the citizen did not."""
-        sugerencia = None
-        categoria = datos.categoria
-        prioridad = datos.prioridad
-        origen = OrigenClasificacion.CIUDADANO
-        confianza: float | None = None
-        estado = EstadoReclamo.RECIBIDO
+        clasificacion = self._clasificar_alta(datos)
+        sugerencia = clasificacion.sugerencia
+        categoria = clasificacion.categoria
+        prioridad = clasificacion.prioridad
+        origen = clasificacion.origen
+        confianza = clasificacion.confianza
+        estado = clasificacion.estado
 
-        if categoria is None or prioridad is None:
-            sugerencia = self.clasificador.clasificar(datos.titulo, datos.descripcion)
-            categoria = categoria or sugerencia.categoria
-            prioridad = prioridad or sugerencia.prioridad
-            origen = OrigenClasificacion.MODELO
-            confianza = sugerencia.confianza
-            # When the model is unsure, the claim goes to human triage instead
-            # of landing straight in the wrong department's inbox.
-            if confianza < self.cfg.confianza_minima_clasificador:
-                estado = EstadoReclamo.EN_REVISION
+        # A specific intake may impose a policy floor after the model has
+        # classified normally. With no floor, all existing flows are unchanged.
+        if prioridad_minima is not None:
+            prioridad = escalar(prioridad, prioridad_minima)
 
         # Squad 3 (ADR 0013): a claim filed near a mass activity while it lasts
         # is related to it. Without coordinates there is no way to tell.
@@ -279,6 +329,13 @@ class ReclamoService:
             objeto_afectado=datos.objeto_afectado,
             origen_clasificacion=origen,
             confianza_clasificacion=confianza,
+            categoria_sugerida=categoria.value if origen is OrigenClasificacion.MODELO else None,
+            confianza_sugerida=confianza,
+            modelo_clasificador=(
+                sugerencia.modelo
+                if sugerencia is not None and origen is OrigenClasificacion.MODELO
+                else None
+            ),
             canal=datos.canal,
             direccion=datos.direccion,
             barrio=datos.barrio,
@@ -378,6 +435,10 @@ class ReclamoService:
     def _causa_de(reclamo: Reclamo) -> tuple[str | None, CausaTipo | None]:
         """The claim's external cause at filing time, most explanatory first.
 
+        A5 has a known originating emergency, which takes precedence over
+        proximity-based causes. Its stable deduplication key retains the original
+        emergency id after the namespace prefix.
+
         A claim can be under a weather alert **and** next to a mass activity at
         the same time, and ADR 0016 lets only one cause travel. The alert wins:
         it explains *why* the claim exists -- the storm brought the branch down
@@ -392,6 +453,11 @@ class ReclamoService:
         neighbourhood, so the alert still wins when both apply. `RESERVA`
         belongs here the day Public Spaces puts a location on its event.
         """
+        origen = reclamo.evento_origen_id
+        if origen is not None and origen.startswith(PREFIJO_ORIGEN_EMERGENCIA):
+            emergencia_id = origen[len(PREFIJO_ORIGEN_EMERGENCIA) :]
+            if emergencia_id:
+                return emergencia_id, CausaTipo.EMERGENCIA
         if reclamo.alerta_id is not None:
             return str(reclamo.alerta_id), CausaTipo.EVENTO_CLIMATICO
         if reclamo.incidente is not None:
@@ -453,6 +519,14 @@ class ReclamoService:
 
     async def estadisticas(self) -> dict:
         return await self.repo.estadisticas()
+
+    async def correcciones_del_modelo(self, limite: int = 200) -> list[Reclamo]:
+        """Claims where an operator overruled the model's category.
+
+        These are the most valuable examples to grow the corpus with: the ones
+        the model got wrong, labelled by the person who fixed them.
+        """
+        return await self.repo.correcciones_del_modelo(limite)
 
     # --- Case handling -------------------------------------------------------
     async def cambiar_estado(
@@ -860,6 +934,7 @@ class ReclamoService:
         evento_id: str,
         correlation_id: str | None = None,
         ciudadano_id: str = USUARIO_SISTEMA,
+        prioridad_minima: PrioridadReclamo | None = None,
     ) -> Reclamo | None:
         """Automatic intake triggered by an external event.
 
@@ -878,6 +953,7 @@ class ReclamoService:
             ciudadano_id,
             correlation_id=correlation_id,
             evento_origen_id=evento_id,
+            prioridad_minima=prioridad_minima,
         )
 
     async def escalar_por_incidente(
@@ -1009,10 +1085,14 @@ class ReclamoService:
         An alert that was confirmed but whose window has not opened yet does not
         count: Public Spaces can announce a storm for tonight, and a claim filed
         this morning is not under it.
+
+        Neither does one whose window is over, even if `Finalizada` never
+        arrived: without this a lost closing event would keep marking every new
+        claim in the area for ever.
         """
         ahora = datetime.now(UTC)
         for alerta in await self.clima.repo.activas():
-            if _con_zona(alerta.vigencia_desde) > ahora:
+            if _con_zona(alerta.vigencia_desde) > ahora or esta_vencida(alerta, ahora):
                 continue
             if alerta.barrios:
                 if barrio_afectado(reclamo.barrio, alerta.barrios):
@@ -1226,8 +1306,11 @@ class ReclamoService:
     async def cerrar_resueltos_vencidos(self) -> list[Reclamo]:
         """Auto-close claims sitting in RESUELTO past the response window (US-17).
 
-        Runs periodically from the worker (see `app/worker.py`); a citizen who
-        never responds is not expected to keep a claim open forever.
+        A citizen who never responds is not expected to keep a claim open
+        forever. What calls this is a loop inside the running process
+        (`app/services/cierre_periodico.py`, ADR 0025): the API in production,
+        the worker locally. The maintenance endpoint runs the same code by
+        hand.
         """
         limite = datetime.now(UTC) - timedelta(days=self.cfg.dias_cierre_automatico)
         candidatos = await self.repo.resueltos_antes_de(limite)

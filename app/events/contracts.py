@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from math import isfinite
 from typing import Any, Generic, TypeVar
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -211,6 +212,11 @@ class IncidenteCreado(BaseModel):
     afecta_circulacion: bool | None = Field(
         default=None, validation_alias=AliasChoices("afecta_circulacion", "afectaCirculacion")
     )
+    # What the emergency was opened because of: RECLAMO when it is their
+    # response to one of our own claims, EVENTO_CLIMATICO for a weather one.
+    causa_tipo: str | None = Field(
+        default=None, validation_alias=AliasChoices("causa_tipo", "causaTipo")
+    )
     latitud: float | None = Field(default=None, validation_alias=AliasChoices("latitud", "lat"))
     longitud: float | None = Field(
         default=None, validation_alias=AliasChoices("longitud", "lng", "lon")
@@ -258,6 +264,16 @@ class IncidenteCreado(BaseModel):
         return valor
 
 
+class UbicacionIncidenteActualizado(BaseModel):
+    """Location in Emergencies' Avro payload; its coordinates may be encrypted."""
+
+    model_config = ConfigDict(extra="allow")
+
+    barrio: str | None = None
+    latitud: str | None = None
+    longitud: str | None = None
+
+
 class IncidenteActualizado(BaseModel):
     """`com.citypass.emergencias.EmergenciaActualizada` (ADR 0017).
 
@@ -281,6 +297,61 @@ class IncidenteActualizado(BaseModel):
     resuelto_at: datetime | None = Field(
         default=None, validation_alias=AliasChoices("resuelto_at", "resueltoAt")
     )
+    # The gateway payload also carries these A5 fields. Older closing events
+    # may omit them, so they cannot become requirements for incident closure.
+    correlation_id: str | None = Field(
+        default=None, validation_alias=AliasChoices("correlation_id", "correlationId")
+    )
+    causas_relacionadas: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("causas_relacionadas", "causasRelacionadas"),
+    )
+    descripcion_problema: str | None = Field(
+        default=None, validation_alias=AliasChoices("descripcion_problema", "descripcionProblema")
+    )
+    barrio: str | None = None
+    latitud: float | None = None
+    longitud: float | None = None
+    ubicacion: UbicacionIncidenteActualizado | None = None
+
+    @field_validator("causas_relacionadas", mode="before")
+    @classmethod
+    def _causas_nulas(cls, valor: Any) -> Any:
+        # Avro defaults to [], but simulated and older events may send null.
+        return [] if valor is None else valor
+
+    @staticmethod
+    def _coordenada_usable(valor: Any, limite: float) -> float | None:
+        if isinstance(valor, bool) or not isinstance(valor, int | float | str):
+            return None
+        try:
+            numero = float(valor)
+        except ValueError:
+            return None
+        return numero if isfinite(numero) and -limite <= numero <= limite else None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ubicacion_legible(cls, valores: Any) -> Any:
+        """Prefer clear root coordinates; use nested values only when readable.
+
+        The nested Avro fields are strings and can contain ciphertext. Unusable
+        coordinates become absent so a closing event still reaches its handler;
+        A5 will require a valid pair before filing a claim.
+        """
+        if not isinstance(valores, dict):
+            return valores
+        completado = dict(valores)
+        ubicacion = valores.get("ubicacion")
+        anidada = ubicacion if isinstance(ubicacion, dict) else {}
+        if completado.get("barrio") is None and anidada.get("barrio") is not None:
+            completado["barrio"] = anidada["barrio"]
+        for campo, limite in (("latitud", 90), ("longitud", 180)):
+            raiz = cls._coordenada_usable(completado.get(campo), limite)
+            completado[campo] = (
+                raiz if raiz is not None else cls._coordenada_usable(anidada.get(campo), limite)
+            )
+        return completado
 
 
 class CriticidadClimaticaAplicada(BaseModel):
@@ -403,8 +474,28 @@ class IntervencionFinalizada(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    reclamo_id: uuid.UUID = Field(validation_alias=AliasChoices("reclamo_id", "reclamoId"))
+    # Required, but None when the id cannot be one of ours (see below).
+    reclamo_id: uuid.UUID | None = Field(validation_alias=AliasChoices("reclamo_id", "reclamoId"))
     resultado: ResultadoIntervencion
+
+    @field_validator("reclamo_id", mode="before")
+    @classmethod
+    def _reclamo_ajeno(cls, valor: Any) -> Any:
+        """An id that is not a UUID cannot be one of our claims.
+
+        Every claim id we hand out is a UUID, so anything else is somebody
+        else's test data: Public Spaces' test runs publish ids such as
+        `"reclamo-grua-4"`, seen from 2026-11-12. Failing validation answered
+        500, and the gateway retried three times and parked each one in our
+        dead letter queue. It is the same as an unknown claim, which is already
+        ignored. A missing field still fails: that is a broken contract.
+        """
+        if isinstance(valor, uuid.UUID):
+            return valor
+        try:
+            return uuid.UUID(str(valor))
+        except ValueError:
+            return None
 
     @field_validator("resultado", mode="before")
     @classmethod

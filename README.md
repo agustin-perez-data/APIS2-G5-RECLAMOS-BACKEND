@@ -13,6 +13,7 @@ bus de la ciudad.
 | **Stack** | Python 3.12 · FastAPI · SQLAlchemy 2 async · Alembic · Kafka (Redpanda) · Supabase |
 | **Docs API** | `http://localhost:8000/docs` |
 | **Convenciones** | [`CLAUDE.md`](CLAUDE.md) |
+| **Arquitectura** | [`docs/arquitectura/`](docs/arquitectura/README.md): modelo C4 y vistas 4+1 |
 | **Decisiones** | [`docs/adr/`](docs/adr/) |
 | **Contratos de eventos** | [`docs/eventos.md`](docs/eventos.md) |
 
@@ -22,40 +23,44 @@ bus de la ciudad.
 
 ```mermaid
 flowchart LR
-    subgraph Cliente
-        APP[App / Web ciudadano]
-        BO[Backoffice municipal]
+    subgraph Clientes
+        APP["Aplicación web<br/>vecinos y personal"]
     end
 
     subgraph Reclamos["Módulo Reclamos (este repo)"]
-        API[FastAPI<br/>api/]
-        SVC[ReclamoService<br/>services/]
-        ML[Clasificador<br/>ml/]
-        REPO[Repositorio<br/>repositories/]
-        WRK[Worker<br/>worker.py]
+        API["FastAPI<br/>api/"]
+        SVC["Servicios<br/>services/"]
+        ML["Clasificador<br/>ml/"]
+        REPO["Repositorios<br/>repositories/"]
+        EVT["Eventos<br/>events/"]
     end
 
-    IDP[(Grupo 2<br/>Login Federado)]
-    DB[(Supabase<br/>PostgreSQL)]
-    BUS{{Kafka / Redpanda}}
+    IDP["Grupo 2<br/>Login Federado"]
+    DB[("Supabase<br/>PostgreSQL")]
+    GW{{"Gateway de eventos<br/>CityPass+"}}
 
-    APP -->|JWT| API
-    BO -->|JWT| API
-    IDP -.emite JWT.-> APP
-    API -.valida firma.-> IDP
+    APP -->|"JWT"| API
+    IDP -.->|"emite el JWT del personal"| APP
+    API -.->|"valida la firma (JWKS)"| IDP
 
     API --> SVC
     SVC --> ML
     SVC --> REPO
     REPO --> DB
-    SVC -->|publica| BUS
-    BUS -->|consume| WRK
-    WRK --> SVC
+    SVC --> EVT
+    EVT -->|"publica"| GW
+    GW -->|"webhook"| API
 ```
 
 **Reglas de capa** (detalle en `CLAUDE.md`): las dependencias apuntan hacia
-adentro, el servicio depende del puerto `EventPublisher` y no de Kafka, y el
-repositorio nunca commitea — la unidad de trabajo la maneja el servicio.
+adentro, el servicio depende del puerto `EventPublisher` y no del gateway ni de
+Kafka, y el repositorio nunca commitea — la unidad de trabajo la maneja el
+servicio.
+
+Este diagrama es el resumen. La documentación completa de arquitectura, con el
+modelo **C4** (contexto, contenedores y componentes) y las vistas **4+1**
+(lógica, de procesos, de desarrollo, física y escenarios), está en
+[`docs/arquitectura/`](docs/arquitectura/README.md).
 
 ---
 
@@ -172,8 +177,10 @@ Prefijo `/api/v1`.
 | `POST` | `/reclamos/clasificacion` | autenticado | Sugerencia del modelo sin persistir. |
 | `POST` | `/reclamos/similares` | autenticado | Reclamos parecidos al que se está escribiendo, para sumarse en vez de duplicar. |
 | `GET` | `/reclamos/{id}/similares` | autenticado | Posibles duplicados de un reclamo ya cargado. |
-| `GET` | `/reclamos/estadisticas` | **admin** | Métricas agregadas (para el Grupo 8). |
+| `GET` | `/reclamos/estadisticas` | **admin** | Métricas agregadas (para el Grupo 8), con el desempeño del clasificador. |
 | `GET` | `/admin/analitica` | **admin federado de Reclamos** | Proxy del tablero HTML de Analítica; solo con `ANALITICA_ENABLED=true`. |
+| `POST` | `/reclamos/mantenimiento/cierre-automatico` | **admin** | Cierra los reclamos resueltos con el plazo de respuesta vencido. La API ya lo hace sola cada hora (ADR 0025); queda para dispararlo a mano. |
+| `GET` | `/reclamos/clasificador/correcciones` | **admin** | Reclamos donde un operador corrigió la categoría del modelo ([ADR 0019](docs/adr/0019-evaluacion-del-clasificador.md)). |
 | `GET` | `/notificaciones` | autenticado | Bandeja propia, paginada, con `unread_count`. |
 | `GET` | `/notificaciones/conteo` | autenticado | Solo el contador de no leídas, para la campana. |
 | `PATCH` | `/notificaciones/{id}/leer` | autenticado | Marca una como leída (idempotente). |
@@ -186,6 +193,7 @@ que no dependen del bus ([ADR 0008](docs/adr/0008-notificaciones-internas.md)).
 | `POST` | `/auth/dev/login` | público | Login de desarrollo. Solo con `AUTH_DEV_LOGIN_ENABLED=true`. |
 | `GET` | `/auth/dev/usuarios` | público | Usuarios de prueba disponibles, sin contraseñas. |
 | `GET` | `/health`, `/health/ready` | público | Liveness y readiness. |
+| `GET` | `/metrics` | admin | Métricas operativas en formato Prometheus (ADR 0022). |
 
 Los errores siguen **RFC 7807**:
 
@@ -309,6 +317,11 @@ nombres del catálogo del gateway (`com.citypass.reclamos.ReclamoCreado` y
 `POST /api/v1/webhooks/citypass`, que ejecuta los mismos handlers que el worker.
 Kafka y Redpanda quedan para desarrollo local.
 
+Los eventos de alerta climática entran además por el **Kafka del bus**
+(ver [ADR 0023](docs/adr/0023-consumo-directo-del-kafka-del-bus.md)): con
+`BUS_KAFKA_ENABLED=true` la API lee esos tópicos y ejecuta los mismos handlers.
+El webhook del gateway no entrega eventos cuyo esquema tenga un `enum`.
+
 Garantías: *at-least-once* con commit manual del offset, idempotencia por
 `evento_origen_id` (UNIQUE en base) y DLQ (`reclamos.dlq`) para los mensajes que
 no se pueden procesar. Payloads y ejemplos completos en
@@ -320,8 +333,9 @@ no se pueden procesar. Payloads y ejemplos completos en
 
 Diseño híbrido, deliberado:
 
-- **Categoría** → Naive Bayes multinomial entrenado con el corpus semilla de
-  `app/ml/corpus.py` (unigramas + bigramas, sin tildes, sin stopwords).
+- **Categoría** → Complement Naive Bayes entrenado con las 366 frases de
+  `app/ml/` (raíces + bigramas, sin tildes, sin stopwords), con la confianza
+  calibrada por temperatura.
 - **Prioridad** → regla explícita: léxico de urgencia (`fuga de gas`, `cable
   caído`, `riesgo`…) sobre una criticidad base por categoría. Es una decisión de
   política pública, tiene que ser auditable, no salir de un modelo opaco.
@@ -331,10 +345,28 @@ dispararon). Si la confianza queda por debajo de `CONFIANZA_MINIMA_CLASIFICADOR`
 el reclamo entra en `EN_REVISION` para triage humano en lugar de caer en la
 bandeja del área equivocada.
 
-Para mejorarlo: agregar filas a `app/ml/corpus.py` (los reclamos que un operador
-reclasificó a mano son los ejemplos más valiosos) o implementar el protocolo
-`Clasificador` con otro modelo y cambiar `get_clasificador()`. Ver
-[ADR 0005](docs/adr/0005-clasificacion-automatica.md).
+**Cuánto rinde.** Sobre un conjunto de prueba independiente de 100 reclamos el
+F1 macro es 0,980 (era 0,782 con el modelo anterior), y acierta 28 de 28 textos
+reales de producción. El reporte completo, con sus intervalos de confianza y
+las mediciones más exigentes que acotan ese número, está en
+[`docs/ml/evaluacion-clasificador.md`](docs/ml/evaluacion-clasificador.md); el
+alcance y los límites, en la
+[ficha del modelo](docs/ml/ficha-del-modelo.md).
+
+```bash
+python scripts/evaluar_clasificador.py   # reelige la variante y regenera el reporte
+```
+
+La variante, la temperatura y el umbral salen de esa evaluación, no de una
+suposición, y un test falla si el modelo baja de su piso de calidad
+([ADR 0019](docs/adr/0019-evaluacion-del-clasificador.md)).
+
+**Cómo se vigila y se mejora.** `GET /reclamos/estadisticas` informa a cuántos
+reclamos clasificados por el modelo un operador les cambió la categoría. Esos
+casos son los ejemplos más valiosos para el corpus y se bajan con
+`scripts/exportar_correcciones.py`. También se puede implementar el protocolo
+`Clasificador` con otro modelo y cambiar `get_clasificador()`
+([ADR 0005](docs/adr/0005-clasificacion-automatica.md)).
 
 ---
 

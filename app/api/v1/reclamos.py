@@ -13,6 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Request, status
 
 from app.api.deps import AdminDep, ServiceDep, StaffDep, UsuarioDep
+from app.api.visibilidad import comentarios_visibles, historial_visible, reclamo_visible
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.domain.enums import CategoriaReclamo, EstadoReclamo, PrioridadReclamo
@@ -22,10 +23,14 @@ from app.schemas.reclamo import (
     AdhesionOut,
     BusquedaSimilares,
     CambioEstado,
+    CierreAutomaticoOut,
     ClasificacionPedido,
     ComentarioCrear,
     ComentarioOut,
+    ConfusionDelModelo,
     ConteoPorClave,
+    CorreccionDelModelo,
+    DesempenoClasificador,
     Estadisticas,
     HistorialOut,
     ReclamoBandeja,
@@ -69,7 +74,13 @@ def _a_similar(parecido: ReclamoParecido) -> ReclamoSimilar:
 async def crear_reclamo(
     request: Request, datos: ReclamoCrear, usuario: UsuarioDep, service: ServiceDep
 ) -> ReclamoOut:
-    reclamo = await service.crear(datos, ciudadano_id=usuario.id)
+    # The id travels in every event of this claim: other modules use it to tie
+    # their own work to it. Without it `correlationId` went out as null.
+    reclamo = await service.crear(
+        datos,
+        ciudadano_id=usuario.id,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
     return ReclamoOut.model_validate(reclamo)
 
 
@@ -142,7 +153,51 @@ async def estadisticas(_usuario: AdminDep, service: ServiceDep) -> Estadisticas:
         por_categoria=[ConteoPorClave(clave=k, cantidad=v) for k, v in datos["por_categoria"]],
         por_prioridad=[ConteoPorClave(clave=k, cantidad=v) for k, v in datos["por_prioridad"]],
         tiempo_resolucion_horas_promedio=datos["tiempo_resolucion_horas_promedio"],
+        clasificador=DesempenoClasificador(
+            clasificados_por_modelo=datos["clasificador"]["clasificados_por_modelo"],
+            corregidos_por_operador=datos["clasificador"]["corregidos_por_operador"],
+            tasa_de_correccion=datos["clasificador"]["tasa_de_correccion"],
+            correcciones=[
+                ConfusionDelModelo(sugerida=s, corregida=c, cantidad=n)
+                for s, c, n in datos["clasificador"]["correcciones"]
+            ],
+        ),
     )
+
+
+@router.get(
+    "/clasificador/correcciones",
+    summary="Reclamos donde un operador corrigio la categoria del modelo",
+    description=(
+        "Material para ampliar el corpus del clasificador: los casos que el "
+        "modelo clasifico mal, con la etiqueta que les puso quien los corrigio "
+        "(ADR 0019). Requiere rol `admin`. Los mas recientes primero."
+    ),
+)
+async def correcciones_del_modelo(
+    _usuario: AdminDep,
+    service: ServiceDep,
+    limite: Annotated[int, Query(ge=1, le=1000)] = 200,
+) -> list[CorreccionDelModelo]:
+    reclamos = await service.correcciones_del_modelo(limite)
+    return [CorreccionDelModelo.model_validate(reclamo) for reclamo in reclamos]
+
+
+@router.post(
+    "/mantenimiento/cierre-automatico",
+    summary="Cerrar los reclamos resueltos cuyo plazo de respuesta vencio",
+    description=(
+        "Pasa a `CERRADO` los reclamos que llevan mas de `DIAS_CIERRE_AUTOMATICO` "
+        "dias en `RESUELTO` sin respuesta del vecino (US-17). Cada cierre deja su "
+        "entrada en el historial, avisa al vecino y publica el cambio de estado. "
+        "Es idempotente: una segunda llamada no encuentra nada que cerrar. "
+        "Requiere rol `admin`. La API ya lo hace sola cada hora (ADR 0025); "
+        "este endpoint queda para dispararlo a mano."
+    ),
+)
+async def cierre_automatico(_usuario: AdminDep, service: ServiceDep) -> CierreAutomaticoOut:
+    cerrados = await service.cerrar_resueltos_vencidos()
+    return CierreAutomaticoOut(cerrados=len(cerrados), reclamo_ids=[r.id for r in cerrados])
 
 
 @router.post(
@@ -217,10 +272,11 @@ async def bandeja_reclamos(
 
 @router.get("/{reclamo_id}", response_model=ReclamoDetalle, summary="Detalle de un reclamo")
 async def obtener_reclamo(
-    reclamo_id: uuid.UUID, _usuario: UsuarioDep, service: ServiceDep
+    reclamo_id: uuid.UUID, usuario: UsuarioDep, service: ServiceDep
 ) -> ReclamoDetalle:
     reclamo = await service.obtener(reclamo_id)
-    return ReclamoDetalle.model_validate(reclamo)
+    # Any authenticated user may read a claim, but not its internal side.
+    return reclamo_visible(ReclamoDetalle.model_validate(reclamo), usuario)
 
 
 @router.patch(
@@ -280,11 +336,11 @@ async def comentar(
     summary="Comentarios de un reclamo",
 )
 async def listar_comentarios(
-    reclamo_id: uuid.UUID, _usuario: UsuarioDep, service: ServiceDep
+    reclamo_id: uuid.UUID, usuario: UsuarioDep, service: ServiceDep
 ) -> list[ComentarioOut]:
     await service.obtener(reclamo_id)  # raises 404 when it does not exist
     comentarios = await service.repo.comentarios_de(reclamo_id)
-    return [ComentarioOut.model_validate(c) for c in comentarios]
+    return comentarios_visibles([ComentarioOut.model_validate(c) for c in comentarios], usuario)
 
 
 @router.get(
@@ -293,11 +349,13 @@ async def listar_comentarios(
     summary="Trazabilidad de estados del reclamo",
 )
 async def listar_historial(
-    reclamo_id: uuid.UUID, _usuario: UsuarioDep, service: ServiceDep
+    reclamo_id: uuid.UUID, usuario: UsuarioDep, service: ServiceDep
 ) -> list[HistorialOut]:
-    await service.obtener(reclamo_id)
+    reclamo = await service.obtener(reclamo_id)
     historial = await service.repo.historial_de(reclamo_id)
-    return [HistorialOut.model_validate(h) for h in historial]
+    return historial_visible(
+        [HistorialOut.model_validate(h) for h in historial], usuario, reclamo.ciudadano_id
+    )
 
 
 @router.get(

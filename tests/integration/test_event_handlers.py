@@ -410,6 +410,19 @@ async def test_una_intervencion_sobre_un_reclamo_inexistente_no_falla(
     await manejar_intervencion_finalizada(evento_intervencion(uuid.uuid4()), service)
 
 
+async def test_una_intervencion_con_un_id_que_no_es_nuestro_no_toca_nada(
+    service: ReclamoService, publisher: InMemoryEventPublisher
+) -> None:
+    # Public Spaces' test runs send ids like "reclamo-grua-4". None of our
+    # claims can have one, so it is the same as an unknown claim: ignored.
+    reclamo_id = await _reclamo_en(service, "Palermo")
+
+    await manejar_intervencion_finalizada(evento_intervencion("reclamo-grua-4"), service)
+
+    assert (await service.obtener(reclamo_id)).estado is EstadoReclamo.RECIBIDO
+    assert publisher.eventos_de(topics.RECLAMO_RESUELTO) == []
+
+
 async def test_el_consumer_ignora_topics_sin_handler(
     publisher: InMemoryEventPublisher,
 ) -> None:
@@ -437,3 +450,45 @@ async def test_un_mensaje_roto_va_a_la_dlq(publisher: InMemoryEventPublisher) ->
     fallidos = publisher.eventos_de(topics.DLQ)
     assert len(fallidos) == 1
     assert fallidos[0].data.topic_original == "residuos.contenedor.desbordado"
+
+
+async def test_un_mensaje_ilegible_no_detiene_al_worker(
+    publisher: InMemoryEventPublisher,
+) -> None:
+    """It used to be decoded by the client, outside the per-message handling:
+    one unreadable message stopped the worker, on every restart."""
+
+    class _Mensaje:
+        topic = topics.RESIDUOS_CONTENEDOR_DESBORDADO
+        offset = 7
+
+        def __init__(self, valor: bytes) -> None:
+            self.value = valor
+
+    class _Kafka:
+        def __init__(self) -> None:
+            self.pendientes = [_Mensaje(b"\x82SNAPPY no es json"), _Mensaje(b"[1, 2]")]
+            self.commits = 0
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self.pendientes:
+                raise StopAsyncIteration
+            return self.pendientes.pop(0)
+
+        async def commit(self) -> None:
+            self.commits += 1
+
+        async def stop(self) -> None:
+            pass
+
+    consumer = EventConsumer(publisher)
+    kafka = consumer._consumer = _Kafka()
+
+    await consumer.run()
+
+    # Both were committed and both went to the DLQ: the partition moved on.
+    assert kafka.commits == 2
+    assert len(publisher.eventos_de(topics.DLQ)) == 2

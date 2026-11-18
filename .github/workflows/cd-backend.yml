@@ -1,8 +1,24 @@
 name: CD Backend
 
+# Deploys main to Render, and only a commit whose CI passed.
+#
+# It used to run on every push to main, next to the CI and without waiting for
+# it: a commit with failing tests, a leaked credential or a vulnerable image
+# was deployed anyway. Now the trigger is the CI run itself finishing, and the
+# job only goes on if that run was green.
+#
+# `workflow_run` always uses this file as it is on the default branch.
+
 on:
-  push:
+  workflow_run:
+    workflows: ["CI Backend"]
+    types: [completed]
     branches: [main]
+  # By hand: redeploys the current main without waiting for a CI run.
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 # One deploy at a time: two quick pushes to main must not run migrations
 # against the same database concurrently.
@@ -14,11 +30,20 @@ jobs:
   deploy:
     name: Build & deploy
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The CI also runs for pull requests whose head is main; only the run of a
+    # push to main is a release, and only if every job of it passed.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    env:
+      # The commit that passed the CI, not whatever main points at by now.
+      COMMIT: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v7
-
-      - name: Build image (chequeo rápido de que el Dockerfile compila)
-        run: docker build -t citypass-reclamos:${{ github.sha }} .
+        with:
+          ref: ${{ env.COMMIT }}
 
       - uses: actions/setup-python@v7
         with:
@@ -45,10 +70,12 @@ jobs:
           alembic upgrade head
 
       - name: Deploy en Render
+        id: deploy
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
         run: |
+          set -euo pipefail
           if [ -z "$RENDER_SERVICE_ID" ]; then
             echo "::error::Falta la variable RENDER_SERVICE_ID (Settings > Secrets and variables > Actions > Variables)"
             exit 1
@@ -57,44 +84,100 @@ jobs:
             echo "::error::Falta el secret RENDER_API_KEY (Settings > Secrets and variables > Actions)"
             exit 1
           fi
+          BASE="https://api.render.com/v1/services/${RENDER_SERVICE_ID}"
 
-          # Dispara el deploy (Render ya construye desde el Dockerfile del repo).
-          DEPLOY_ID=$(curl -fsS -X POST \
-            "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys" \
+          # The deploy that is live now is where a rollback goes back to.
+          ANTERIOR=$(curl -fsS -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            "${BASE}/deploys?status=live&limit=1" | jq -r '.[0].deploy.id // empty')
+          echo "anterior=${ANTERIOR}" >> "$GITHUB_OUTPUT"
+          echo "Deploy en vivo antes de empezar: ${ANTERIOR:-ninguno}"
+
+          # Render builds from the repository's Dockerfile. The commit is
+          # explicit so what goes live is exactly what the CI checked.
+          DEPLOY_ID=$(jq -n --arg c "$COMMIT" '{commitId: $c}' | curl -fsS -X POST \
+            "${BASE}/deploys" \
             -H "Authorization: Bearer ${RENDER_API_KEY}" \
             -H "Content-Type: application/json" \
-            | python3 -c "import sys, json; print(json.load(sys.stdin)['id'])")
+            -d @- | jq -r '.id')
+          echo "Deploy disparado: $DEPLOY_ID (commit $COMMIT)"
 
-          echo "Deploy disparado: $DEPLOY_ID"
-
-          # Espera a que termine, hasta 8 minutos.
-          for i in $(seq 1 48); do
-            STATUS=$(curl -fsS \
-              "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys/${DEPLOY_ID}" \
-              -H "Authorization: Bearer ${RENDER_API_KEY}" \
-              | python3 -c "import sys, json; print(json.load(sys.stdin)['status'])")
-
+          # Wait for it, up to 10 minutes.
+          for i in $(seq 1 60); do
+            STATUS=$(curl -fsS -H "Authorization: Bearer ${RENDER_API_KEY}" \
+              "${BASE}/deploys/${DEPLOY_ID}" | jq -r '.status')
             echo "Estado del deploy: $STATUS"
-
             if [ "$STATUS" = "live" ]; then
               exit 0
             fi
-            if [ "$STATUS" = "build_failed" ] || [ "$STATUS" = "update_failed" ] || [ "$STATUS" = "canceled" ]; then
-              echo "::error::El deploy en Render terminó en estado $STATUS"
-              exit 1
-            fi
+            case "$STATUS" in
+              build_failed|update_failed|pre_deploy_failed|canceled|deactivated)
+                # Render keeps serving the previous deploy when a new one does
+                # not come up, so there is nothing to roll back here.
+                echo "::error::El deploy en Render termino en estado $STATUS; sigue en vivo el anterior"
+                exit 1
+                ;;
+            esac
             sleep 10
           done
-          echo "::error::El deploy en Render no terminó en 8 minutos"
+          echo "::error::El deploy en Render no termino en 10 minutos"
           exit 1
 
+      # The deploy is live: now check that it actually answers, with the
+      # database, and that it is the production configuration.
       - name: Smoke test
+        id: smoke
         env:
           API_URL: ${{ vars.API_URL }}
         run: |
           for i in $(seq 1 30); do
-            if curl -fsS "$API_URL/health/ready"; then exit 0; fi
+            if curl -fsS --max-time 30 "$API_URL/health/ready" \
+               && curl -fsS --max-time 30 "$API_URL/health" \
+                  | jq -e '.status == "ok" and .environment == "production"' > /dev/null; then
+              echo
+              echo "La version nueva responde."
+              exit 0
+            fi
             sleep 10
           done
-          echo "::error::El deploy no respondio /health/ready en 5 minutos"
+          echo "::error::La version nueva no respondio bien en 5 minutos"
+          exit 1
+
+      # A version that is live but does not answer is worse than the previous
+      # one, so the service goes back to it. The database does not: migrations
+      # are not undone, which is why they have to stay backwards compatible
+      # with the previous release.
+      - name: Rollback al deploy anterior
+        if: failure() && steps.smoke.conclusion == 'failure' && steps.deploy.outputs.anterior != ''
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+          ANTERIOR: ${{ steps.deploy.outputs.anterior }}
+          API_URL: ${{ vars.API_URL }}
+        run: |
+          set -euo pipefail
+          BASE="https://api.render.com/v1/services/${RENDER_SERVICE_ID}"
+          echo "::warning::El smoke test fallo: se vuelve al deploy ${ANTERIOR}"
+          ROLLBACK_ID=$(jq -n --arg d "$ANTERIOR" '{deployId: $d}' | curl -fsS -X POST \
+            "${BASE}/rollback" \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d @- | jq -r '.id')
+          for i in $(seq 1 60); do
+            STATUS=$(curl -fsS -H "Authorization: Bearer ${RENDER_API_KEY}" \
+              "${BASE}/deploys/${ROLLBACK_ID}" | jq -r '.status')
+            echo "Estado del rollback: $STATUS"
+            if [ "$STATUS" = "live" ]; then
+              curl -fsS --max-time 60 "$API_URL/health/ready" && echo
+              echo "::warning::Rollback hecho: produccion volvio al deploy ${ANTERIOR}"
+              exit 0
+            fi
+            case "$STATUS" in
+              build_failed|update_failed|pre_deploy_failed|canceled|deactivated)
+                echo "::error::El rollback termino en $STATUS: revisar Render a mano"
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+          echo "::error::El rollback no termino en 10 minutos: revisar Render a mano"
           exit 1

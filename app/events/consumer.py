@@ -57,7 +57,9 @@ class EventConsumer:
             # Manual commit: only once the handler has finished successfully.
             enable_auto_commit=False,
             auto_offset_reset="earliest",
-            value_deserializer=lambda v: json.loads(v.decode()),
+            # No deserializer: it would raise inside the iteration, outside the
+            # per-message handling below, and one unreadable message would stop
+            # the worker on every restart. `_decodificar` runs where it can fail.
         )
         await self._consumer.start()
         self._corriendo = True
@@ -69,6 +71,13 @@ class EventConsumer:
             await self._consumer.stop()
             self._consumer = None
             log.info("consumer.stop")
+
+    @staticmethod
+    def _decodificar(crudo: bytes | None) -> dict[str, Any]:
+        payload = json.loads((crudo or b"").decode())
+        if not isinstance(payload, dict):
+            raise ValueError("el mensaje no es un objeto JSON")
+        return payload
 
     async def procesar(self, topic: str, payload: dict[str, Any]) -> None:
         """Run the topic's handler with a session and service of its own."""
@@ -99,8 +108,11 @@ class EventConsumer:
         assert self._consumer is not None
         try:
             async for mensaje in self._consumer:
+                # What goes to the DLQ when not even the decoding worked.
+                payload: dict[str, Any] = {"ilegible": repr(mensaje.value)[:500]}
                 try:
-                    await self.procesar(mensaje.topic, mensaje.value)
+                    payload = self._decodificar(mensaje.value)
+                    await self.procesar(mensaje.topic, payload)
                 except Exception as exc:  # noqa: BLE001 - isolated per message
                     log.exception(
                         "consumer.error",
@@ -108,7 +120,7 @@ class EventConsumer:
                         offset=mensaje.offset,
                         error=str(exc),
                     )
-                    await self._a_dlq(mensaje.topic, mensaje.value, exc)
+                    await self._a_dlq(mensaje.topic, payload, exc)
                 finally:
                     # Commit anyway after routing to the DLQ: otherwise the same
                     # broken message would block the partition forever.

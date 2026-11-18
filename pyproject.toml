@@ -21,6 +21,12 @@ dependencies = [
     "asyncpg>=0.30",
     "alembic>=1.14",
     "aiokafka>=0.12",
+    # Decodes the Avro records of the CityPass+ bus (ADR 0023). aiokafka reads
+    # the bytes; this turns them into the event, against the registry's schema.
+    "fastavro>=1.9",
+    # CA bundle for the TLS connection to the bus' broker. It already came with
+    # httpx; listed because `app/events/bus.py` imports it directly.
+    "certifi>=2024.2",
     "pyjwt[crypto]>=2.10",
     "python-multipart>=0.0.17",
     "structlog>=24.4",
@@ -28,6 +34,9 @@ dependencies = [
     # for the API tests, so it adds nothing new to the environment.
     "httpx>=0.28",
     "slowapi>=0.1.9",
+    # Official Prometheus client, pure Python. Counters and histograms with
+    # labels, and the exposition format, are easy to get subtly wrong by hand.
+    "prometheus-client>=0.21",
 ]
 
 [project.optional-dependencies]
@@ -37,6 +46,9 @@ dev = [
     "pytest-cov>=6.0",
     "aiosqlite>=0.20",
     "ruff>=0.8",
+    # Reads render.yaml in scripts/render_config.py and its tests. It already
+    # came with uvicorn[standard]; listed so that does not stay an accident.
+    "pyyaml>=6.0",
 ]
 
 [tool.hatch.build.targets.wheel]

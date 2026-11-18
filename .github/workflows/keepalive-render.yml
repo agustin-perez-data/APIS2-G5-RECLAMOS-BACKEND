@@ -1,0 +1,51 @@
+name: Keep Render awake
+
+# Render's free plan stops the service after about 15 minutes without traffic.
+# The next request pays a cold start of 30 to 60 seconds, and that is long
+# enough to lose an inbound event: the CityPass+ gateway retries a failed
+# webhook delivery for only a few seconds before giving up.
+#
+# This is a different problem from the Supabase one (see keepalive-supabase.yml):
+# there the project pauses after about a week, here the service sleeps after a
+# quarter of an hour, so the two need different frequencies and different pings.
+#
+# Deliberately hits /health and not /health/ready: waking the web service is the
+# whole job, and /health/ready would also fail every ten minutes if the database
+# were ever down, turning one problem into 144 red runs a day. The database has
+# its own workflow.
+#
+# GitHub only runs scheduled workflows from the default branch, so this starts
+# working once it reaches main.
+
+on:
+  schedule:
+    # Every ten minutes, offset so it does not land on the hour, when GitHub is
+    # most congested and most likely to delay a run.
+    - cron: "4,14,24,34,44,54 * * * *"
+  workflow_dispatch:
+
+# No secrets and no repository access: the endpoint is public.
+permissions: {}
+
+# A delayed run must not pile up on top of the next one.
+concurrency:
+  group: keepalive-render
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    name: Wake the service
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: GET /health
+        env:
+          URL: https://apis2-g5-reclamos-backend.onrender.com/health
+        run: |
+          # --max-time 90 because a cold start can take a minute, and the
+          # retries cover the case where Render is still booting when we knock.
+          curl --fail --silent --show-error \
+               --retry 3 --retry-delay 15 --retry-all-errors \
+               --max-time 90 \
+               "$URL"
+          echo

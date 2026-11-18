@@ -76,6 +76,15 @@ class Reclamo(Base, TimestampMixin):
     )
     # Classifier confidence in [0, 1] when the model picked the category.
     confianza_clasificacion: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # What the model said when it picked the category, written once at filing
+    # and never touched again. A reclassification overwrites `categoria`,
+    # `origen_clasificacion` and `confianza_clasificacion`; without these three
+    # there would be no way to tell afterwards that the model was wrong, which
+    # is exactly what measuring it in production needs (ADR 0019). A plain
+    # string and not the enum: it records the label as it was at the time.
+    categoria_sugerida: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    confianza_sugerida: Mapped[float | None] = mapped_column(Float, nullable=True)
+    modelo_clasificador: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # What the claim is about, orthogonal to the category. Nullable: not every
     # claim affects an identifiable space, and the citizen may leave it out.
     objeto_afectado: Mapped[ObjetoAfectado | None] = mapped_column(
