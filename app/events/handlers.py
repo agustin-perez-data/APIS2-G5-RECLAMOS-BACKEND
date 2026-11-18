@@ -24,6 +24,7 @@ from app.events.contracts import (
     CriticidadClimaticaFinalizada,
     CriticidadClimaticaLevantada,
     EventoCulturalPublicado,
+    EventoFinalizado,
     IncidenteActualizado,
     IncidenteCreado,
     IntervencionFinalizada,
@@ -310,6 +311,17 @@ async def manejar_actividad_creada(raw: dict[str, Any], service: ReclamoService)
     )
 
 
+async def manejar_evento_finalizado(raw: dict[str, Any], service: ReclamoService) -> None:
+    """`com.citypass.espacios.EventoFinalizado` -> remember the reservation ended.
+
+    From then on a citizen can file a claim over that `reservaId`, until the
+    window after `fin` closes. Nothing else changes on arrival. Idempotent: a
+    redelivery finds the reservation already stored and does nothing.
+    """
+    evento = parse_envelope(raw, EventoFinalizado)
+    await service.reservas.registrar(evento.data)
+
+
 async def manejar_actividad_modificada(raw: dict[str, Any], service: ReclamoService) -> None:
     """`com.citypass.espacios.ActividadModificada` -> move the activity's state.
 
@@ -479,4 +491,5 @@ HANDLERS: dict[str, Handler] = {
     topics.ESPACIOS_CLIMA_FINALIZADA: manejar_criticidad_finalizada,
     topics.ESPACIOS_ACTIVIDAD_CREADA: manejar_actividad_creada,
     topics.ESPACIOS_ACTIVIDAD_MODIFICADA: manejar_actividad_modificada,
+    topics.ESPACIOS_EVENTO_FINALIZADO: manejar_evento_finalizado,
 }

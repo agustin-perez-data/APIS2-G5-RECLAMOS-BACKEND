@@ -633,6 +633,29 @@ class MensajeFallido(BaseModel):
     payload: dict[str, Any]
 
 
+class EventoFinalizado(BaseModel):
+    """`com.citypass.espacios.EventoFinalizado` (CASO-RECLAMOS-POST-EVENTO).
+
+    Public Spaces announcing that an event ended. All we need is which
+    reservation it was and when it ended: claims about it open from `fin`. It
+    carries no event or space name, so the citizen has to bring the
+    `reservaId` from elsewhere.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    reserva_id: str = Field(
+        min_length=1,
+        max_length=64,
+        validation_alias=AliasChoices("reserva_id", "reservaId"),
+    )
+    # Epoch millis or ISO 8601: Pydantic reads both.
+    fin: datetime
+    asistentes_reales: int | None = Field(
+        default=None, validation_alias=AliasChoices("asistentes_reales", "asistentesReales")
+    )
+
+
 def parse_envelope(raw: dict[str, Any], data_model: type[TPayload]) -> EventEnvelope[TPayload]:
     """Validate an incoming message against the envelope + expected payload."""
     return EventEnvelope[data_model].model_validate(raw)  # type: ignore[valid-type]

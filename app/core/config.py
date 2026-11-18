@@ -260,6 +260,11 @@ class Settings(BaseSettings):
     actividad_masiva_radio_metros: int = 300
     actividad_masiva_horas_despues: int = 6
 
+    # Claims over an event that already ended (CASO-RECLAMOS-POST-EVENTO): how long
+    # after the event's `fin` a claim about it is still accepted. 7 days is a
+    # proposal; the real value is a business decision.
+    reclamo_ventana_ms: int = 604_800_000
+
     # An Emergencies incident with coordinates but no neighbourhood still has to
     # reach the claims around it. 1 km, between the 300 m of an activity -- which
     # is a point in the street -- and the kilometres of a weather alert, which

@@ -44,6 +44,18 @@ class AdhesionDelAutor(DomainError):
     code = "adhesion_del_autor"
 
 
+class EventoNoFinalizado(DomainError):
+    status_code = 409
+    title = "El evento no termino o todavia no se registro su finalizacion"
+    code = "evento_no_finalizado"
+
+
+class PlazoDeReclamoVencido(DomainError):
+    status_code = 409
+    title = "Vencio el plazo para reclamar sobre este evento"
+    code = "plazo_de_reclamo_vencido"
+
+
 class ReclamoCerrado(DomainError):
     status_code = 409
     title = "El reclamo esta cerrado y no admite modificaciones"
