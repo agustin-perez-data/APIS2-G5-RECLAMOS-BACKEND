@@ -115,7 +115,10 @@ async def test_admin_federado_recibe_html_y_se_reenvia_el_jwt_original(entorno) 
     assert respuesta.content == cliente.tablero.html
     assert respuesta.headers["content-type"] == "text/html; charset=utf-8"
     assert respuesta.headers["cache-control"] == "no-store, private"
-    assert respuesta.headers["content-security-policy"] == "default-src 'none'"
+    assert respuesta.headers.get_list("content-security-policy") == [
+        "default-src 'none'",
+        "sandbox allow-scripts",
+    ]
     assert respuesta.headers["x-content-type-options"] == "nosniff"
     assert respuesta.headers["referrer-policy"] == "no-referrer"
     assert cliente.tokens == [token]
@@ -223,6 +226,7 @@ async def test_conserva_los_bytes_y_las_csp_repetidas(entorno) -> None:
     assert respuesta.headers.get_list("content-security-policy") == [
         "default-src 'none'",
         "frame-ancestors 'self'",
+        "sandbox allow-scripts",
     ]
 
 
@@ -266,6 +270,7 @@ async def test_el_proxy_real_preserva_html_comprimido_y_solo_las_cabeceras_del_c
     assert respuesta.headers.get_list("content-security-policy") == [
         "default-src 'none'",
         "frame-ancestors 'self'",
+        "sandbox allow-scripts",
     ]
     for nombre, valor in CABECERAS:
         assert valor.decode() in respuesta.headers.get_list(nombre.decode())
@@ -339,8 +344,8 @@ async def test_el_proxy_acepta_html_sin_cabeceras_adicionales(
     assert respuesta.content == html
     assert "no-store" in respuesta.headers["cache-control"]
     for nombre, valor in headers:
-        assert respuesta.headers[nombre.decode()] == valor.decode()
-    for nombre in omitidas - {b"cache-control"}:
+        assert valor.decode() in respuesta.headers.get_list(nombre.decode())
+    for nombre in omitidas - {b"cache-control", b"content-security-policy"}:
         assert nombre.decode() not in respuesta.headers
 
 

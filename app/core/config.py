@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     # Required by the session service, not by the existing Bearer-only proxy.
     analitica_session_key: SecretStr | None = None
     analitica_session_ttl_seconds: int = Field(default=300, gt=0, le=300)
+    analitica_frontend_origins: list[str] = []
 
     # --- CityPass+ bus, straight from its Kafka (ADR 0023) ------------------
     # Group 1 asks modules to read events from the bus' Kafka and keeps the

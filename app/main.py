@@ -89,10 +89,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         cierre_automatico=settings.cierre_automatico_en_api,
         version=__version__,
     )
+    tarea_analitica = None
+    if settings.analitica_enabled and settings.analitica_session_key is not None:
+        from app.services.limpieza_analitica import limpiar_sesiones_periodicamente
+
+        tarea_analitica = asyncio.create_task(limpiar_sesiones_periodicamente(settings))
     try:
         yield
     finally:
-        for tarea in (tarea_bus, tarea_cierre):
+        for tarea in (tarea_bus, tarea_cierre, tarea_analitica):
             if tarea is not None:
                 tarea.cancel()
                 with contextlib.suppress(asyncio.CancelledError):

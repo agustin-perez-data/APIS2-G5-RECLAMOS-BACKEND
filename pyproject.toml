@@ -53,6 +53,8 @@ dev = [
     "pyyaml>=6.0",
 ]
 
+browser = ["playwright>=1.50"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
