@@ -40,17 +40,40 @@ jobs:
   browser-analitica:
     name: Iframe de Analitica en navegadores reales
     runs-on: ubuntu-latest
+    # Normally a couple of minutes. Without a limit a stuck step holds the job
+    # for six hours, the workflow never completes, and the deploy that waits for
+    # it (cd-backend.yml) never starts: it happened on main on 2026-11-18.
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        # One value, used twice below: the image and the Python package have to
+        # be the same Playwright version, or the browsers are not found.
+        playwright: ["1.65.2"]
+    # Playwright's own image, with the three browsers and their system
+    # libraries already inside. Installing them on the runner
+    # (`playwright install --with-deps`) downloads 125 MB of packages with
+    # apt-get from an Ubuntu mirror that some days serves 50 KB/s: that is what
+    # looked like a hang, and no retry gets through it.
+    container:
+      image: mcr.microsoft.com/playwright/python:v${{ matrix.playwright }}-noble
+      options: --user root --ipc=host
+    env:
+      # Firefox refuses to start as root unless HOME is root's own.
+      HOME: /root
+      # The image's Python is the system one; this container is thrown away.
+      PIP_BREAK_SYSTEM_PACKAGES: "1"
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: Install test dependencies and browsers
+      - name: Install test dependencies
+        timeout-minutes: 5
         run: |
-          pip install -e ".[dev,browser]"
-          python -m playwright install --with-deps chromium firefox webkit
+          python3 --version
+          python3 -m pip install -e ".[dev,browser]" "playwright==${{ matrix.playwright }}"
       - name: HTTPS iframe tests
-        run: pytest --no-cov tests/browser
+        timeout-minutes: 5
+        # -rs: a skipped test is listed. These skip themselves when Playwright
+        # cannot be imported, and a silent skip would read as a pass.
+        run: python3 -m pytest --no-cov -rs tests/browser
 
   migrations:
     name: Alembic against PostgreSQL
