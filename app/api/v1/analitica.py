@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials
 
-from app.api.deps import AdminDep, bearer_scheme
-from app.core.security import OrigenIdentidad
+from app.api.deps import bearer_scheme
+from app.api.v1.deps_analitica import AdminAnaliticaDep
 from app.integrations.analitica import AnaliticaClient, ErrorAnalitica
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -28,16 +28,12 @@ def get_analitica_client(request: Request) -> AnaliticaClient:
     description="Devuelve el tablero HTML únicamente al administrador federado de Reclamos.",
 )
 async def tablero_analitica(
-    usuario: AdminDep,
+    usuario: AdminAnaliticaDep,
     credenciales: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     client: Annotated[AnaliticaClient, Depends(get_analitica_client)],
 ) -> Response:
-    # AdminDep validated this same Bearer token. Keep the raw value only for
+    # AdminAnaliticaDep validated this same Bearer token. Keep the raw value only for
     # the server-to-server request; CurrentUser intentionally stores no token.
-    if usuario.origen is not OrigenIdentidad.IDP or (usuario.claims or {}).get("module") != (
-        "reclamos"
-    ):
-        raise HTTPException(status_code=403, detail="Requiere admin federado de Reclamos")
     if credenciales is None or not credenciales.credentials:
         raise HTTPException(status_code=401, detail="Falta el token del usuario")
 

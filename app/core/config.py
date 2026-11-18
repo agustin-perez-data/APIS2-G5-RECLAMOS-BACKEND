@@ -9,7 +9,7 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     analitica_enabled: bool = False
     analitica_url: str | None = None
     analitica_timeout_seconds: float = Field(default=10.0, gt=0)
+    # Required by the session service, not by the existing Bearer-only proxy.
+    analitica_session_key: SecretStr | None = None
+    analitica_session_ttl_seconds: int = Field(default=300, gt=0, le=300)
 
     # --- CityPass+ bus, straight from its Kafka (ADR 0023) ------------------
     # Group 1 asks modules to read events from the bus' Kafka and keeps the

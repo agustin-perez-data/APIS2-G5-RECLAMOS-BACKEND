@@ -19,7 +19,7 @@ from httpx import ASGITransport, AsyncClient
 from app.api import deps
 from app.api.errors import registrar_manejadores
 from app.api.v1 import analitica
-from app.core import security
+from app.core import analitica_auth, security
 from app.core.config import Settings
 from app.integrations.analitica import AnaliticaClient, ErrorAnalitica, TableroAnalitica
 
@@ -68,6 +68,7 @@ def entorno(monkeypatch):
         jwt_staff_grupos_operador=["reclamos-operadores"],
     )
     monkeypatch.setattr(deps, "settings", cfg)
+    monkeypatch.setattr(analitica_auth, "settings", cfg)
     monkeypatch.setattr(security, "settings", cfg)
     monkeypatch.setattr(
         security,
@@ -91,7 +92,7 @@ def token_staff(cfg: Settings, clave, **cambios) -> str:
         "aud": [cfg.jwt_audience],
         "exp": int(time.time()) + 900,
         "token_use": "human",
-        "module": "reclamos",
+        "namespace": "com.citypass.reclamos",
         "groups": ["reclamos-administradores"],
     }
     claims.update(cambios)
@@ -124,7 +125,10 @@ async def test_admin_federado_recibe_html_y_se_reenvia_el_jwt_original(entorno) 
     ("claims", "codigo"),
     [
         ({"groups": ["reclamos-operadores"]}, 403),
-        ({"module": "analitica"}, 403),
+        ({"namespace": "com.citypass.analitica"}, 403),
+        ({"namespace": None}, 403),
+        ({"groups": []}, 403),
+        ({"groups": ["admin"]}, 403),
         ({"token_use": "service"}, 401),
         ({"iss": "https://otro-emisor.example"}, 401),
         ({"exp": 1}, 401),
@@ -162,7 +166,7 @@ async def test_rechaza_firma_alterada_audiencia_ajena_y_grupos_vacios(entorno, c
         (token_staff(cfg, otro_firmante), 401),
         (token_staff(cfg, clave, aud=["citypass-analitica-api"]), 401),
         (token_staff(cfg, clave, groups=[]), 403),
-        (token_staff(cfg, clave, module=None), 403),
+        (token_staff(cfg, clave, namespace=None), 403),
     ]
     for token, codigo in casos:
         respuesta = await pedir(app, token)
@@ -170,6 +174,13 @@ async def test_rechaza_firma_alterada_audiencia_ajena_y_grupos_vacios(entorno, c
         assert token not in respuesta.text
         assert token not in caplog.text
     assert cliente.tokens == []
+
+
+@pytest.mark.parametrize("aud", ["citypass-reclamos-api", ["otra-api", "citypass-reclamos-api"]])
+async def test_acepta_admin_con_namespace_y_sin_module(entorno, aud) -> None:
+    cfg, clave, app, _cliente = entorno
+    respuesta = await pedir(app, token_staff(cfg, clave, aud=aud))
+    assert respuesta.status_code == 200
 
 
 @pytest.mark.parametrize(
