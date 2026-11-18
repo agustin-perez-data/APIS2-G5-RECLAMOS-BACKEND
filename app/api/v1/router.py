@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import actividades, notificaciones, reclamos, webhooks
+from app.api.v1 import actividades, alertas_climaticas, notificaciones, reclamos, webhooks
 from app.core.config import settings
 
 api_router = APIRouter()
@@ -10,6 +10,7 @@ api_router.include_router(reclamos.router)
 api_router.include_router(notificaciones.router)
 api_router.include_router(webhooks.router)
 api_router.include_router(actividades.router)
+api_router.include_router(alertas_climaticas.router)
 
 if settings.analitica_enabled:
     from app.api.v1 import analitica

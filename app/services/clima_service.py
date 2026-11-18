@@ -82,6 +82,21 @@ class ClimaService:
         self.session = session
         self.repo = EventoClimaticoRepository(session)
 
+    async def vigentes(self, ahora: datetime | None = None) -> list[EventoClimatico]:
+        """Alerts in force right now, newest first.
+
+        `repo.activas()` is everything not finished, which is wider: it includes
+        an alert announced for tonight and one whose window ended without its
+        closing event. Neither is in force, and showing them to an operator as
+        if they were would send a crew to a storm that is not there.
+        """
+        ahora = ahora or datetime.now(UTC)
+        return [
+            alerta
+            for alerta in await self.repo.activas()
+            if _con_zona(alerta.vigencia_desde) <= ahora and not esta_vencida(alerta, ahora)
+        ]
+
     async def ya_procesado(self, event_id: str) -> bool:
         return await self.repo.ya_procesado(event_id)
 
