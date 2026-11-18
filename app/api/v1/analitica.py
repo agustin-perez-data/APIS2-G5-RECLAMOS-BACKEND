@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Annotated
+from urllib.request import parse_http_list
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
@@ -43,18 +44,21 @@ async def tablero_analitica(
     try:
         tablero = await client.obtener_tablero(credenciales.credentials)
     except ErrorAnalitica as exc:
-        codigo = 403 if exc.status_code == 403 else 502
-        raise HTTPException(status_code=codigo, detail="Analítica no disponible") from exc
+        codigo = 504 if exc.timeout else {403: 403, 503: 503}.get(exc.status_code, 502)
+        raise HTTPException(
+            status_code=codigo,
+            detail="Analítica no disponible",
+            headers={"Cache-Control": "no-store"},
+        ) from exc
 
-    headers = {
-        "Content-Type": tablero.content_type,
-        "Cache-Control": (
-            tablero.cache_control
-            if tablero.cache_control and "no-store" in tablero.cache_control.lower()
-            else "no-store"
-        ),
-        "X-Content-Type-Options": "nosniff",
+    respuesta = Response(content=tablero.html)
+    respuesta.raw_headers.extend(tablero.headers)
+    # Keep upstream fields intact and enforce our own non-storage requirement.
+    directivas = {
+        parte.strip().lower()
+        for valor in respuesta.headers.getlist("cache-control")
+        for parte in parse_http_list(valor)
     }
-    if tablero.content_security_policy:
-        headers["Content-Security-Policy"] = tablero.content_security_policy
-    return Response(content=tablero.html, headers=headers)
+    if "no-store" not in directivas:
+        respuesta.headers.append("Cache-Control", "no-store")
+    return respuesta

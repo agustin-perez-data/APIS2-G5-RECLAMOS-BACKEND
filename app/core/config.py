@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     gateway_timeout_seconds: float = 5.0
 
     # --- Analytics dashboard (Group 8) -------------------------------------
-    # Uses the same Group 2 service credentials as the event gateway.
+    # Forwards the validated human token; no service credentials are needed.
     analitica_enabled: bool = False
     analitica_url: str | None = None
     analitica_timeout_seconds: float = Field(default=10.0, gt=0)
@@ -362,8 +362,6 @@ class Settings(BaseSettings):
             raise ValueError("ANALITICA_ENABLED requiere JWKS y JWT_STAFF_ESTRICTO=true")
         if self.jwt_token_use_esperado != "human" or not self.jwt_staff_grupos_admin:
             raise ValueError("ANALITICA_ENABLED requiere token_use=human y grupo ADMIN")
-        if not all((self.gateway_token_url, self.gateway_client_id, self.gateway_client_secret)):
-            raise ValueError("ANALITICA_ENABLED requiere credenciales GATEWAY_* del Grupo 2")
         return self
 
     @model_validator(mode="after")

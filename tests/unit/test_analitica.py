@@ -3,225 +3,296 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
+from collections.abc import Awaitable, Callable
 
 import httpx
 import pytest
 
-from app.core.config import Settings
 from app.integrations.analitica import AnaliticaClient, ErrorAnalitica
 
+CABECERAS = {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store, private",
+    "Content-Security-Policy": "default-src 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+}
+HTML = "<!doctype html><html><body>Analítica: resolución y categorías</body></html>".encode()
+Responder = Callable[[httpx.Request], httpx.Response | Awaitable[httpx.Response]]
 
-def _config() -> Settings:
-    return Settings(
-        gateway_token_url="https://login.example/oauth/token",
-        gateway_client_id="grupo4",
-        gateway_client_secret="secreto-de-test",
-    )
 
-
-def _cliente(responder, *, timeout_seconds: float = 10.0) -> AnaliticaClient:
-    http = httpx.AsyncClient(transport=httpx.MockTransport(responder))
+def _cliente(responder: Responder, *, timeout_seconds: float = 10.0) -> AnaliticaClient:
+    # Enabled on the injected client to verify the integration overrides it.
+    http = httpx.AsyncClient(transport=httpx.MockTransport(responder), follow_redirects=True)
     return AnaliticaClient(
         "https://analitica.example/",
-        _config(),
         http,
         timeout_seconds=timeout_seconds,
     )
 
 
-async def test_pide_token_con_credenciales_existentes_y_reutiliza_la_cache() -> None:
+async def test_envia_solo_el_bearer_humano_y_no_cachea_el_html() -> None:
     pedidos: list[httpx.Request] = []
 
     def responder(request: httpx.Request) -> httpx.Response:
         pedidos.append(request)
-        if request.url.path == "/oauth/token":
-            return httpx.Response(200, json={"access_token": "servicio-1", "expires_in": 900})
-        return httpx.Response(
-            200,
-            text="<html>tablero</html>",
-            headers={
-                "Content-Type": "text/html; charset=utf-8",
-                "Cache-Control": "no-store",
-                "Content-Security-Policy": "default-src 'none'",
-            },
-        )
+        return httpx.Response(200, content=HTML + str(len(pedidos)).encode(), headers=CABECERAS)
 
     client = _cliente(responder)
     primero = await client.obtener_tablero("usuario-1")
     segundo = await client.obtener_tablero("usuario-2")
 
-    tokens = [p for p in pedidos if p.url.path == "/oauth/token"]
-    tableros = [p for p in pedidos if p.url.path == "/embed/reclamos"]
-    assert len(tokens) == 1
-    assert tokens[0].method == "POST"
-    assert tokens[0].content == b"grant_type=client_credentials"
-    assert tokens[0].headers["Authorization"] == "Basic Z3J1cG80OnNlY3JldG8tZGUtdGVzdA=="
-    assert len(tableros) == 2
-    assert all(p.url == "https://analitica.example/embed/reclamos" for p in tableros)
-    assert all(p.headers["Authorization"] == "Bearer servicio-1" for p in tableros)
-    assert [p.headers["X-Usuario-Token"] for p in tableros] == ["usuario-1", "usuario-2"]
-    assert primero.html == segundo.html == "<html>tablero</html>"
-    assert primero.content_type == "text/html; charset=utf-8"
-    assert primero.cache_control == "no-store"
-    assert primero.content_security_policy == "default-src 'none'"
-
-
-async def test_renueva_el_token_antes_del_vencimiento() -> None:
-    tokens = 0
-
-    def responder(request: httpx.Request) -> httpx.Response:
-        nonlocal tokens
-        if request.url.path == "/oauth/token":
-            tokens += 1
-            return httpx.Response(200, json={"access_token": f"servicio-{tokens}"})
-        return httpx.Response(200, text="<html></html>", headers={"Content-Type": "text/html"})
-
-    client = _cliente(responder)
-    await client.obtener_tablero("usuario")
-    client._token_vence = 0
-    await client.obtener_tablero("usuario")
-    assert tokens == 2
-
-
-async def test_un_401_de_analitica_invalida_el_token_para_el_siguiente_pedido() -> None:
-    tokens = 0
-
-    def responder(request: httpx.Request) -> httpx.Response:
-        nonlocal tokens
-        if request.url.path == "/oauth/token":
-            tokens += 1
-            return httpx.Response(200, json={"access_token": f"servicio-{tokens}"})
-        if tokens == 1:
-            return httpx.Response(401, text="detalle privado")
-        return httpx.Response(200, text="<html></html>", headers={"Content-Type": "text/html"})
-
-    client = _cliente(responder)
-    with pytest.raises(ErrorAnalitica) as error:
-        await client.obtener_tablero("usuario")
-    assert error.value.status_code == 401
-    assert "detalle privado" not in str(error.value)
-    await client.obtener_tablero("usuario")
-    assert tokens == 2
-
-
-@pytest.mark.parametrize("status", [302, 403, 503])
-async def test_no_sigue_redirecciones_ni_expone_errores_externos(status: int) -> None:
-    pedidos: list[httpx.Request] = []
-
-    def responder(request: httpx.Request) -> httpx.Response:
-        pedidos.append(request)
-        if request.url.path == "/oauth/token":
-            return httpx.Response(200, json={"access_token": "servicio"})
-        return httpx.Response(status, text="detalle privado", headers={"Location": "/otro"})
-
-    client = _cliente(responder)
-    with pytest.raises(ErrorAnalitica) as error:
-        await client.obtener_tablero("usuario")
-    assert error.value.status_code == status
-    assert "detalle privado" not in str(error.value)
     assert len(pedidos) == 2
+    assert all(p.method == "GET" for p in pedidos)
+    assert all(p.url == "https://analitica.example/embed/reclamos" for p in pedidos)
+    assert all(p.content == b"" for p in pedidos)
+    assert all(p.headers["Accept"] == "text/html" for p in pedidos)
+    assert all("X-Usuario-Token" not in p.headers for p in pedidos)
+    assert [p.headers["Authorization"] for p in pedidos] == ["Bearer usuario-1", "Bearer usuario-2"]
+    assert primero.html == HTML + b"1"
+    assert segundo.html == HTML + b"2"
+    assert dict(httpx.Headers(primero.headers)) == {k.lower(): v for k, v in CABECERAS.items()}
 
 
-async def test_rechaza_respuesta_que_no_es_html() -> None:
-    def responder(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/oauth/token":
-            return httpx.Response(200, json={"access_token": "servicio"})
-        return httpx.Response(200, json={"error": "inesperado"})
+async def test_conserva_bytes_y_politicas_repetidas_sin_reenviar_otras_cabeceras() -> None:
+    # A BOM and CRLF must survive without decoding and re-encoding the document.
+    html = b"\xef\xbb\xbf" + HTML + b"\r\n"
+    headers = list(CABECERAS.items()) + [
+        ("Content-Security-Policy", "frame-ancestors 'self'"),
+        ("Set-Cookie", "sesion-remota=privada; Secure; HttpOnly"),
+        ("Location", "https://otro.example"),
+        ("Authorization", "Bearer privado"),
+        ("X-Usuario-Token", "privado"),
+    ]
+    remoto = httpx.Response(200, content=html, headers=headers)
+    tablero = await _cliente(lambda _request: remoto).obtener_tablero("usuario")
 
-    with pytest.raises(ErrorAnalitica):
-        await _cliente(responder).obtener_tablero("usuario")
-
-
-async def test_timeout_de_analitica_y_falla_del_idp() -> None:
-    def timeout(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/oauth/token":
-            return httpx.Response(200, json={"access_token": "servicio"})
-        raise httpx.ReadTimeout("demora", request=request)
-
-    with pytest.raises(ErrorAnalitica):
-        await _cliente(timeout).obtener_tablero("usuario")
-
-    def idp_caido(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(503, text="detalle privado")
-
-    with pytest.raises(ErrorAnalitica) as error:
-        await _cliente(idp_caido).obtener_tablero("usuario")
-    assert error.value.status_code is None
-    assert "detalle privado" not in str(error.value)
+    assert tablero.html == html
+    assert tablero.headers == tuple(
+        (nombre.lower(), valor)
+        for nombre, valor in remoto.headers.raw
+        if nombre.lower() in {k.lower().encode() for k in CABECERAS}
+    )
+    assert httpx.Headers(tablero.headers).get_list("Content-Security-Policy") == [
+        "default-src 'none'",
+        "frame-ancestors 'self'",
+    ]
 
 
-async def test_pedidos_concurrentes_comparten_una_sola_obtencion_de_token() -> None:
-    tokens = 0
+async def test_el_cuerpo_descomprimido_no_arrastra_cabeceras_de_transporte() -> None:
+    remoto = httpx.Response(
+        200,
+        content=gzip.compress(HTML),
+        headers=CABECERAS | {"Content-Encoding": "gzip"},
+    )
+    tablero = await _cliente(lambda _request: remoto).obtener_tablero("usuario")
 
-    async def responder(request: httpx.Request) -> httpx.Response:
-        nonlocal tokens
-        if request.url.path == "/oauth/token":
-            tokens += 1
-            await asyncio.sleep(0)
-            return httpx.Response(200, json={"access_token": "servicio"})
-        return httpx.Response(200, text="<html></html>", headers={"Content-Type": "text/html"})
-
-    client = _cliente(responder)
-    await asyncio.gather(*(client.obtener_tablero(f"usuario-{i}") for i in range(5)))
-    assert tokens == 1
+    assert tablero.html == HTML
+    assert "content-encoding" not in httpx.Headers(tablero.headers)
+    assert "content-length" not in httpx.Headers(tablero.headers)
 
 
 @pytest.mark.parametrize(
-    "respuesta_token",
-    [
-        httpx.Response(302, headers={"Location": "https://otro.example/oauth/token"}),
-        httpx.Response(200, json={}),
-        httpx.Response(200, json={"access_token": "servicio", "expires_in": 0}),
-        httpx.Response(200, text="respuesta inesperada"),
-    ],
+    "status", [204, 301, 302, 303, 307, 308, 400, 401, 403, 404, 429, 500, 503]
 )
-async def test_token_de_servicio_invalido_no_llega_a_analitica(
-    respuesta_token: httpx.Response,
-) -> None:
+async def test_no_reintenta_ni_sigue_redirecciones_ni_expone_errores(status: int) -> None:
     pedidos: list[httpx.Request] = []
 
     def responder(request: httpx.Request) -> httpx.Response:
         pedidos.append(request)
-        return respuesta_token
+        return httpx.Response(
+            status,
+            text="detalle privado jwt-humano-privado",
+            headers={"Location": "https://otro.example/"},
+        )
 
     with pytest.raises(ErrorAnalitica) as error:
         await _cliente(responder).obtener_tablero("jwt-humano-privado")
+
+    assert error.value.status_code == status
+    assert error.value.timeout is False
+    assert "privado" not in str(error.value)
+    assert len(pedidos) == 1
+
+
+@pytest.mark.parametrize("content_type", ["application/json", "text/plain", "image/svg+xml"])
+async def test_rechaza_respuesta_que_no_es_html(content_type: str) -> None:
+    remoto = httpx.Response(200, content=HTML, headers=CABECERAS | {"Content-Type": content_type})
+    with pytest.raises(ErrorAnalitica):
+        await _cliente(lambda _request: remoto).obtener_tablero("usuario")
+
+
+@pytest.mark.parametrize("cabecera", [k for k in CABECERAS if k != "Content-Type"])
+async def test_acepta_html_sin_cabeceras_adicionales(cabecera: str) -> None:
+    headers = {k: v for k, v in CABECERAS.items() if k != cabecera}
+    remoto = httpx.Response(200, content=HTML, headers=headers)
+    tablero = await _cliente(lambda _request: remoto).obtener_tablero("usuario")
+    assert tablero.html == HTML
+    assert cabecera not in httpx.Headers(tablero.headers)
+
+
+async def test_rechaza_respuesta_sin_content_type_html() -> None:
+    remoto = httpx.Response(200, content=HTML)
+    with pytest.raises(ErrorAnalitica):
+        await _cliente(lambda _request: remoto).obtener_tablero("usuario")
+
+
+@pytest.mark.parametrize(
+    "cache_control",
+    ["public, max-age=600", "no-cache", "x-no-store", 'extension="private,no-store,other"', ""],
+)
+async def test_acepta_html_sin_directiva_no_store(cache_control: str) -> None:
+    remoto = httpx.Response(200, content=HTML, headers=CABECERAS | {"Cache-Control": cache_control})
+    tablero = await _cliente(lambda _request: remoto).obtener_tablero("usuario")
+    assert tablero.html == HTML
+    assert httpx.Headers(tablero.headers)["cache-control"] == cache_control
+
+
+@pytest.mark.parametrize("cabecera", [k for k in CABECERAS if k != "Content-Type"])
+async def test_conserva_cabeceras_adicionales_con_valor_vacio(cabecera: str) -> None:
+    remoto = httpx.Response(200, content=HTML, headers=CABECERAS | {cabecera: " "})
+    tablero = await _cliente(lambda _request: remoto).obtener_tablero("usuario")
+    assert tablero.html == HTML
+    assert httpx.Headers(tablero.headers)[cabecera] == " "
+
+
+async def test_conserva_los_valores_originales_de_las_cabeceras() -> None:
+    headers = CABECERAS | {
+        "Content-Type": "Text/HTML; charset=UTF-8",
+        "Cache-Control": "private, No-Store",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+    }
+    remoto = httpx.Response(200, content=HTML, headers=headers)
+    tablero = await _cliente(lambda _request: remoto).obtener_tablero("usuario")
+    assert dict(httpx.Headers(tablero.headers)) == {k.lower(): v for k, v in headers.items()}
+
+
+@pytest.mark.parametrize(
+    "error_http", [httpx.ConnectTimeout, httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout]
+)
+async def test_identifica_los_timeouts_sin_filtrar_detalles(
+    error_http: type[httpx.TimeoutException],
+) -> None:
+    def responder(request: httpx.Request) -> httpx.Response:
+        raise error_http("jwt-humano-privado", request=request)
+
+    with pytest.raises(ErrorAnalitica) as error:
+        await _cliente(responder).obtener_tablero("jwt-humano-privado")
+
+    assert error.value.timeout is True
     assert error.value.status_code is None
     assert "jwt-humano-privado" not in str(error.value)
-    assert [pedido.url.path for pedido in pedidos] == ["/oauth/token"]
+
+
+async def test_limita_el_tiempo_total_aunque_el_transporte_no_aplique_timeout() -> None:
+    async def responder(_request: httpx.Request) -> httpx.Response:
+        await asyncio.Event().wait()
+        raise AssertionError("The total deadline must interrupt this request")
+
+    with pytest.raises(ErrorAnalitica) as error:
+        await _cliente(responder, timeout_seconds=0.01).obtener_tablero("usuario")
+    assert error.value.timeout is True
 
 
 async def test_fallo_de_red_al_pedir_html_no_filtra_tokens() -> None:
     def responder(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/oauth/token":
-            return httpx.Response(200, json={"access_token": "jwt-servicio-privado"})
-        raise httpx.ConnectError("sin conexion", request=request)
+        raise httpx.ConnectError("jwt-humano-privado", request=request)
 
     with pytest.raises(ErrorAnalitica) as error:
         await _cliente(responder).obtener_tablero("jwt-humano-privado")
+    assert error.value.timeout is False
+    assert error.value.status_code is None
     assert "jwt-humano-privado" not in str(error.value)
-    assert "jwt-servicio-privado" not in str(error.value)
 
 
-async def test_timeout_configurado_se_aplica_a_las_dos_llamadas() -> None:
+async def test_pedidos_concurrentes_conservan_el_token_y_html_de_cada_usuario() -> None:
+    pedidos: list[httpx.Request] = []
+
+    async def responder(request: httpx.Request) -> httpx.Response:
+        pedidos.append(request)
+        await asyncio.sleep(0)
+        numero = request.headers["Authorization"].removeprefix("Bearer usuario-")
+        return httpx.Response(200, content=HTML + numero.encode(), headers=CABECERAS)
+
+    client = _cliente(responder)
+    tableros = await asyncio.gather(*(client.obtener_tablero(f"usuario-{i}") for i in range(5)))
+
+    assert len(pedidos) == 5
+    assert all(p.method == "GET" and p.url.path == "/embed/reclamos" for p in pedidos)
+    assert [tablero.html for tablero in tableros] == [HTML + str(i).encode() for i in range(5)]
+    assert all("X-Usuario-Token" not in p.headers for p in pedidos)
+
+
+async def test_no_reutiliza_cookies_remotas_entre_usuarios() -> None:
     pedidos: list[httpx.Request] = []
 
     def responder(request: httpx.Request) -> httpx.Response:
         pedidos.append(request)
-        if request.url.path == "/oauth/token":
-            return httpx.Response(200, json={"access_token": "servicio"})
-        return httpx.Response(200, text="<html></html>", headers={"Content-Type": "text/html"})
+        return httpx.Response(
+            200, content=HTML, headers=CABECERAS | {"Set-Cookie": "sesion-remota=usuario-1; Path=/"}
+        )
+
+    client = _cliente(responder)
+    await client.obtener_tablero("usuario-1")
+    await client.obtener_tablero("usuario-2")
+
+    assert len(pedidos) == 2
+    assert all("Cookie" not in p.headers for p in pedidos)
+
+
+async def test_timeout_configurado_se_aplica_a_la_llamada_http() -> None:
+    pedidos: list[httpx.Request] = []
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        pedidos.append(request)
+        return httpx.Response(200, content=HTML, headers=CABECERAS)
 
     await _cliente(responder, timeout_seconds=2.5).obtener_tablero("usuario")
-    assert len(pedidos) == 2
-    assert all(pedido.extensions["timeout"]["read"] == 2.5 for pedido in pedidos)
+    assert len(pedidos) == 1
+    assert pedidos[0].extensions["timeout"] == dict.fromkeys(
+        ["connect", "read", "write", "pool"], 2.5
+    )
 
 
-async def test_cierra_su_cliente_http_al_terminar() -> None:
-    client = AnaliticaClient("https://analitica.example", _config())
+async def test_la_cancelacion_del_pedido_no_se_convierte_en_error_remoto() -> None:
+    iniciado = asyncio.Event()
+
+    async def responder(_request: httpx.Request) -> httpx.Response:
+        iniciado.set()
+        await asyncio.Event().wait()
+        raise AssertionError("The caller must cancel this request")
+
+    tarea = asyncio.create_task(_cliente(responder).obtener_tablero("usuario"))
+    await asyncio.wait_for(iniciado.wait(), timeout=1)
+    tarea.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await tarea
+
+
+async def test_cierra_su_cliente_http_al_terminar_y_puede_reiniciarse() -> None:
+    client = AnaliticaClient("https://analitica.example")
+    await client.stop()
+    with pytest.raises(RuntimeError, match="no fue inicializado"):
+        await client.obtener_tablero("usuario")
+
     await client.start()
     http = client._client
     assert http is not None and not http.is_closed
+    await client.start()
+    assert client._client is http
     await client.stop()
     assert http.is_closed
     assert client._client is None
+
+    await client.start()
+    assert client._client is not http
+    await client.stop()
+
+
+async def test_no_cierra_un_cliente_http_inyectado_por_el_llamador() -> None:
+    async with httpx.AsyncClient() as http:
+        client = AnaliticaClient("https://analitica.example", http)
+        await client.start()
+        await client.stop()
+        assert not http.is_closed
