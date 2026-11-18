@@ -132,7 +132,7 @@ services:
       # --- Analytics (Group 8) ----------------------------------------------
       # Enable only after provisioning the key, migration and same-origin proxy.
       - key: ANALITICA_ENABLED
-        value: "false"
+        value: "true"
       - key: ANALITICA_URL
         value: https://citypass-backend-prod-becqetepcjbqa8c7.brazilsouth-01.azurewebsites.net
       - key: ANALITICA_TIMEOUT_SECONDS
