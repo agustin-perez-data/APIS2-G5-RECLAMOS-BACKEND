@@ -74,9 +74,10 @@ from app.schemas.reclamo import (
 from app.services.actividad_service import ActividadService
 from app.services.clasificador import Clasificador, get_clasificador
 from app.services.clima_service import ClimaService, esta_vencida
+from app.services.evento_reclamable_service import EventoReclamableService
 from app.services.incidente_service import IncidenteService
 from app.services.notificacion_service import NotificacionService
-from app.services.evento_reclamable_service import EventoReclamableService
+
 log = get_logger(__name__)
 
 # What the neighbour reads when another module closes their claim. Deliberately

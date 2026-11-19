@@ -23,8 +23,8 @@ from app.events.contracts import (
     CriticidadClimaticaConfirmada,
     CriticidadClimaticaFinalizada,
     CriticidadClimaticaLevantada,
-    EventoCulturalPublicado,
     EventoCancelado,
+    EventoCulturalPublicado,
     IncidenteActualizado,
     IncidenteCreado,
     IntervencionFinalizada,
@@ -213,6 +213,8 @@ async def manejar_evento_cultural(raw: dict[str, Any], service: ReclamoService) 
         zona=datos.zona,
         cantidad=len(afectados),
     )
+
+
 async def manejar_evento_cancelado(raw: dict[str, Any], service: ReclamoService) -> None:
     """Registra la cancelación de un evento público."""
     evento = parse_envelope(raw, EventoCancelado)
@@ -311,8 +313,6 @@ async def manejar_actividad_creada(raw: dict[str, Any], service: ReclamoService)
         id=str(actividad.id),
         actividad_id=evento.data.actividad_id,
     )
-
-
 
 
 async def manejar_actividad_modificada(raw: dict[str, Any], service: ReclamoService) -> None:
@@ -479,7 +479,8 @@ HANDLERS: dict[str, Handler] = {
     topics.EMERGENCIAS_INCIDENTE_CREADO: manejar_incidente_creado,
     topics.EMERGENCIAS_INCIDENTE_ACTUALIZADO: manejar_incidente_actualizado,
     topics.ESPACIOS_EVENTO_PUBLICADO: manejar_evento_cultural,
-    topics.ESPACIOS_EVENTO_CANCELADO: manejar_evento_cancelado,    topics.ESPACIOS_INTERVENCION_FINALIZADA: manejar_intervencion_finalizada,
+    topics.ESPACIOS_EVENTO_CANCELADO: manejar_evento_cancelado,
+    topics.ESPACIOS_INTERVENCION_FINALIZADA: manejar_intervencion_finalizada,
     topics.ESPACIOS_CLIMA_CONFIRMADA: manejar_criticidad_confirmada,
     topics.ESPACIOS_CLIMA_FINALIZADA: manejar_criticidad_finalizada,
     topics.ESPACIOS_ACTIVIDAD_CREADA: manejar_actividad_creada,

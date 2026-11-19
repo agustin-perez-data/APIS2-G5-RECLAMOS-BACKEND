@@ -7,12 +7,12 @@ from app.db.models.ciudadano import Ciudadano
 from app.db.models.comentario import Comentario
 from app.db.models.evento_climatico import EventoClimatico
 from app.db.models.evento_procesado import EventoProcesado
+from app.db.models.evento_reclamable import EventoReclamable
 from app.db.models.historial import HistorialEstado
 from app.db.models.incidente import IncidenteVial
 from app.db.models.notificacion import Notificacion
 from app.db.models.reclamo import Reclamo
 from app.db.models.sesion_analitica import SesionAnalitica
-from app.db.models.evento_reclamable import EventoReclamable
 
 __all__ = [
     "ActividadMasiva",
