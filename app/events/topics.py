@@ -26,13 +26,13 @@ EMERGENCIAS_INCIDENTE_CREADO = "emergencias.incidente.creado"
 EMERGENCIAS_INCIDENTE_ACTUALIZADO = "emergencias.incidente.actualizado"
 ESPACIOS_RESERVA_CREADA = "espacios.reserva.creada"
 ESPACIOS_EVENTO_PUBLICADO = "espacios.evento.publicado"
+ESPACIOS_EVENTO_CANCELADO = "espacios.evento.cancelado"
 ESPACIOS_INTERVENCION_FINALIZADA = "espacios.intervencion.finalizada"
 # Squad 3 (ADR 0013): a mass activity whose area relates the claims filed there.
 ESPACIOS_ACTIVIDAD_CREADA = "espacios.actividad.creada"
 # Squad 3 (ADR 0018): cancelled or suspended, it stops relating new claims.
 ESPACIOS_ACTIVIDAD_MODIFICADA = "espacios.actividad.modificada"
 # CASO-RECLAMOS-POST-EVENTO: an event ended, so claims about it can be filed.
-ESPACIOS_EVENTO_FINALIZADO = "espacios.evento.finalizado"
 CLIMA_APLICADA = "reclamos.clima.aplicada"
 CLIMA_LEVANTADA = "reclamos.clima.levantada"
 ESPACIOS_CLIMA_CONFIRMADA = "espacios.clima.confirmada"
@@ -48,9 +48,9 @@ GATEWAY_A_TOPIC: dict[str, str] = {
     "com.citypass.espacios.IntervencionFinalizada": ESPACIOS_INTERVENCION_FINALIZADA,
     "com.citypass.espacios.ActividadCreada": ESPACIOS_ACTIVIDAD_CREADA,
     "com.citypass.espacios.ActividadModificada": ESPACIOS_ACTIVIDAD_MODIFICADA,
-    "com.citypass.espacios.EventoFinalizado": ESPACIOS_EVENTO_FINALIZADO,
     "com.citypass.espacios.CriticidadClimaticaConfirmada": ESPACIOS_CLIMA_CONFIRMADA,
     "com.citypass.espacios.CriticidadClimaticaFinalizada": ESPACIOS_CLIMA_FINALIZADA,
+    "com.citypass.espacios.EventoCancelado": ESPACIOS_EVENTO_CANCELADO,
 }
 
 PUBLICADOS: tuple[str, ...] = (
@@ -72,4 +72,5 @@ CONSUMIDOS: tuple[str, ...] = (
     ESPACIOS_INTERVENCION_FINALIZADA,
     ESPACIOS_ACTIVIDAD_CREADA,
     ESPACIOS_ACTIVIDAD_MODIFICADA,
+    ESPACIOS_EVENTO_CANCELADO,
 )

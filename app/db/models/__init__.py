@@ -11,8 +11,8 @@ from app.db.models.historial import HistorialEstado
 from app.db.models.incidente import IncidenteVial
 from app.db.models.notificacion import Notificacion
 from app.db.models.reclamo import Reclamo
-from app.db.models.reserva_finalizada import ReservaFinalizada
 from app.db.models.sesion_analitica import SesionAnalitica
+from app.db.models.evento_reclamable import EventoReclamable
 
 __all__ = [
     "ActividadMasiva",
@@ -22,10 +22,10 @@ __all__ = [
     "Comentario",
     "EventoClimatico",
     "EventoProcesado",
+    "EventoReclamable",
     "HistorialEstado",
     "IncidenteVial",
     "Notificacion",
     "Reclamo",
-    "ReservaFinalizada",
     "SesionAnalitica",
 ]

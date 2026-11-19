@@ -230,11 +230,18 @@ async def test_con_barrio_manda_el_barrio_y_no_el_radio(service: ReclamoService)
 def evento_cultural(**data) -> dict:
     payload = {
         "evento_id": "EV-10",
+        "espacio_id": "ESP-01",
         "titulo": "Feria de la plaza",
         "zona": "Centro",
+        "direccion": "Plaza Central",
         "inicio": datetime.now(UTC).isoformat(),
+        "fin": datetime.now(UTC).isoformat(),
+        "capacidad": 300,
         "cupo_maximo": 300,
+        "inscriptos": 100,
         "estado": "ACTIVE",
+        "categoria": "CULTURAL",
+        "correlation_id": "corr-evento-10",
     }
     payload.update(data)
     return {
@@ -244,7 +251,6 @@ def evento_cultural(**data) -> dict:
         "source": "espacios",
         "data": payload,
     }
-
 
 async def _reclamo_en(service: ReclamoService, barrio: str) -> uuid.UUID:
     reclamo = await service.crear(

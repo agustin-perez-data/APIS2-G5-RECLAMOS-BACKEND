@@ -1,4 +1,4 @@
-"""Event contracts (envelope + payloads).
+﻿"""Event contracts (envelope + payloads).
 
 The envelope follows the CloudEvents shape but uses explicit names. So we can
 still integrate with modules publishing plain CloudEvents, every field also
@@ -525,19 +525,30 @@ class IntervencionFinalizada(BaseModel):
 
 
 class EventoCulturalPublicado(BaseModel):
-    """`com.citypass.espacios.EventoComunitarioPublicado` (CU-INT-01)."""
+    """Evento comunitario publicado por Espacios."""
 
     model_config = ConfigDict(extra="allow")
 
-    evento_id: str = Field(validation_alias=AliasChoices("evento_id", "eventoId"))
+    evento_id: str = Field(
+        validation_alias=AliasChoices("evento_id", "eventoId")
+    )
+    espacio_id: str = Field(
+        validation_alias=AliasChoices("espacio_id", "espacioId")
+    )
     titulo: str
-    # ACTIVE, ACTIVE_FULL or CANCELLED. A cancelled event concentrates nobody.
-    estado: str | None = None
     zona: str | None = None
+    direccion: str | None = None
+    latitud: float | None = None
+    longitud: float | None = None
     inicio: datetime
+    fin: datetime
+    capacidad: int
+    cupo_maximo: int
     inscriptos: int = 0
-    cupo_maximo: int | None = Field(
-        default=None, validation_alias=AliasChoices("cupo_maximo", "cupoMaximo")
+    estado: str
+    categoria: str
+    correlation_id: str = Field(
+        validation_alias=AliasChoices("correlation_id", "correlationId")
     )
 
 
@@ -633,26 +644,26 @@ class MensajeFallido(BaseModel):
     payload: dict[str, Any]
 
 
-class EventoFinalizado(BaseModel):
-    """`com.citypass.espacios.EventoFinalizado` (CASO-RECLAMOS-POST-EVENTO).
-
-    Public Spaces announcing that an event ended. All we need is which
-    reservation it was and when it ended: claims about it open from `fin`. It
-    carries no event or space name, so the citizen has to bring the
-    `reservaId` from elsewhere.
-    """
+class EventoCancelado(BaseModel):
+    """Evento de Espacios que informa la cancelación de un evento."""
 
     model_config = ConfigDict(extra="allow")
 
-    reserva_id: str = Field(
-        min_length=1,
-        max_length=64,
-        validation_alias=AliasChoices("reserva_id", "reservaId"),
+    evento_id: str = Field(
+        validation_alias=AliasChoices("evento_id", "eventoId")
     )
-    # Epoch millis or ISO 8601: Pydantic reads both.
-    fin: datetime
-    asistentes_reales: int | None = Field(
-        default=None, validation_alias=AliasChoices("asistentes_reales", "asistentesReales")
+    espacio_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("espacio_id", "espacioId"),
+    )
+    motivo: str | None = None
+    cancelado_en: datetime | None = Field(
+        default=None,
+        validation_alias=AliasChoices("cancelado_en", "canceladoEn"),
+    )
+    correlation_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("correlation_id", "correlationId"),
     )
 
 

@@ -123,9 +123,12 @@ class Reclamo(Base, TimestampMixin):
     # Propagated into every event we publish so a single interaction can be
     # followed across modules.
     correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    # The reservation this claim is about, when the citizen files it over an event
-    # that already ended. Optional: a pothole has no reservation.
-    reserva_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    #    # The public event this claim is about, if applicable.
+    # Optional: ordinary claims do not reference an event.
+    evento_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+
     # If the claim was born from another module's event, we store its event_id.
     # The UNIQUE makes consumption idempotent: a redelivery cannot duplicate it.
     evento_origen_id: Mapped[str | None] = mapped_column(

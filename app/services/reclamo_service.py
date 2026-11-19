@@ -76,8 +76,7 @@ from app.services.clasificador import Clasificador, get_clasificador
 from app.services.clima_service import ClimaService, esta_vencida
 from app.services.incidente_service import IncidenteService
 from app.services.notificacion_service import NotificacionService
-from app.services.reserva_service import ReservaService
-
+from app.services.evento_reclamable_service import EventoReclamableService
 log = get_logger(__name__)
 
 # What the neighbour reads when another module closes their claim. Deliberately
@@ -248,7 +247,7 @@ class ReclamoService:
         self.actividades = ActividadService(session, self.cfg)
         self.incidentes = IncidenteService(session, self.cfg)
         self.clima = ClimaService(session)
-        self.reservas = ReservaService(session, self.cfg)
+        self.eventos = EventoReclamableService(session, self.cfg)
 
     # --- Intake --------------------------------------------------------------
     def _clasificar_alta(self, datos: ReclamoCrear) -> ClasificacionDeAlta:
@@ -300,11 +299,9 @@ class ReclamoService:
         # CASO-RECLAMOS-POST-EVENTO: a claim over a reservation is accepted only
         # once the event ended and while the window to complain is open. Checked
         # first, so a refused claim leaves nothing behind.
-        if datos.reserva_id is not None:
-            await self.reservas.validar_reclamable(datos.reserva_id)
-            # The reservation travels as the correlation id, so every module can
-            # follow the whole interaction (the bus partitions by it).
-            correlation_id = correlation_id or datos.reserva_id
+        if datos.evento_id is not None:
+            await self.eventos.validar_reclamable(datos.evento_id)
+            correlation_id = correlation_id or f"evento-{datos.evento_id}"
 
         clasificacion = self._clasificar_alta(datos)
         sugerencia = clasificacion.sugerencia
@@ -354,7 +351,7 @@ class ReclamoService:
             longitud=datos.longitud,
             fotos=list(datos.fotos),
             correlation_id=correlation_id,
-            reserva_id=datos.reserva_id,
+            evento_id=datos.evento_id,
             evento_origen_id=evento_origen_id,
             actividad=actividad,
             incidente=incidente,
@@ -470,8 +467,8 @@ class ReclamoService:
         # The citizen chose the event the claim is about, which says more than any
         # proximity the system infers. Nothing is lost by it either: `alertaId`
         # and `actividadId` still travel on their own.
-        if reclamo.reserva_id is not None:
-            return reclamo.reserva_id, CausaTipo.RESERVA
+        if reclamo.evento_id is not None:
+            return reclamo.evento_id, CausaTipo.EVENTO_PUBLICO
         origen = reclamo.evento_origen_id
         if origen is not None and origen.startswith(PREFIJO_ORIGEN_EMERGENCIA):
             emergencia_id = origen[len(PREFIJO_ORIGEN_EMERGENCIA) :]

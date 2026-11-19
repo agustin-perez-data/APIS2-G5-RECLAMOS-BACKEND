@@ -24,7 +24,7 @@ from app.events.contracts import (
     CriticidadClimaticaFinalizada,
     CriticidadClimaticaLevantada,
     EventoCulturalPublicado,
-    EventoFinalizado,
+    EventoCancelado,
     IncidenteActualizado,
     IncidenteCreado,
     IntervencionFinalizada,
@@ -185,17 +185,15 @@ CUPO_MINIMO_EVENTO_MASIVO = 100
 
 
 async def manejar_evento_cultural(raw: dict[str, Any], service: ReclamoService) -> None:
-    """`com.citypass.espacios.EventoComunitarioPublicado` -> raise the area's claims.
-
-    CU-INT-01: a large cultural event concentrates people in a known place and
-    time. Open claims in that neighbourhood go up to at least MEDIA, with an
-    official comment saying why. Like the Emergencies handler, raising is
-    idempotent: a redelivery finds the priority already raised and does nothing.
-    """
+    """Registra el evento publicado y escala reclamos de su zona si es masivo."""
     evento = parse_envelope(raw, EventoCulturalPublicado)
     datos = evento.data
 
-    if (datos.estado or "").upper() == "CANCELLED":
+    # Primero guardamos el evento para permitir reclamos cuando haya finalizado.
+    await service.eventos.registrar_publicado(datos)
+
+    # Un evento cancelado no escala prioridades.
+    if (datos.estado or "").upper() in {"CANCELLED", "CANCELADO"}:
         return
 
     if (datos.cupo_maximo or 0) < CUPO_MINIMO_EVENTO_MASIVO:
@@ -215,6 +213,10 @@ async def manejar_evento_cultural(raw: dict[str, Any], service: ReclamoService) 
         zona=datos.zona,
         cantidad=len(afectados),
     )
+async def manejar_evento_cancelado(raw: dict[str, Any], service: ReclamoService) -> None:
+    """Registra la cancelación de un evento público."""
+    evento = parse_envelope(raw, EventoCancelado)
+    await service.eventos.marcar_cancelado(evento.data.evento_id)
 
 
 async def manejar_intervencion_finalizada(raw: dict[str, Any], service: ReclamoService) -> None:
@@ -311,15 +313,6 @@ async def manejar_actividad_creada(raw: dict[str, Any], service: ReclamoService)
     )
 
 
-async def manejar_evento_finalizado(raw: dict[str, Any], service: ReclamoService) -> None:
-    """`com.citypass.espacios.EventoFinalizado` -> remember the reservation ended.
-
-    From then on a citizen can file a claim over that `reservaId`, until the
-    window after `fin` closes. Nothing else changes on arrival. Idempotent: a
-    redelivery finds the reservation already stored and does nothing.
-    """
-    evento = parse_envelope(raw, EventoFinalizado)
-    await service.reservas.registrar(evento.data)
 
 
 async def manejar_actividad_modificada(raw: dict[str, Any], service: ReclamoService) -> None:
@@ -486,10 +479,9 @@ HANDLERS: dict[str, Handler] = {
     topics.EMERGENCIAS_INCIDENTE_CREADO: manejar_incidente_creado,
     topics.EMERGENCIAS_INCIDENTE_ACTUALIZADO: manejar_incidente_actualizado,
     topics.ESPACIOS_EVENTO_PUBLICADO: manejar_evento_cultural,
-    topics.ESPACIOS_INTERVENCION_FINALIZADA: manejar_intervencion_finalizada,
+    topics.ESPACIOS_EVENTO_CANCELADO: manejar_evento_cancelado,    topics.ESPACIOS_INTERVENCION_FINALIZADA: manejar_intervencion_finalizada,
     topics.ESPACIOS_CLIMA_CONFIRMADA: manejar_criticidad_confirmada,
     topics.ESPACIOS_CLIMA_FINALIZADA: manejar_criticidad_finalizada,
     topics.ESPACIOS_ACTIVIDAD_CREADA: manejar_actividad_creada,
     topics.ESPACIOS_ACTIVIDAD_MODIFICADA: manejar_actividad_modificada,
-    topics.ESPACIOS_EVENTO_FINALIZADO: manejar_evento_finalizado,
 }

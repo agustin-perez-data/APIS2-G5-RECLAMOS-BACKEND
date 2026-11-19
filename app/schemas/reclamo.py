@@ -41,10 +41,9 @@ class ReclamoCrear(BaseModel):
     longitud: float | None = Field(default=None, ge=-180, le=180)
     fotos: list[str] = Field(default_factory=list, max_length=5)
     canal: CanalOrigen = CanalOrigen.APP
-    # Set when the claim is about an event that already ended: the `reservaId` of
-    # CASO-RECLAMOS-POST-EVENTO. Optional, so a claim about a pothole needs none.
-    reserva_id: str | None = Field(default=None, min_length=1, max_length=64)
-
+        # ID del evento público al que se refiere el reclamo, si corresponde.
+    # Es opcional: los reclamos comunes no necesitan un evento asociado.
+    evento_id: str | None = Field(default=None, min_length=1, max_length=64)
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -216,7 +215,7 @@ class ReclamoSimilar(ReclamoResumen):
 class ReclamoOut(CamposDerivadosMixin):
     model_config = ConfigDict(from_attributes=True)
 
-    reserva_id: str | None = None
+    evento_id: str | None = None
 
     id: uuid.UUID
     ciudadano_id: str
