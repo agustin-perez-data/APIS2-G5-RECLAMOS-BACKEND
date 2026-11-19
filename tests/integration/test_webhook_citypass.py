@@ -217,8 +217,13 @@ async def test_un_evento_masivo_eleva_los_reclamos_de_su_zona(
             "titulo": "Feria del libro",
             "zona": "Palermo",
             "inicio": "2026-11-01T15:00:00Z",
-            "cupoMaximo": 300,
+            "fin": "2026-11-01T20:00:00Z",
+            "capacidad": 300,
+            "cupo_maximo": 300,
             "inscriptos": 0,
+            "estado": "PUBLICADO",
+            "categoria": "CULTURAL",
+            "correlationId": "corr-ev-1",
         },
     )
     respuesta = await client.post(URL, params={"token": TOKEN}, json=evento)
