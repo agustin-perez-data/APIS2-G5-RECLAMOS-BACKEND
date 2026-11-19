@@ -525,20 +525,28 @@ class IntervencionFinalizada(BaseModel):
 
 
 class EventoCulturalPublicado(BaseModel):
-    """`com.citypass.espacios.EventoComunitarioPublicado` (CU-INT-01)."""
+    """Evento comunitario publicado por Espacios."""
 
     model_config = ConfigDict(extra="allow")
 
     evento_id: str = Field(validation_alias=AliasChoices("evento_id", "eventoId"))
+    espacio_id: str = Field(validation_alias=AliasChoices("espacio_id", "espacioId"))
     titulo: str
-    # ACTIVE, ACTIVE_FULL or CANCELLED. A cancelled event concentrates nobody.
-    estado: str | None = None
     zona: str | None = None
+    direccion: str | None = None
+    latitud: float | None = None
+    longitud: float | None = None
     inicio: datetime
+    fin: datetime
+    capacidad: int
+    # The bus sends it in camelCase, like every other field of theirs. Without
+    # the alias every real event fails validation: the webhook answers 500 and
+    # the event ends in the bus' dead letter queue.
+    cupo_maximo: int = Field(validation_alias=AliasChoices("cupo_maximo", "cupoMaximo"))
     inscriptos: int = 0
-    cupo_maximo: int | None = Field(
-        default=None, validation_alias=AliasChoices("cupo_maximo", "cupoMaximo")
-    )
+    estado: str
+    categoria: str
+    correlation_id: str = Field(validation_alias=AliasChoices("correlation_id", "correlationId"))
 
 
 class UbicacionActividad(BaseModel):
@@ -631,6 +639,27 @@ class MensajeFallido(BaseModel):
     topic_original: str
     error: str
     payload: dict[str, Any]
+
+
+class EventoCancelado(BaseModel):
+    """Evento de Espacios que informa la cancelación de un evento."""
+
+    model_config = ConfigDict(extra="allow")
+
+    evento_id: str = Field(validation_alias=AliasChoices("evento_id", "eventoId"))
+    espacio_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("espacio_id", "espacioId"),
+    )
+    motivo: str | None = None
+    cancelado_en: datetime | None = Field(
+        default=None,
+        validation_alias=AliasChoices("cancelado_en", "canceladoEn"),
+    )
+    correlation_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("correlation_id", "correlationId"),
+    )
 
 
 def parse_envelope(raw: dict[str, Any], data_model: type[TPayload]) -> EventEnvelope[TPayload]:

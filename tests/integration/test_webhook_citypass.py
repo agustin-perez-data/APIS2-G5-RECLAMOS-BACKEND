@@ -217,8 +217,13 @@ async def test_un_evento_masivo_eleva_los_reclamos_de_su_zona(
             "titulo": "Feria del libro",
             "zona": "Palermo",
             "inicio": "2026-11-01T15:00:00Z",
+            "fin": "2026-11-01T20:00:00Z",
+            "capacidad": 300,
             "cupoMaximo": 300,
             "inscriptos": 0,
+            "estado": "PUBLICADO",
+            "categoria": "CULTURAL",
+            "correlationId": "corr-ev-1",
         },
     )
     respuesta = await client.post(URL, params={"token": TOKEN}, json=evento)
@@ -317,3 +322,35 @@ async def test_emergencia_actualizada_crea_a5_por_webhook_sin_incidente_previo(
     assert creado[0].data.causa_id == emergencia_id
     assert creado[0].data.causa_tipo == "EMERGENCIA"
     assert creado[0].correlation_id == "corr-a5-webhook"
+
+
+async def test_un_evento_comunitario_con_la_forma_real_del_bus_se_acepta(
+    client: AsyncClient,
+) -> None:
+    """Field for field what Public Spaces publishes (schema 48 of the bus' registry,
+    read on 2026-11-19): every name in camelCase. A fixture written to match our
+    own model instead of theirs let a missing alias through once."""
+    evento = sobre(
+        "com.citypass.espacios.EventoComunitarioPublicado",
+        {
+            "eventoId": "032542bf-b08b-4f90-8cb9-c503842395ce",
+            "espacioId": "seed-space-olmedo",
+            "titulo": "Feria de artesanos",
+            "zona": "Palermo",
+            "direccion": "Av. Santa Fe 4000",
+            "latitud": -34.5802,
+            "longitud": -58.4208,
+            "inicio": "2026-11-20T18:00:00.000Z",
+            "fin": "2026-11-20T22:00:00.000Z",
+            "capacidad": 150,
+            "cupoMaximo": 150,
+            "inscriptos": 12,
+            "estado": "ACTIVE",
+            "categoria": "CULTURAL",
+            "correlationId": "evento-032542bf-b08b-4f90-8cb9-c503842395ce",
+        },
+    )
+
+    respuesta = await client.post(URL, params={"token": TOKEN}, json=evento)
+
+    assert respuesta.status_code == 204

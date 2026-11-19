@@ -7,6 +7,7 @@ from app.db.models.ciudadano import Ciudadano
 from app.db.models.comentario import Comentario
 from app.db.models.evento_climatico import EventoClimatico
 from app.db.models.evento_procesado import EventoProcesado
+from app.db.models.evento_reclamable import EventoReclamable
 from app.db.models.historial import HistorialEstado
 from app.db.models.incidente import IncidenteVial
 from app.db.models.notificacion import Notificacion
@@ -21,6 +22,7 @@ __all__ = [
     "Comentario",
     "EventoClimatico",
     "EventoProcesado",
+    "EventoReclamable",
     "HistorialEstado",
     "IncidenteVial",
     "Notificacion",

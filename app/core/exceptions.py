@@ -44,6 +44,18 @@ class AdhesionDelAutor(DomainError):
     code = "adhesion_del_autor"
 
 
+class EventoNoFinalizado(DomainError):
+    status_code = 409
+    title = "El evento no termino o todavia no se registro su finalizacion"
+    code = "evento_no_finalizado"
+
+
+class PlazoDeReclamoVencido(DomainError):
+    status_code = 409
+    title = "Vencio el plazo para reclamar sobre este evento"
+    code = "plazo_de_reclamo_vencido"
+
+
 class ReclamoCerrado(DomainError):
     status_code = 409
     title = "El reclamo esta cerrado y no admite modificaciones"
@@ -103,3 +115,9 @@ class SesionAnaliticaConflicto(DomainError):
     status_code = 409
     title = "La sesion de Analitica cambio o no corresponde al usuario"
     code = "analitica_sesion_conflicto"
+
+
+class EventoCanceladoError(DomainError):
+    status_code = 409
+    title = "No se puede reclamar sobre un evento cancelado"
+    code = "evento_cancelado"

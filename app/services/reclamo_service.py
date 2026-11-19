@@ -74,6 +74,7 @@ from app.schemas.reclamo import (
 from app.services.actividad_service import ActividadService
 from app.services.clasificador import Clasificador, get_clasificador
 from app.services.clima_service import ClimaService, esta_vencida
+from app.services.evento_reclamable_service import EventoReclamableService
 from app.services.incidente_service import IncidenteService
 from app.services.notificacion_service import NotificacionService
 
@@ -247,6 +248,7 @@ class ReclamoService:
         self.actividades = ActividadService(session, self.cfg)
         self.incidentes = IncidenteService(session, self.cfg)
         self.clima = ClimaService(session)
+        self.eventos = EventoReclamableService(session, self.cfg)
 
     # --- Intake --------------------------------------------------------------
     def _clasificar_alta(self, datos: ReclamoCrear) -> ClasificacionDeAlta:
@@ -295,6 +297,13 @@ class ReclamoService:
         prioridad_minima: PrioridadReclamo | None = None,
     ) -> Reclamo:
         """File a claim, classifying it when the citizen did not."""
+        # CASO-RECLAMOS-POST-EVENTO: a claim over a reservation is accepted only
+        # once the event ended and while the window to complain is open. Checked
+        # first, so a refused claim leaves nothing behind.
+        if datos.evento_id is not None:
+            await self.eventos.validar_reclamable(datos.evento_id)
+            correlation_id = correlation_id or f"evento-{datos.evento_id}"
+
         clasificacion = self._clasificar_alta(datos)
         sugerencia = clasificacion.sugerencia
         categoria = clasificacion.categoria
@@ -343,6 +352,7 @@ class ReclamoService:
             longitud=datos.longitud,
             fotos=list(datos.fotos),
             correlation_id=correlation_id,
+            evento_id=datos.evento_id,
             evento_origen_id=evento_origen_id,
             actividad=actividad,
             incidente=incidente,
@@ -450,9 +460,16 @@ class ReclamoService:
 
         The road incident sits between the two: it explains *why* like the
         alert does, but it is one cut street rather than a storm over the
-        neighbourhood, so the alert still wins when both apply. `RESERVA`
-        belongs here the day Public Spaces puts a location on its event.
+        neighbourhood, so the alert still wins when both apply.
+
+        `RESERVA` comes first of all: a citizen who files a claim over a finished
+        event chose that event explicitly, which no inferred cause can outrank.
         """
+        # The citizen chose the event the claim is about, which says more than any
+        # proximity the system infers. Nothing is lost by it either: `alertaId`
+        # and `actividadId` still travel on their own.
+        if reclamo.evento_id is not None:
+            return reclamo.evento_id, CausaTipo.EVENTO_PUBLICO
         origen = reclamo.evento_origen_id
         if origen is not None and origen.startswith(PREFIJO_ORIGEN_EMERGENCIA):
             emergencia_id = origen[len(PREFIJO_ORIGEN_EMERGENCIA) :]
