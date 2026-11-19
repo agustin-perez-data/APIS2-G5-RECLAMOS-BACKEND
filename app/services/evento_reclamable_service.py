@@ -22,9 +22,7 @@ class EventoReclamableService:
 
     async def registrar_publicado(self, datos) -> None:
         resultado = await self.session.execute(
-            select(EventoReclamable).where(
-                EventoReclamable.evento_id == datos.evento_id
-            )
+            select(EventoReclamable).where(EventoReclamable.evento_id == datos.evento_id)
         )
         evento = resultado.scalar_one_or_none()
 
@@ -45,9 +43,7 @@ class EventoReclamableService:
 
     async def marcar_cancelado(self, evento_id: str) -> None:
         resultado = await self.session.execute(
-            select(EventoReclamable).where(
-                EventoReclamable.evento_id == evento_id
-            )
+            select(EventoReclamable).where(EventoReclamable.evento_id == evento_id)
         )
         evento = resultado.scalar_one_or_none()
 
@@ -69,9 +65,7 @@ class EventoReclamableService:
         ahora_ms: int | None = None,
     ) -> None:
         resultado = await self.session.execute(
-            select(EventoReclamable).where(
-                EventoReclamable.evento_id == evento_id
-            )
+            select(EventoReclamable).where(EventoReclamable.evento_id == evento_id)
         )
         evento = resultado.scalar_one_or_none()
 
@@ -84,18 +78,12 @@ class EventoReclamableService:
         if evento.fin_ms is None:
             raise EventoNoFinalizado()
 
-        ahora = (
-            ahora_ms
-            if ahora_ms is not None
-            else int(datetime.now(UTC).timestamp() * 1000)
-        )
+        ahora = ahora_ms if ahora_ms is not None else int(datetime.now(UTC).timestamp() * 1000)
 
         if evento.fin_ms > ahora:
             raise EventoNoFinalizado()
 
-        plazo_limite = evento.fin_ms + int(
-            self.PLAZO_RECLAMO.total_seconds() * 1000
-        )
+        plazo_limite = evento.fin_ms + int(self.PLAZO_RECLAMO.total_seconds() * 1000)
 
         if ahora > plazo_limite:
             raise PlazoDeReclamoVencido()

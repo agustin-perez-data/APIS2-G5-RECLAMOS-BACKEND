@@ -116,6 +116,7 @@ class SesionAnaliticaConflicto(DomainError):
     title = "La sesion de Analitica cambio o no corresponde al usuario"
     code = "analitica_sesion_conflicto"
 
+
 class EventoCanceladoError(DomainError):
     status_code = 409
     title = "No se puede reclamar sobre un evento cancelado"

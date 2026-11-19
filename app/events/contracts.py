@@ -1,4 +1,4 @@
-﻿"""Event contracts (envelope + payloads).
+"""Event contracts (envelope + payloads).
 
 The envelope follows the CloudEvents shape but uses explicit names. So we can
 still integrate with modules publishing plain CloudEvents, every field also
@@ -529,12 +529,8 @@ class EventoCulturalPublicado(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    evento_id: str = Field(
-        validation_alias=AliasChoices("evento_id", "eventoId")
-    )
-    espacio_id: str = Field(
-        validation_alias=AliasChoices("espacio_id", "espacioId")
-    )
+    evento_id: str = Field(validation_alias=AliasChoices("evento_id", "eventoId"))
+    espacio_id: str = Field(validation_alias=AliasChoices("espacio_id", "espacioId"))
     titulo: str
     zona: str | None = None
     direccion: str | None = None
@@ -547,9 +543,7 @@ class EventoCulturalPublicado(BaseModel):
     inscriptos: int = 0
     estado: str
     categoria: str
-    correlation_id: str = Field(
-        validation_alias=AliasChoices("correlation_id", "correlationId")
-    )
+    correlation_id: str = Field(validation_alias=AliasChoices("correlation_id", "correlationId"))
 
 
 class UbicacionActividad(BaseModel):
@@ -649,9 +643,7 @@ class EventoCancelado(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    evento_id: str = Field(
-        validation_alias=AliasChoices("evento_id", "eventoId")
-    )
+    evento_id: str = Field(validation_alias=AliasChoices("evento_id", "eventoId"))
     espacio_id: str | None = Field(
         default=None,
         validation_alias=AliasChoices("espacio_id", "espacioId"),

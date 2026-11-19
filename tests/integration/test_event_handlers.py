@@ -252,6 +252,7 @@ def evento_cultural(**data) -> dict:
         "data": payload,
     }
 
+
 async def _reclamo_en(service: ReclamoService, barrio: str) -> uuid.UUID:
     reclamo = await service.crear(
         ReclamoCrear(
