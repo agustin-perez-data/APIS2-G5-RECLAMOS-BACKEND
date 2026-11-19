@@ -702,3 +702,32 @@ en el [ADR 0018](adr/0018-actividad-cancelada-o-suspendida.md).
 | `401` | Secreto ausente o incorrecto. |
 | `429` | Se superó el límite de entregas por minuto. |
 | `500` | Falló el procesamiento. El dispatcher reintenta y después manda a su cola de muertos. |
+
+## Reclamos sobre un evento que ya terminó
+
+Caso de uso `CASO-RECLAMOS-POST-EVENTO`: un vecino reclama por lo que quedó después de un
+evento de Espacios (basura, daños, ruido). Reclamos solo acepta el reclamo si el evento
+terminó y si todavía está abierto el plazo.
+
+**Entra:** `com.citypass.espacios.EventoFinalizado`, por el webhook. Trae `reservaId`, `fin`
+(milisegundos desde epoch) y `asistentesReales`. Se guarda en la tabla `eventos_finalizados`
+(`reserva_id`, `fin_ms`). Es idempotente: una reentrega no duplica la fila.
+
+**El `POST /api/v1/reclamos`** acepta un campo opcional `reserva_id`:
+
+| Situación | Respuesta |
+|---|---|
+| Sin `reserva_id` | Todo igual que siempre (un bache no tiene reserva) |
+| `reserva_id` que no figura como finalizada | `409`, código `evento_no_finalizado` |
+| Pasó `fin` + `RECLAMO_VENTANA_MS` (7 días por defecto) | `409`, código `plazo_de_reclamo_vencido` |
+| Dentro del plazo | `201` |
+
+**Sale:** `ReclamoCreado` no suma campos. Con `reserva_id`, la causa es la reserva:
+`causaTipo = RESERVA` y `causaId = reservaId`. Además `correlationId` toma el `reservaId`
+si quien llama no trae uno propio. La reserva va **primero** entre las causas: el vecino
+eligió ese evento, y eso dice más que cualquier cercanía que el sistema infiera
+(`alertaId` y `actividadId` siguen viajando por su cuenta).
+
+**Pendiente:** hoy Espacios no publica `EventoFinalizado` (no figura en su catálogo). Se
+prueba simulando el aviso, como en `tests/integration/test_reclamo_post_evento.py`. Para
+recibirlo de verdad hará falta crear la suscripción al webhook cuando el tipo exista.
