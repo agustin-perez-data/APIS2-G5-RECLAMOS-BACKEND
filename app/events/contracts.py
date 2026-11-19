@@ -539,7 +539,10 @@ class EventoCulturalPublicado(BaseModel):
     inicio: datetime
     fin: datetime
     capacidad: int
-    cupo_maximo: int
+    # The bus sends it in camelCase, like every other field of theirs. Without
+    # the alias every real event fails validation: the webhook answers 500 and
+    # the event ends in the bus' dead letter queue.
+    cupo_maximo: int = Field(validation_alias=AliasChoices("cupo_maximo", "cupoMaximo"))
     inscriptos: int = 0
     estado: str
     categoria: str
